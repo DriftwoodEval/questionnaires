@@ -12,7 +12,6 @@ from selenium.webdriver.support.ui import Select
 
 with open("./info.yml", "r") as file:
     info = yaml.safe_load(file)["services"]
-print(info)
 
 
 def rearrangedob(dob):
