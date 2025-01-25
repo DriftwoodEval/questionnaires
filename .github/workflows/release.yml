@@ -1,27 +1,17 @@
-name: Build Windows Executable
+name: Release
 
 on:
   push:
     branches: [main]
 
-env:
-  filename: main
-  name: QSend
-
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
-
-      - name: Install UPX
-        uses: crazy-max/ghaction-upx@v3
-        with:
-          install-only: true
 
       - name: Set up Python
         run: uv python install
@@ -29,19 +19,22 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Build EXE
+      - name: Build .exe
         run: |
           .venv\Scripts\Activate.ps1
-          pyinstaller --noconfirm --onefile --clean --name "${{env.name}}" "${{env.filename}}.py"
+          pyinstaller --noconfirm --clean --name "QSend" main.py
+
+      - name: Compress archive
+        run: Compress-Archive -Path dist/QSend -DestinationPath dist/QSend.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: "${{env.name}}.exe"
-          path: dist/${{env.name}}.exe
+          name: QSend.zip
+          path: dist/QSend.zip
           if-no-files-found: error
 
   publish:
-    needs: [build_full]
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,7 +43,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: "${{env.name}}.exe"
+          name: QSend.zip
           path: ./
 
       - name: Generate release timestamp
@@ -59,5 +52,6 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: ${{env.name}}.exe
+          files: "./QSend.zip"
           tag_name: "v${{ steps.timestamp.outputs.timestamp }}"
+          fail_on_unmatched_files: true
