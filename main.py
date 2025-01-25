@@ -292,11 +292,15 @@ def get_questionnaires(age, check, daeval, vineland):
                     qs.append("Vineland")
                 return qs
             elif age < 19:
-                return ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2"]
+                qs = ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2"]
+                if vineland:
+                    qs.append("ASRS (6-18 Years)")
+                else:
+                    qs.append("Vineland")
             elif age < 22:
                 return ["ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
             else:
-                return ["ABAS 3", "SRS-2", "CAARS 2PAI"]
+                return ["ABAS 3", "SRS-2", "CAARS 2", "PAI"]
         else:
             return
     elif daeval == "DA":
@@ -334,21 +338,44 @@ def get_questionnaires(age, check, daeval, vineland):
         if age < 2:  # 1.5
             print("Too young, note ASANA")
         elif age < 6:
-            return ["ASRS (2-5 Years)"]
+            return [
+                "ASRS (2-5 Years)",
+                "Vineland",
+                "DP4",
+                "BASC Preschool",
+                "Conners EC",
+            ]
         elif age < 7:
-            return ["ASRS (6-18 Years)"]
-        elif age < 8:
-            return ["ASRS (6-18 Years)"]
+            return ["ASRS (6-18 Years)", "Vineland", "BASC Child", "Conners 4"]
         elif age < 12:
-            return ["ASRS (6-18 Years)"]
+            return [
+                "ASRS (6-18 Years)",
+                "Vineland",
+                "BASC Child",
+                "Conners 4 Self",
+                "Conners 4",
+            ]
         elif age < 18:
-            return ["ASRS (6-18 Years)"]
+            return [
+                "ASRS (6-18 Years)",
+                "Vineland",
+                "BASC Adolescent",
+                "Conners 4 Self",
+                "Conners 4",
+            ]
         elif age < 19:
-            return ["ASRS (6-18 Years)"]
+            return [
+                "ASRS (6-18 Years)",
+                "Vineland",
+                "ABAS 3",
+                "BASC Adolescent",
+                "PAI",
+                "CAARS 2",
+            ]
         elif age < 22:
-            return ["SRS Self"]
+            return ["SRS Self", "ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
         else:
-            return ["SRS Self"]
+            return ["SRS Self", "ABAS 3", "SRS-2", "CAARS 2", "PAI"]
 
 
 def add_client_to_mhs(client, Q, driver, actions):
