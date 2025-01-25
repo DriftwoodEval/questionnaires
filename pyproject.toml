@@ -1,0 +1,17 @@
+[project]
+name = "q-send"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyperclip>=1.9.0",
+    "python-dateutil>=2.9.0.post0",
+    "pyyaml>=6.0.2",
+    "selenium>=4.28.1",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.11.1",
+]

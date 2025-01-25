@@ -1,0 +1,63 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [main]
+
+env:
+  filename: main
+  name: QSend
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
+
+      - name: Build EXE
+        run: |
+          .venv\Scripts\Activate.ps1
+          pyinstaller --noconfirm --onefile --clean --name "${{env.name}}" "${{env.filename}}.py"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "${{env.name}}.exe"
+          path: dist/${{env.name}}.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [build_full]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: "${{env.name}}.exe"
+          path: ./
+
+      - name: Generate release timestamp
+        id: timestamp
+        run: echo "timestamp=$(date +'%Y%m%d_%H%M')" >> $GITHUB_OUTPUT
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{env.name}}.exe
+          tag_name: "v${{ steps.timestamp.outputs.timestamp }}"
