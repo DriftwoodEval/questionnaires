@@ -22,7 +22,7 @@ jobs:
       - name: Build .exe
         run: |
           .venv\Scripts\Activate.ps1
-          pyinstaller --noconfirm --clean --name "QSend" main.py
+          pyinstaller --noconfirm --clean --name "QSend" qsend.py
 
       - name: Compress archive
         run: Compress-Archive -Path dist/QSend -DestinationPath dist/QSend.zip
