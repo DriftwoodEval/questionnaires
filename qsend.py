@@ -83,11 +83,12 @@ def login_ta(driver, actions):
     driver.get("https://portal.therapyappointment.com")
 
     logging.info("Entering username")
-    actions.send_keys(info["therapyappointment"]["username"])
+    username_field = driver.find_element(By.NAME, "user_username")
+    username_field.send_keys(info["therapyappointment"]["username"])
 
     logging.info("Entering password")
-    actions.send_keys(Keys.TAB)
-    actions.send_keys(info["therapyappointment"]["password"])
+    password_field = driver.find_element(By.NAME, "user_password")
+    password_field.send_keys(info["therapyappointment"]["password"])
 
     logging.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -1453,6 +1454,7 @@ def main():
         while True:
             try:
                 login(driver, actions)
+                sleep(1)
                 break
             except Exception as e:
                 logging.info(f"Login failed: {e}, trying again")
