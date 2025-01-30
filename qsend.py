@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from time import sleep, strftime, strptime
 
-import pyperclip
 import yaml
 from dateutil.relativedelta import relativedelta
 from selenium import webdriver
@@ -334,6 +333,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
         driver.find_element(
             By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
         ).click()
+        logging.info(f"Selecting {questionnaire}")
         driver.find_element(
             By.XPATH, f"//span[contains(normalize-space(text()), '{questionnaire}')]"
         ).click()
@@ -355,6 +355,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
         search.send_keys(id)
         actions.send_keys(Keys.ENTER)
         actions.perform()
+        sleep(1)
         if questionnaire == "ASRS":
             logging.info("Selecting client")
             driver.find_element(
@@ -739,7 +740,6 @@ def gen_conners_ec(driver, actions, client):
         By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     ).click()
 
-    logging.info("Adding client to MHS")
     add_client_to_mhs(driver, actions, client, "Conners EC")
 
     logging.info("Selecting assessment description")
@@ -1051,12 +1051,17 @@ def gen_basc_preschool(driver, actions, client):
 
     logging.info("Clicking continue to email")
     driver.find_element(By.XPATH, "//button[contains(.,'Continue to E-mail')]").click()
+
     sleep(5)
 
-    logging.info("Clicking copy link")
-    driver.find_element(By.XPATH, "//button[contains(.,'Copy link')]").click()
-    sleep(3)
-    link = pyperclip.paste()
+    logging.info("Clicking create e-mail")
+    driver.find_element(By.XPATH, "//button[contains(.,'Create e-mail')]").click()
+    driver.switch_to.frame(
+        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+    )
+    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+
+    driver.switch_to.default_content()
 
     logging.info(f"Returning link {link}")
     return link
@@ -1094,12 +1099,17 @@ def gen_basc_child(driver, actions, client):
 
     logging.info("Clicking continue to email")
     driver.find_element(By.XPATH, "//button[contains(.,'Continue to E-mail')]").click()
+
     sleep(5)
 
-    logging.info("Clicking copy link")
-    driver.find_element(By.XPATH, "//button[contains(.,'Copy link')]").click()
-    sleep(3)
-    link = pyperclip.paste()
+    logging.info("Clicking create e-mail")
+    driver.find_element(By.XPATH, "//button[contains(.,'Create e-mail')]").click()
+    driver.switch_to.frame(
+        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+    )
+    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+
+    driver.switch_to.default_content()
 
     logging.info(f"Returning link {link}")
     return link
@@ -1137,12 +1147,17 @@ def gen_basc_adolescent(driver, actions, client):
 
     logging.info("Clicking continue to email")
     driver.find_element(By.XPATH, "//button[contains(.,'Continue to E-mail')]").click()
+
     sleep(5)
 
-    logging.info("Clicking copy link")
-    driver.find_element(By.XPATH, "//button[contains(.,'Copy link')]").click()
-    sleep(3)
-    link = pyperclip.paste()
+    logging.info("Clicking create e-mail")
+    driver.find_element(By.XPATH, "//button[contains(.,'Create e-mail')]").click()
+    driver.switch_to.frame(
+        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+    )
+    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+
+    driver.switch_to.default_content()
 
     logging.info(f"Returning link {link}")
     return link
@@ -1187,14 +1202,19 @@ def gen_vineland(driver, actions, client):
         "//div[2]/qg2-multi-column-layout/div/section[2]/div/qg2-form-radio-button/div/div/section[2]/div/div[2]/label",
     ).click()
 
-    logging.info("Continuing to email confirmation")
+    logging.info("Clicking continue to email")
     driver.find_element(By.XPATH, "//button[contains(.,'Continue to E-mail')]").click()
+
     sleep(5)
 
-    logging.info("Copying link")
-    driver.find_element(By.XPATH, "//button[contains(.,'Copy link')]").click()
-    link = pyperclip.paste()
-    sleep(2)
+    logging.info("Clicking create e-mail")
+    driver.find_element(By.XPATH, "//button[contains(.,'Create e-mail')]").click()
+    driver.switch_to.frame(
+        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+    )
+    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+
+    driver.switch_to.default_content()
 
     logging.info(f"Returning link {link}")
     return link
@@ -1524,6 +1544,12 @@ def main():
                     update_yaml(formatted_client, "./put/qfailure.yml")
                     send = False
                     break
+
+                if link is None or link == "":
+                    update_yaml(formatted_client, "./put/qfailure.yml")
+                    send = False
+                    break
+
                 formatted_client[client_info["account_number"]][
                     "questionnaires"
                 ].append({"done": False, "link": link, "type": questionnaire})
@@ -1544,3 +1570,5 @@ def main():
 
 
 main()
+
+# TODO: do not try to add client multiple times, i.e. use the vineland check to not try to add the client to qglobal again
