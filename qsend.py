@@ -1053,7 +1053,6 @@ def gen_basc_preschool(driver, actions, client):
     sleep(5)
 
     logging.info("Clicking copy link")
-    driver.find_element(By.XPATH, "//button[contains(.,'')]").click()
     driver.find_element(By.XPATH, "//button[contains(.,'Copy link')]").click()
     sleep(3)
     link = pyperclip.paste()
@@ -1277,6 +1276,8 @@ def search_clients(driver, actions, firstname, lastname):
 
 
 def go_to_client(driver, actions, firstname, lastname):
+    driver.get("https://portal.therapyappointment.com")
+    sleep(1)
     logging.info("Navigating to Clients section")
     clients_button = driver.find_element(
         By.XPATH, value="//*[contains(text(), 'Clients')]"
@@ -1289,13 +1290,21 @@ def go_to_client(driver, actions, firstname, lastname):
             break
         except Exception as e:
             logging.info(f"Failed to search: {e}, trying again")
+            driver.refresh()
 
     sleep(1)
 
     logging.info("Selecting client profile")
-    driver.find_element(
-        By.CSS_SELECTOR, "a[aria-description*='Press Enter to view the profile of"
-    ).click()
+
+    try:
+        driver.find_element(
+            By.CSS_SELECTOR,
+            "a[aria-description*='Press Enter to view the profile of",
+        ).click()
+    except Exception as e:
+        logging.info(f"Failed to select client: {e}, trying again")
+        driver.refresh()
+        go_to_client(driver, actions, firstname, lastname)
 
     current_url = driver.current_url
     logging.info(f"Navigated to client profile: {current_url}")
@@ -1459,7 +1468,6 @@ def main():
             "./put/records.txt",
             f"{client_params['firstname']} {client_params['lastname']} {client_params['date']}",
         )
-        driver.get("https://portal.therapyappointment.com")
 
         try:
             client_url = go_to_client(
