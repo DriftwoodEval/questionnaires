@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from time import sleep, strftime, strptime
 
@@ -27,7 +28,8 @@ def initialize():
     logging.info("Initializing Selenium")
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--headless")
+    if os.getenv("HEADLESS") == "true":
+        chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-dev-shm-usage")
     driver = webdriver.Chrome(options=chrome_options)
     actions = ActionChains(driver)
