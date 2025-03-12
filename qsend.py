@@ -53,7 +53,7 @@ def parameterize(client):
     last = client[1]
     check = client[2]
     daeval = "DA"
-    if check == "T":
+    if check == "ADHD":
         date = client[3]
     else:
         daeval = client[3]
@@ -197,7 +197,14 @@ def add_client_to_qglobal(driver, actions, client):
     gender = client["gender"]
 
     logging.info("Clicking new examinee button")
-    driver.find_element(By.ID, "searchForm:newExamineeButton").click()
+    loop = True
+    while loop:
+        try:
+            driver.find_element(By.ID, "searchForm:newExamineeButton").click()
+            loop = False
+        except:  # noqa: E722
+            logging.info("Failed to click new examinee, trying again.")
+            driver.refresh()
 
     logging.info("Entering first name")
     first = driver.find_element(By.ID, "firstName")
@@ -247,7 +254,10 @@ def add_client_to_qglobal(driver, actions, client):
             driver.find_element(By.ID, "j_id182").click()
             driver.find_element(By.ID, "unSavedChangeForm:YesUnSavedChanges").click()
         except:  # noqa: E722
-            driver.find_element(By.NAME, "j_id209").click()
+            try:
+                driver.find_element(By.NAME, "j_id209").click()
+            except:  # noqa: E722
+                exists = False
     sleep(2)
     return exists
 
@@ -300,8 +310,8 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
     else:
         logging.info("Selecting gender")
         gender_element = driver.find_element(
-            By.CSS_SELECTOR,
-            "select[aria-label*='Gender selection dropdown']",
+            By.ID,
+            "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_ddl_Gender",
         )
         gender_select = Select(gender_element)
         sleep(1)
@@ -495,7 +505,6 @@ def get_questionnaires(age, check, daeval, vineland):
                 "ASRS (6-18 Years)",
                 "Vineland",
                 "BASC Child",
-                "Conners 4 Self",
                 "Conners 4",
             ]
         elif age < 18:
@@ -1396,6 +1405,7 @@ def send_message_ta(driver, client_url, message):
         By.XPATH,
         "//div[2]/section/div/a/span/span",
     ).click()
+    sleep(1)
 
     logging.info("Setting message subject")
     driver.find_element(By.ID, "message_thread_subject").send_keys(
@@ -1499,7 +1509,10 @@ def main():
             )
             client_info = extract_client_data(driver)
             combined_client_info = client_params | client_info
-            if int(combined_client_info["age"]) < 19:
+            if (
+                int(combined_client_info["age"]) < 19
+                and client_params["daeval"] != "DA"
+            ):
                 driver.get(
                     "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
                 )
