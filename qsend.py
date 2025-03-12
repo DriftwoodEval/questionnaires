@@ -15,7 +15,7 @@ from selenium.webdriver.support.ui import Select
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("qsend.log"), logging.StreamHandler()],
 )
 
@@ -45,6 +45,18 @@ def get_clients():
         clients = automation.split(",")
         logging.info(f"Loaded {len(clients)} clients")
     return clients
+
+
+def get_previous_clients():
+    logging.info("Loading previous clients")
+    filepath = "./put/clients.yml"
+    try:
+        with open(filepath, "r") as file:
+            prev_clients = yaml.safe_load(file)
+    except FileNotFoundError:
+        logging.info(f"{filepath} does not exist.")
+        return None
+    return prev_clients
 
 
 def parameterize(client):
@@ -1480,6 +1492,17 @@ def write_file(filepath, data):
             logging.info("Wrote data to new file")
 
 
+def check_client_in_yaml(prev_clients, client_info):
+    if prev_clients is None:
+        return False
+    account_number = client_info.get("account_number")
+
+    if account_number and isinstance(prev_clients, dict):
+        return account_number in prev_clients
+    else:
+        return False
+
+
 def main():
     driver, actions = initialize()
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
@@ -1492,15 +1515,13 @@ def main():
                 logging.info(f"Login failed: {e}, trying again")
                 sleep(1)
     clients = get_clients()
+    prev_clients = get_previous_clients()
+
     for client in clients:
         client_params = parameterize(client)
 
         logging.info(
             f"Starting loop for {client_params['firstname']} {client_params['lastname']}"
-        )
-        write_file(
-            "./put/records.txt",
-            f"{client_params['firstname']} {client_params['lastname']} {client_params['date']}",
         )
 
         try:
@@ -1508,6 +1529,25 @@ def main():
                 driver, actions, client_params["firstname"], client_params["lastname"]
             )
             client_info = extract_client_data(driver)
+
+            client_already_ran = check_client_in_yaml(prev_clients, client_info)
+        except NoSuchElementException as e:
+            logging.error(f"Element not found: {e}")
+            update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            break
+
+        if client_already_ran:
+            logging.warning(
+                f"{client_params['firstname']} {client_params['lastname']} has already been run before, skipping."
+            )
+            break
+
+        write_file(
+            "./put/records.txt",
+            f"{client_params['firstname']} {client_params['lastname']} {client_params['date']}",
+        )
+
+        try:
             combined_client_info = client_params | client_info
             if (
                 int(combined_client_info["age"]) < 19
