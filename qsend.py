@@ -1540,7 +1540,7 @@ def main():
             logging.warning(
                 f"{client_params['firstname']} {client_params['lastname']} has already been run before, skipping."
             )
-            break
+            continue
 
         write_file(
             "./put/records.txt",
