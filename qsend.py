@@ -1369,6 +1369,11 @@ def extract_client_data(driver):
     ).text
     birthdate_str = birthdate_element.split(" ")[-1]
     birthdate = strftime("%Y/%m/%d", strptime(birthdate_str, "%m/%d/%Y"))
+    phone_number_element = driver.find_element(
+        By.CSS_SELECTOR, "a[aria-description=' current default phone'"
+    )
+    sleep(0.5)
+    phone_number = phone_number_element.text
     gender_title_element = driver.find_element(
         By.XPATH,
         "//div[contains(normalize-space(text()), 'Gender') and contains(@class, 'v-list-item__title')]",
@@ -1388,6 +1393,7 @@ def extract_client_data(driver):
         "birthdate": birthdate,
         "gender": gender,
         "age": age,
+        "phone_number": phone_number,
     }
 
 
