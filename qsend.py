@@ -1484,6 +1484,9 @@ def write_file(filepath, data):
         logging.info(f"Opening file {filepath} for reading")
         with open(filepath, "r") as file:
             existing_content = file.read().strip("\n")
+            if data == existing_content or data in existing_content.split(", "):
+                logging.info("Data already exists in file, skipping write")
+                return
             new_content = (
                 data if not existing_content else f"{existing_content}, {data}"
             )
