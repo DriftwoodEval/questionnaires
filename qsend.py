@@ -1636,4 +1636,4 @@ def main():
 
 main()
 
-# TODO: do not try to add client multiple times, i.e. use the vineland check to not try to add the client to qglobal again
+# TODO: do not try to add client accounts multiple times
