@@ -1507,9 +1507,9 @@ def check_client_in_yaml(prev_clients, client_info):
     account_number = client_info.get("account_number")
 
     if account_number and isinstance(prev_clients, dict):
-        return account_number in prev_clients
-    else:
-        return False
+        if account_number in prev_clients:
+            return prev_clients[account_number]["daeval"] == client_info.get("daeval")
+    return False
 
 
 def main():
@@ -1538,8 +1538,10 @@ def main():
                 driver, actions, client_params["firstname"], client_params["lastname"]
             )
             client_info = extract_client_data(driver)
-
-            client_already_ran = check_client_in_yaml(prev_clients, client_info)
+            combined_client_info = client_params | client_info
+            client_already_ran = check_client_in_yaml(
+                prev_clients, combined_client_info
+            )
         except NoSuchElementException as e:
             logging.error(f"Element not found: {e}")
             update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
@@ -1547,7 +1549,7 @@ def main():
 
         if client_already_ran:
             logging.warning(
-                f"{client_params['firstname']} {client_params['lastname']} has already been run before, skipping."
+                f"{client_params['firstname']} {client_params['lastname']} with {combined_client_info['daeval']} has already been run before, skipping."
             )
             continue
 
@@ -1557,7 +1559,6 @@ def main():
         )
 
         try:
-            combined_client_info = client_params | client_info
             if (
                 int(combined_client_info["age"]) < 19
                 and client_params["daeval"] != "DA"
