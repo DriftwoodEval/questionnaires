@@ -199,7 +199,7 @@ def search_and_add_note(
     project = search_by_name(projects_api, services, name)
     if project:
         add_note(config, projects_api, project["gid"], note, raw_note)
-        return project["permalink_url"]
+        return project["gid"]
     else:
         return False
 
@@ -226,3 +226,25 @@ def search_and_add_questionnaires(
     )
     client["asana"] = asana_link
     return client
+
+
+def mark_link_done(
+    projects_api: asana.ProjectsApi, services, config, project_gid: str, link: str
+):
+    project = fetch_project(projects_api, project_gid)
+    if project:
+        notes = project["notes"]
+        link_start = notes.find(link)
+        if link_start == -1:
+            logging.warning(f"Link {link} not found in project notes")
+            return
+        link_end = notes.find("\n", link_start)
+        if link_end == -1:
+            link_end = len(notes)
+        link_done = notes[link_start:link_end].strip()
+        if " - DONE" in link_done:
+            logging.info(f"Link {link} is already marked as DONE")
+            return
+        link_done = f"{link_done} - DONE"
+        new_note = notes[:link_start] + link_done + notes[link_end:]
+        replace_notes(projects_api, new_note, project_gid)

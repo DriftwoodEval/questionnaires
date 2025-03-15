@@ -62,6 +62,9 @@ def send_text_and_ensure(
 ):
     logging.info(f"Attempting to send message '{message}' to {to_number}")
     attempt_text = send_text(message, to_number, from_number, user_blame)
+    if not attempt_text:
+        logging.warning(f"Possibly failed to send message {message} to {to_number}")
+        return False
     message_id = attempt_text["id"]
     for i in range(3):
         sleep_time = 2**i
@@ -153,6 +156,16 @@ def main():
         ids_to_delete = []
         for id in clients:
             client = clients[id]
+            for questionnaire in client["questionnaires"]:
+                if questionnaire["done"]:
+                    utils.mark_link_done(
+                        projects_api,
+                        services,
+                        config,
+                        client["asana"],
+                        questionnaire["link"],
+                    )
+
             distance = check_appointment_distance(
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
             )
