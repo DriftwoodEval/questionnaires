@@ -13,29 +13,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
+import shared_utils as utils
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("qsend.log"), logging.StreamHandler()],
 )
 
-with open("./config/info.yml", "r") as file:
-    logging.info("Loading services file")
-    info = yaml.safe_load(file)["services"]
-
-
-def initialize():
-    logging.info("Initializing Selenium")
-    chrome_options = Options()
-    chrome_options.add_argument("--no-sandbox")
-    if os.getenv("HEADLESS") == "true":
-        chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(options=chrome_options)
-    actions = ActionChains(driver)
-    driver.implicitly_wait(5)
-    driver.set_window_size(1920, 1080)
-    return driver, actions
+info = utils.load_config()
 
 
 def get_clients():
@@ -45,18 +31,6 @@ def get_clients():
         clients = automation.split(",")
         logging.info(f"Loaded {len(clients)} clients")
     return clients
-
-
-def get_previous_clients():
-    logging.info("Loading previous clients")
-    filepath = "./put/clients.yml"
-    try:
-        with open(filepath, "r") as file:
-            prev_clients = yaml.safe_load(file)
-    except FileNotFoundError:
-        logging.info(f"{filepath} does not exist.")
-        return None
-    return prev_clients
 
 
 def parameterize(client):
@@ -1457,27 +1431,6 @@ def format_failed_client(client_params):
     return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
 
 
-def update_yaml(clients, filepath):
-    logging.info(f"Updating {filepath}")
-    try:
-        with open(filepath, "r") as file:
-            current_yaml = yaml.safe_load(file)
-    except FileNotFoundError:
-        logging.info(f"{filepath} does not exist, creating new file")
-        current_yaml = None
-
-    if current_yaml is None:
-        logging.info(f"Dumping {clients} to {filepath}")
-        with open(filepath, "w") as file:
-            yaml.dump(clients, file, default_flow_style=False)
-    else:
-        logging.info(f"Updating {filepath}")
-        current_yaml.update(clients)
-        with open(filepath, "w") as file:
-            logging.info(f"Dumping {clients} to {filepath}")
-            yaml.dump(current_yaml, file, default_flow_style=False)
-
-
 def write_file(filepath, data):
     data = data.strip("\n")
     try:
@@ -1513,7 +1466,7 @@ def check_client_in_yaml(prev_clients, client_info):
 
 
 def main():
-    driver, actions = initialize()
+    driver, actions = utils.initialize_selenium()
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
             try:
@@ -1524,7 +1477,7 @@ def main():
                 logging.info(f"Login failed: {e}, trying again")
                 sleep(1)
     clients = get_clients()
-    prev_clients = get_previous_clients()
+    prev_clients = utils.get_previous_clients()
 
     for client in clients:
         client_params = parameterize(client)
@@ -1544,7 +1497,7 @@ def main():
             )
         except NoSuchElementException as e:
             logging.error(f"Element not found: {e}")
-            update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
             break
 
         if client_already_ran:
@@ -1588,7 +1541,7 @@ def main():
                 formatted_client[client_info["account_number"]][
                     "questionnaires"
                 ].append({"error": "Too young"})
-                update_yaml(formatted_client, "./put/qfailure.yml")
+                utils.update_yaml(formatted_client, "./put/qfailure.yml")
                 break
 
             logging.info(
@@ -1606,12 +1559,12 @@ def main():
                     )
                 except Exception as e:  # noqa: E722
                     logging.error(f"Error assigning {questionnaire}: {e}")
-                    update_yaml(formatted_client, "./put/qfailure.yml")
+                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
                     send = False
                     break
 
                 if link is None or link == "":
-                    update_yaml(formatted_client, "./put/qfailure.yml")
+                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
                     send = False
                     break
 
@@ -1621,7 +1574,7 @@ def main():
 
             if send:
                 del formatted_client[client_info["account_number"]]["account_number"]
-                update_yaml(
+                utils.update_yaml(
                     formatted_client,
                     "./put/clients.yml",
                 )
@@ -1631,7 +1584,7 @@ def main():
                 send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             logging.error(f"Element not found: {e}")
-            update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
 
 
 main()
