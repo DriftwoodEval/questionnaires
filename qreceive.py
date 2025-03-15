@@ -17,20 +17,20 @@ logging.basicConfig(
     handlers=[logging.FileHandler("qreceive.log"), logging.StreamHandler()],
 )
 
-info = utils.load_config()
+services, config = utils.load_config()
 
 
 def send_text(
     message,
     to_number,
-    from_number=info["openphone"]["main_number"],
-    user_blame=info["openphone"]["users"]["maddy"]["id"],
+    from_number=services["openphone"]["main_number"],
+    user_blame=services["openphone"]["users"]["maddy"]["id"],
 ):
     to_number = "+1" + "".join(filter(str.isdigit, to_number))
     url = "https://api.openphone.com/v1/messages"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": info["openphone"]["key"],
+        "Authorization": services["openphone"]["key"],
     }
     data = {
         "content": message,
@@ -47,7 +47,7 @@ def get_text_info(message_id):
     url = f"https://api.openphone.com/v1/messages/{message_id}"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": info["openphone"]["key"],
+        "Authorization": services["openphone"]["key"],
     }
     response = requests.get(url, headers=headers)
     response_data = response.json().get("data")
@@ -57,8 +57,8 @@ def get_text_info(message_id):
 def send_text_and_ensure(
     message,
     to_number,
-    from_number=info["openphone"]["main_number"],
-    user_blame=info["openphone"]["users"]["maddy"]["id"],
+    from_number=services["openphone"]["main_number"],
+    user_blame=services["openphone"]["users"]["maddy"]["id"],
 ):
     logging.info(f"Attempting to send message '{message}' to {to_number}")
     attempt_text = send_text(message, to_number, from_number, user_blame)
@@ -145,6 +145,7 @@ def build_message(client):
 
 
 def main():
+    projects_api = utils.init_asana(services)
     driver, actions = utils.initialize_selenium()
     # check_questionnaires(driver)
     clients = utils.get_previous_clients()
@@ -168,7 +169,7 @@ def main():
                         else:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                info["openphone"]["users"]["maddy"]["phone"],
+                                services["openphone"]["users"]["maddy"]["phone"],
                             )
                     else:
                         message_sent = send_text_and_ensure(
@@ -177,17 +178,17 @@ def main():
                         if not message_sent:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                info["openphone"]["users"]["maddy"]["phone"],
+                                services["openphone"]["users"]["maddy"]["phone"],
                             )
                 else:
                     send_text(
                         f"{client['firstname']} {client['lastname']} has an appointment on {(format_appointment(client))} (in {distance} days) and hasn't done everything, please call them.",
-                        info["openphone"]["users"]["maddy"]["phone"],
+                        services["openphone"]["users"]["maddy"]["phone"],
                     )
             if done:
                 send_text(
                     f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
-                    info["openphone"]["users"]["maddy"]["phone"],
+                    services["openphone"]["users"]["maddy"]["phone"],
                 )
                 del clients[id]
             utils.update_yaml(clients, "./put/clients.yml")

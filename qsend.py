@@ -1,14 +1,9 @@
 import logging
-import os
 from datetime import datetime
 from time import sleep, strftime, strptime
 
-import yaml
 from dateutil.relativedelta import relativedelta
-from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
@@ -21,7 +16,7 @@ logging.basicConfig(
     handlers=[logging.FileHandler("qsend.log"), logging.StreamHandler()],
 )
 
-info = utils.load_config()
+services, config = utils.load_config()
 
 
 def get_clients():
@@ -71,11 +66,11 @@ def login_ta(driver, actions):
 
     logging.info("Entering username")
     username_field = driver.find_element(By.NAME, "user_username")
-    username_field.send_keys(info["therapyappointment"]["username"])
+    username_field.send_keys(services["therapyappointment"]["username"])
 
     logging.info("Entering password")
     password_field = driver.find_element(By.NAME, "user_password")
-    password_field.send_keys(info["therapyappointment"]["password"])
+    password_field.send_keys(services["therapyappointment"]["password"])
 
     logging.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -90,10 +85,10 @@ def login_wps(driver, actions):
     driver.find_element(By.ID, "loginID").click()
 
     logging.info("Entering username")
-    driver.find_element(By.ID, "Username").send_keys(info["wps"]["username"])
+    driver.find_element(By.ID, "Username").send_keys(services["wps"]["username"])
 
     logging.info("Entering password")
-    driver.find_element(By.ID, "Password").send_keys(info["wps"]["password"])
+    driver.find_element(By.ID, "Password").send_keys(services["wps"]["password"])
 
     logging.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -118,10 +113,10 @@ def login_qglobal(driver, actions):
 
     logging.info("Entering password")
     password = driver.find_element(By.NAME, value="login:pword")
-    username.send_keys(info["qglobal"]["username"])
+    username.send_keys(services["qglobal"]["username"])
 
     logging.info("Submitting login form")
-    password.send_keys(info["qglobal"]["password"])
+    password.send_keys(services["qglobal"]["password"])
     password.send_keys(Keys.ENTER)
 
 
@@ -134,8 +129,8 @@ def login_mhs(driver, actions):
 
     logging.info("Entering password")
     password = driver.find_element(By.NAME, value="txtPassword")
-    username.send_keys(info["mhs"]["username"])
-    password.send_keys(info["mhs"]["password"])
+    username.send_keys(services["mhs"]["username"])
+    password.send_keys(services["mhs"]["password"])
 
     logging.info("Submitting login form")
     actions.send_keys(Keys.ENTER)

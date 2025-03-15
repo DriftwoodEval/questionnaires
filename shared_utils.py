@@ -17,7 +17,10 @@ from selenium.webdriver.support.ui import Select
 def load_config():
     with open("./config/info.yml", "r") as file:
         logging.info("Loading info file")
-        return yaml.safe_load(file)["services"]
+        info = yaml.safe_load(file)
+        services = info["services"]
+        config = info["config"]
+        return services, config
 
 
 def initialize_selenium():
