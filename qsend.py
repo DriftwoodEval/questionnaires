@@ -1334,6 +1334,20 @@ def extract_client_data(driver):
     name = driver.find_element(By.CLASS_NAME, "text-h4").text
     firstname = name.split(" ")[0]
     lastname = name.split(" ")[-1]
+    if lastname.lower() in [
+        "jr",
+        "sr",
+        "ii",
+        "iii",
+        "iv",
+        "v",
+        "vi",
+        "vii",
+        "viii",
+        "ix",
+        "x",
+    ]:
+        lastname = name.split(" ")[-2]
     account_number_element = driver.find_element(
         By.XPATH, "//div[contains(normalize-space(text()), 'Account #')]"
     ).text
