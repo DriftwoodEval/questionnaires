@@ -9,7 +9,10 @@ import yaml
 from asana.rest import ApiException
 from dateutil.relativedelta import relativedelta
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
@@ -38,6 +41,19 @@ def initialize_selenium():
     driver.implicitly_wait(5)
     driver.set_window_size(1920, 1080)
     return driver, actions
+
+
+def click_element(driver, by, locator, max_attempts=3, delay=1):
+    for attempt in range(max_attempts):
+        try:
+            element = driver.find_element(by, locator)
+            element.click()
+            return True
+        except (StaleElementReferenceException, NoSuchElementException) as e:
+            logging.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+            sleep(delay)
+    logging.error(f"Failed to click element after {max_attempts} attempts")
+    return False
 
 
 def get_previous_clients():
