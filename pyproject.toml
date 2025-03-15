@@ -7,4 +7,5 @@ dependencies = [
     "pyyaml>=6.0.2",
     "selenium>=4.28.1",
     "requests>=2.32.3",
+    "asana>=5.1.0",
 ]

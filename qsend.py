@@ -1474,8 +1474,17 @@ def check_client_in_yaml(prev_clients, client_info):
     return False
 
 
+def get_previous_client(prev_clients, client_info) -> dict | None:
+    account_number = client_info.get("account_number")
+    if account_number and isinstance(prev_clients, dict):
+        if account_number in prev_clients:
+            return prev_clients[account_number]
+    return None
+
+
 def main():
     driver, actions = utils.initialize_selenium()
+    projects_api = utils.init_asana(services)
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
             try:
@@ -1583,6 +1592,14 @@ def main():
 
             if send:
                 del formatted_client[client_info["account_number"]]["account_number"]
+                formatted_client[client_info["account_number"]] = (
+                    utils.search_and_add_questionnaires(
+                        projects_api,
+                        services,
+                        config,
+                        formatted_client[client_info["account_number"]],
+                    )
+                )
                 utils.update_yaml(
                     formatted_client,
                     "./put/clients.yml",
