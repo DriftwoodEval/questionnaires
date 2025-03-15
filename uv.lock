@@ -168,9 +168,6 @@ requires-dist = [
     { name = "selenium", specifier = ">=4.28.1" },
 ]
 
-[package.metadata.requires-dev]
-dev = []
-
 [[package]]
 name = "requests"
 version = "2.32.3"

@@ -24,7 +24,7 @@ def send_text(
     message,
     to_number,
     from_number=services["openphone"]["main_number"],
-    user_blame=services["openphone"]["users"]["maddy"]["id"],
+    user_blame=services["openphone"]["users"][config["name"].lower()]["id"],
 ):
     to_number = "+1" + "".join(filter(str.isdigit, to_number))
     url = "https://api.openphone.com/v1/messages"
@@ -58,7 +58,7 @@ def send_text_and_ensure(
     message,
     to_number,
     from_number=services["openphone"]["main_number"],
-    user_blame=services["openphone"]["users"]["maddy"]["id"],
+    user_blame=services["openphone"]["users"][config["name"].lower()]["id"],
 ):
     logging.info(f"Attempting to send message '{message}' to {to_number}")
     attempt_text = send_text(message, to_number, from_number, user_blame)
@@ -138,12 +138,12 @@ def all_questionnaires_done(client):
     return all(q["done"] for q in client["questionnaires"])
 
 
-def build_message(client):
+def build_message(config, client):
     link_count = len(client.get("questionnaires", []))
     if not client.get("reminded"):
-        message = f"Hello, this is Maddy from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} for you to complete in your messages. Please let me know if you have any questions. Thank you for your time."
+        message = f"Hello, this is {config['name']} from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} for you to complete in your messages. Please let me know if you have any questions. Thank you for your time."
     else:
-        message = f"Hello, this is Maddy with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} for your appointment on {format_appointment(client)} {'is' if link_count == 1 else 'are'} still incomplete. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
+        message = f"Hello, this is {config['name']} with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} for your appointment on {format_appointment(client)} {'is' if link_count == 1 else 'are'} still incomplete. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
     return message
 
 
@@ -171,7 +171,7 @@ def main():
             done = all_questionnaires_done(client)
             if distance % 3 == 2 and not done:
                 if distance >= 5:
-                    message = build_message(client)
+                    message = build_message(config, client)
                     # If this is the first reminder
                     if not client.get("reminded"):
                         message_sent = send_text_and_ensure(
@@ -182,7 +182,9 @@ def main():
                         else:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                services["openphone"]["users"]["maddy"]["phone"],
+                                services["openphone"]["users"][config["name"].lower()][
+                                    "phone"
+                                ],
                             )
                     else:
                         message_sent = send_text_and_ensure(
@@ -191,17 +193,19 @@ def main():
                         if not message_sent:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                services["openphone"]["users"]["maddy"]["phone"],
+                                services["openphone"]["users"][config["name"].lower()][
+                                    "phone"
+                                ],
                             )
                 else:
                     send_text(
                         f"{client['firstname']} {client['lastname']} has an appointment on {(format_appointment(client))} (in {distance} days) and hasn't done everything, please call them.",
-                        services["openphone"]["users"]["maddy"]["phone"],
+                        services["openphone"]["users"][config["name"].lower()]["phone"],
                     )
             if done:
                 send_text(
                     f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
-                    services["openphone"]["users"]["maddy"]["phone"],
+                    services["openphone"]["users"][config["name"].lower()]["phone"],
                 )
             utils.update_yaml(clients, "./put/clients.yml")
 
