@@ -153,7 +153,6 @@ def main():
     check_questionnaires(driver)
     clients = utils.get_previous_clients()
     if clients:
-        ids_to_delete = []
         for id in clients:
             client = clients[id]
             for questionnaire in client["questionnaires"]:
@@ -204,14 +203,6 @@ def main():
                     f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
                     services["openphone"]["users"]["maddy"]["phone"],
                 )
-                ids_to_delete.append(id)
-            utils.update_yaml(clients, "./put/clients.yml")
-        for id in ids_to_delete:
-            del clients[id]
-        if not clients:
-            with open("./put/clients.yml", "w"):
-                pass
-        else:
             utils.update_yaml(clients, "./put/clients.yml")
 
 
