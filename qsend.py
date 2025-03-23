@@ -1394,8 +1394,8 @@ def extract_client_data(driver):
 def format_ta_message(questionnaires):
     logging.info("Formatting TA message")
     message = ""
-    notes = ""
     for id, questionnaire in enumerate(questionnaires, start=1):
+        notes = ""
         if "Self" in questionnaire["type"]:
             notes = " - For client being tested"
         message += f"{id}) {questionnaire['link']}{notes}\n"
