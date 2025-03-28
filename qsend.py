@@ -1447,6 +1447,7 @@ def format_failed_client(client_params):
         "check": client_params["check"],
         "daeval": client_params["daeval"],
         "date": client_params["date"],
+        "failed_date": datetime.today().strftime("%Y/%m/%d"),
     }
     return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
 
