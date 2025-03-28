@@ -58,14 +58,25 @@ def click_element(driver, by, locator, max_attempts=3, delay=1):
 
 def get_previous_clients():
     logging.info("Loading previous clients")
-    filepath = "./put/clients.yml"
+    clients_filepath = "./put/clients.yml"
+    qfailure_filepath = "./put/qfailure.yml"
+
+    prev_clients = {}
+
     try:
-        with open(filepath, "r") as file:
-            prev_clients = yaml.safe_load(file)
+        with open(qfailure_filepath, "r") as file:
+            prev_clients = yaml.safe_load(file) or {}
     except FileNotFoundError:
-        logging.info(f"{filepath} does not exist.")
-        return None
-    return prev_clients
+        logging.info(f"{qfailure_filepath} does not exist.")
+
+    try:
+        with open(clients_filepath, "r") as file:
+            clients_data = yaml.safe_load(file) or {}
+            prev_clients.update(clients_data)
+    except FileNotFoundError:
+        logging.info(f"{clients_filepath} does not exist.")
+
+    return prev_clients if prev_clients else None
 
 
 def update_yaml(clients, filepath):
