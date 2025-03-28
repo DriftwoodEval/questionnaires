@@ -1485,14 +1485,6 @@ def check_client_in_yaml(prev_clients, client_info):
     return False
 
 
-def get_previous_client(prev_clients, client_info) -> dict | None:
-    account_number = client_info.get("account_number")
-    if account_number and isinstance(prev_clients, dict):
-        if account_number in prev_clients:
-            return prev_clients[account_number]
-    return None
-
-
 def main():
     driver, actions = utils.initialize_selenium()
     projects_api = utils.init_asana(services)
