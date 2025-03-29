@@ -1,5 +1,7 @@
-FROM ghcr.io/astral-sh/uv:bookworm-slim
+FROM selenium/standalone-chrome
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+USER root
 WORKDIR /app
 
 COPY pyproject.toml .
