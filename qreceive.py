@@ -35,6 +35,7 @@ def send_text(
         "to": [to_number],
         "userId": user_blame,
     }
+    logging.info(f"Attempting to send message '{message}' to {to_number}")
     response = requests.post(url, headers=headers, json=data)
     response_data = response.json().get("data")
     return response_data
@@ -57,7 +58,6 @@ def send_text_and_ensure(
     from_number=services["openphone"]["main_number"],
     user_blame=services["openphone"]["users"][config["name"].lower()]["id"],
 ):
-    logging.info(f"Attempting to send message '{message}' to {to_number}")
     attempt_text = send_text(message, to_number, from_number, user_blame)
     if not attempt_text:
         logging.warning(f"Possibly failed to send message {message} to {to_number}")
