@@ -169,8 +169,8 @@ def main():
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
             )
             done = all_questionnaires_done(client)
-            if distance % 3 == 2 and not done:
-                if distance >= 5:
+            if not done:
+                if distance >= 5 and distance % 3 == 2:
                     message = build_message(config, client)
                     # If this is the first reminder
                     if not client.get("reminded"):
@@ -197,11 +197,39 @@ def main():
                                     "phone"
                                 ],
                             )
-                else:
+                elif 0 <= distance < 5:
                     send_text(
                         f"{client['firstname']} {client['lastname']} has an appointment on {(format_appointment(client))} (in {distance} days) and hasn't done everything, please call them.",
                         services["openphone"]["users"][config["name"].lower()]["phone"],
                     )
+                elif distance < 0:
+                    message = build_message(config, client)
+                    # If this is the first reminder
+                    if not client.get("reminded"):
+                        message_sent = send_text_and_ensure(
+                            message, client["phone_number"]
+                        )
+                        if message_sent:
+                            client["reminded"] = True
+                        else:
+                            send_text(
+                                f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
+                                services["openphone"]["users"][config["name"].lower()][
+                                    "phone"
+                                ],
+                            )
+                    else:
+                        message_sent = send_text_and_ensure(
+                            message, client["phone_number"]
+                        )
+                        if not message_sent:
+                            send_text(
+                                f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
+                                services["openphone"]["users"][config["name"].lower()][
+                                    "phone"
+                                ],
+                            )
+
             if done:
                 send_text(
                     f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
