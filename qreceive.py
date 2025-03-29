@@ -117,6 +117,9 @@ def check_questionnaires(driver):
             client = clients[id]
             for questionnaire in client["questionnaires"]:
                 questionnaire["done"] = check_q_done(driver, questionnaire["link"])
+                logging.info(
+                    f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
+                )
         utils.update_yaml(clients, "./put/clients.yml")
 
 
