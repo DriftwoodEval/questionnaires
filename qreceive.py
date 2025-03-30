@@ -155,15 +155,20 @@ def main():
     if clients:
         for id in clients:
             client = clients[id]
-            for questionnaire in client["questionnaires"]:
-                if questionnaire["done"]:
-                    utils.mark_link_done(
-                        projects_api,
-                        services,
-                        config,
-                        client["asana"],
-                        questionnaire["link"],
-                    )
+            if client.get("asana") and client["asana"]:
+                for questionnaire in client["questionnaires"]:
+                    if questionnaire["done"]:
+                        utils.mark_link_done(
+                            projects_api,
+                            services,
+                            config,
+                            client["asana"],
+                            questionnaire["link"],
+                        )
+            else:
+                logging.warning(
+                    f"Client {client['firstname']} {client['lastname']} has no Asana link"
+                )
 
             distance = check_appointment_distance(
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
