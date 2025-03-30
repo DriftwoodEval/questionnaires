@@ -138,12 +138,23 @@ def all_questionnaires_done(client):
     return all(q["done"] for q in client["questionnaires"])
 
 
-def build_message(config, client):
+def build_message(config, client, distance):
     link_count = len(client.get("questionnaires", []))
-    if not client.get("reminded"):
-        message = f"Hello, this is {config['name']} from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} for you to complete in your messages. Please let me know if you have any questions. Thank you for your time."
+    if distance < 0:
+        if distance == -1:
+            distance_sentence = "(yesterday)"
+        else:
+            distance_sentence = f"({abs(distance)} days ago)"
     else:
-        message = f"Hello, this is {config['name']} with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} for your appointment on {format_appointment(client)} {'is' if link_count == 1 else 'are'} still incomplete. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
+        if distance == 1:
+            distance_sentence = "(TOMORROW)"
+        else:
+            distance_sentence = f"(in {distance} days)"
+
+    if not client.get("reminded"):
+        message = f"Hello, this is {config['name']} from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} in your messages for your appointment on {format_appointment(client)} {distance_sentence}. Please let me know if you have any questions. Thank you for your time."
+    else:
+        message = f"Hello, this is {config['name']} with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} for your appointment on {format_appointment(client)} {distance_sentence} {'is' if link_count == 1 else 'are'} still incomplete. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
     return message
 
 
@@ -176,7 +187,7 @@ def main():
             done = all_questionnaires_done(client)
             if not done:
                 if distance >= 5 and distance % 3 == 2:
-                    message = build_message(config, client)
+                    message = build_message(config, client, distance)
                     # If this is the first reminder
                     if not client.get("reminded"):
                         message_sent = send_text_and_ensure(
@@ -208,7 +219,7 @@ def main():
                         services["openphone"]["users"][config["name"].lower()]["phone"],
                     )
                 elif distance < 0:
-                    message = build_message(config, client)
+                    message = build_message(config, client, distance)
                     # If this is the first reminder
                     if not client.get("reminded"):
                         message_sent = send_text_and_ensure(
