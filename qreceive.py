@@ -125,7 +125,7 @@ def check_questionnaires(driver):
 
 def format_appointment(client):
     appointment = client["date"]
-    return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %d")
+    return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
 
 
 def check_appointment_distance(appointment: date):
