@@ -1499,7 +1499,7 @@ def main():
                 logging.info(f"Login failed: {e}, trying again")
                 sleep(1)
     clients = get_clients()
-    prev_clients = utils.get_previous_clients()
+    prev_clients = utils.get_previous_clients(failed=True)
 
     for client in clients:
         client_params = parameterize(client)
