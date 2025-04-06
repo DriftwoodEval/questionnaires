@@ -165,6 +165,7 @@ def search_qglobal(driver, actions, client):
 
 
 def add_client_to_qglobal(driver, actions, client):
+    # We deliberately do not use utils.click_element here, since the point of this function requires it to error out sometimes
     logging.info(
         f"Attempting to add {client['firstname']} {client['lastname']} to QGlobal"
     )
@@ -178,7 +179,7 @@ def add_client_to_qglobal(driver, actions, client):
     loop = True
     while loop:
         try:
-            utils.click_element(driver, By.ID, "searchForm:newExamineeButton")
+            driver.find_element(By.ID, "searchForm:newExamineeButton").click()
             loop = False
         except:  # noqa: E722
             logging.info("Failed to click new examinee, trying again.")
@@ -215,7 +216,7 @@ def add_client_to_qglobal(driver, actions, client):
     birth.send_keys(dob)
 
     logging.info("Saving new examinee")
-    utils.click_element(driver, By.ID, "save")
+    driver.find_element(By.ID, "save").click()
     try:
         logging.info("Checking if client already exists")
         error = driver.find_element(By.NAME, "j_id201")
@@ -228,12 +229,12 @@ def add_client_to_qglobal(driver, actions, client):
         sleep(3)
         # TODO: log this, I'm not sure what conditions cause this
         try:
-            utils.click_element(driver, By.NAME, "j_id201")
-            utils.click_element(driver, By.ID, "j_id182")
-            utils.click_element(driver, By.ID, "unSavedChangeForm:YesUnSavedChanges")
+            driver.find_element(By.NAME, "j_id201").click()
+            driver.find_element(By.ID, "j_id182").click()
+            driver.find_element(By.ID, "unSavedChangeForm:YesUnSavedChanges").click()
         except:  # noqa: E722
             try:
-                utils.click_element(driver, By.NAME, "j_id209")
+                driver.find_element(By.NAME, "j_id209").click()
             except:  # noqa: E722
                 exists = False
     sleep(2)
