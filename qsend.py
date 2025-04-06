@@ -1483,7 +1483,7 @@ def check_client_in_yaml(prev_clients, client_info):
 
     if account_number and isinstance(prev_clients, dict):
         if account_number in prev_clients:
-            return prev_clients[account_number]["daeval"] == client_info.get("daeval")
+            return client_info.get("daeval") in prev_clients[account_number]["daeval"]
     return False
 
 
@@ -1525,7 +1525,7 @@ def main():
 
         if client_already_ran:
             logging.warning(
-                f"{client_params['firstname']} {client_params['lastname']} with {combined_client_info['daeval']} has already been run before, skipping."
+                f"{client_params['firstname']} {client_params['lastname']} with {combined_client_info['daeval']} has been run before with an overlapping appointment type, skipping."
             )
             continue
 
