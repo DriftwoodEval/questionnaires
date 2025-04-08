@@ -115,7 +115,12 @@ def check_questionnaires(driver):
     if clients:
         for id in clients:
             client = clients[id]
+            if all_questionnaires_done(client):
+                print("all done")
+                break
             for questionnaire in client["questionnaires"]:
+                if questionnaire["done"]:
+                    continue
                 questionnaire["done"] = check_q_done(driver, questionnaire["link"])
                 logging.info(
                     f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
