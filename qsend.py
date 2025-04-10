@@ -1453,6 +1453,11 @@ def format_failed_client(client_params):
     return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
 
 
+def add_fail_date(client):
+    client["failed_date"] = datetime.today().strftime("%Y/%m/%d")
+    return client
+
+
 def write_file(filepath, data):
     data = data.strip("\n")
     try:
@@ -1564,7 +1569,7 @@ def main():
                 formatted_client[client_info["account_number"]][
                     "questionnaires"
                 ].append({"error": "Too young"})
-                utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                utils.update_yaml(add_fail_date(formatted_client), "./put/qfailure.yml")
                 break
 
             logging.info(
@@ -1582,12 +1587,16 @@ def main():
                     )
                 except Exception as e:  # noqa: E722
                     logging.error(f"Error assigning {questionnaire}: {e}")
-                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                    utils.update_yaml(
+                        add_fail_date(formatted_client), "./put/qfailure.yml"
+                    )
                     send = False
                     break
 
                 if link is None or link == "":
-                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                    utils.update_yaml(
+                        add_fail_date(formatted_client), "./put/qfailure.yml"
+                    )
                     send = False
                     break
 
