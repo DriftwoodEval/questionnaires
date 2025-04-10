@@ -77,7 +77,7 @@ def send_text_and_ensure(
 
 
 def check_q_done(driver, q_link):
-    driver.implicitly_wait(10)
+    driver.implicitly_wait(3)
     url = q_link
     driver.get(url)
 
@@ -116,14 +116,22 @@ def check_questionnaires(driver):
         for id in clients:
             client = clients[id]
             if all_questionnaires_done(client):
-                print("all done")
-                break
+                continue
+            else:
+                done = False
             for questionnaire in client["questionnaires"]:
                 if questionnaire["done"]:
                     continue
                 questionnaire["done"] = check_q_done(driver, questionnaire["link"])
                 logging.info(
                     f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
+                )
+                if not questionnaire["done"]:
+                    break
+            if all_questionnaires_done(client) and not done:
+                send_text(
+                    f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
+                    services["openphone"]["users"][config["name"].lower()]["phone"],
                 )
         utils.update_yaml(clients, "./put/clients.yml")
 
@@ -251,11 +259,6 @@ def main():
                                 ],
                             )
 
-            if done:
-                send_text(
-                    f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
-                    services["openphone"]["users"][config["name"].lower()]["phone"],
-                )
             utils.update_yaml(clients, "./put/clients.yml")
 
 
