@@ -52,6 +52,18 @@ def click_element(driver, by, locator, max_attempts=3, delay=1):
     return False
 
 
+def find_element(driver, by, locator, max_attempts=3, delay=1):
+    for attempt in range(max_attempts):
+        try:
+            driver.find_element(by, locator)
+            return True
+        except (StaleElementReferenceException, NoSuchElementException) as e:
+            logging.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+            sleep(delay)
+    logging.error(f"Failed to find element after {max_attempts} attempts")
+    return False
+
+
 def get_previous_clients(failed=False):
     logging.info("Loading previous clients")
     clients_filepath = "./put/clients.yml"

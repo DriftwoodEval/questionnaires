@@ -84,28 +84,21 @@ def check_q_done(driver, q_link):
     complete = False
 
     if "mhs.com" in url:
-        try:
-            driver.find_element(
-                By.XPATH, "//*[contains(text(), 'Thank you for completing')]"
-            )
-            complete = True
-        except NoSuchElementException:
-            complete = False
+        complete = utils.find_element(
+            driver,
+            By.XPATH,
+            "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')]",
+        )
     elif "pearsonassessments.com" in url:
-        try:
-            driver.find_element(By.XPATH, "//*[contains(text(), 'Test Completed!')]")
-            complete = True
-        except NoSuchElementException:
-            complete = False
+        complete = utils.find_element(
+            driver, By.XPATH, "//*[contains(text(), 'Test Completed!')]"
+        )
     elif "wpspublish" in url:
-        try:
-            driver.find_element(
-                By.XPATH,
-                "//*[contains(text(), 'This assessment is not available at this time')]",
-            )
-            complete = True
-        except NoSuchElementException:
-            complete = False
+        complete = utils.find_element(
+            driver,
+            By.XPATH,
+            "//*[contains(text(), 'This assessment is not available at this time')]",
+        )
 
     return complete
 
