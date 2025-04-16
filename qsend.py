@@ -10,21 +10,22 @@ from selenium.webdriver.support.ui import Select
 
 import shared_utils as utils
 
-logging.basicConfig(
+utils.log.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("qsend.log"), logging.StreamHandler()],
+    force=True,
 )
 
 services, config = utils.load_config()
 
 
 def get_clients():
-    logging.info("Loading clients list file")
+    utils.log.info("Loading clients list file")
     with open("./put/automation.txt", "r") as f:
         automation = f.read()
         clients = automation.split(",")
-        logging.info(f"Loaded {len(clients)} clients")
+        utils.log.info(f"Loaded {len(clients)} clients")
     return clients
 
 
@@ -40,7 +41,7 @@ def parameterize(client):
     else:
         daeval = client[4]
         date = client[5]
-    logging.info(
+    utils.log.info(
         f"Client: {first} {last}, {check}, {daeval}, with an appointment on {date} with {evaluator_email}"
     )
     return {
@@ -61,114 +62,114 @@ def rearrangedob(dob):
 
 
 def login_ta(driver, actions):
-    logging.info("Logging in to TherapyAppointment")
+    utils.log.info("Logging in to TherapyAppointment")
 
-    logging.info("Going to login page")
+    utils.log.info("Going to login page")
     driver.get("https://portal.therapyappointment.com")
 
-    logging.info("Entering username")
+    utils.log.info("Entering username")
     username_field = driver.find_element(By.NAME, "user_username")
     username_field.send_keys(services["therapyappointment"]["username"])
 
-    logging.info("Entering password")
+    utils.log.info("Entering password")
     password_field = driver.find_element(By.NAME, "user_password")
     password_field.send_keys(services["therapyappointment"]["password"])
 
-    logging.info("Submitting login form")
+    utils.log.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
     actions.perform()
 
 
 def login_wps(driver, actions):
-    logging.info("Logging in to WPS")
+    utils.log.info("Logging in to WPS")
     driver.get("https://platform.wpspublish.com")
 
-    logging.info("Going to login page")
+    utils.log.info("Going to login page")
     utils.click_element(driver, By.ID, "loginID")
 
-    logging.info("Entering username")
+    utils.log.info("Entering username")
     driver.find_element(By.ID, "Username").send_keys(services["wps"]["username"])
 
-    logging.info("Entering password")
+    utils.log.info("Entering password")
     driver.find_element(By.ID, "Password").send_keys(services["wps"]["password"])
 
-    logging.info("Submitting login form")
+    utils.log.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
     actions.perform()
 
 
 def login_qglobal(driver, actions):
-    logging.info("Logging in to QGlobal")
+    utils.log.info("Logging in to QGlobal")
     driver.get("https://qglobal.pearsonassessments.com/")
 
-    logging.info("Waiting for page to load")
+    utils.log.info("Waiting for page to load")
     sleep(3)
 
-    logging.info("Attempting to escape cookies popup")
+    utils.log.info("Attempting to escape cookies popup")
     actions.send_keys(Keys.TAB)
     actions.send_keys(Keys.TAB)
     actions.send_keys(Keys.ENTER)
     actions.perform()
 
-    logging.info("Entering username")
+    utils.log.info("Entering username")
     username = driver.find_element(By.NAME, value="login:uname")
 
-    logging.info("Entering password")
+    utils.log.info("Entering password")
     password = driver.find_element(By.NAME, value="login:pword")
     username.send_keys(services["qglobal"]["username"])
 
-    logging.info("Submitting login form")
+    utils.log.info("Submitting login form")
     password.send_keys(services["qglobal"]["password"])
     password.send_keys(Keys.ENTER)
 
 
 def login_mhs(driver, actions):
-    logging.info("Logging in to MHS")
+    utils.log.info("Logging in to MHS")
     driver.get("https://assess.mhs.com/Account/Login.aspx")
 
-    logging.info("Entering username")
+    utils.log.info("Entering username")
     username = driver.find_element(By.NAME, value="txtUsername")
 
-    logging.info("Entering password")
+    utils.log.info("Entering password")
     password = driver.find_element(By.NAME, value="txtPassword")
     username.send_keys(services["mhs"]["username"])
     password.send_keys(services["mhs"]["password"])
 
-    logging.info("Submitting login form")
+    utils.log.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
     actions.perform()
 
 
 def search_helper(driver, id):
-    logging.info(f"Attempting to search for {id}")
+    utils.log.info(f"Attempting to search for {id}")
     try:
         sleep(1)
         driver.find_element(By.ID, "editExamineeForm:examineeId").send_keys(id)
     except:  # noqa: E722
-        logging.info("Failed to search, attempting to retry")
+        utils.log.info("Failed to search, attempting to retry")
         driver.get("https://qglobal.pearsonassessments.com")
         utils.click_element(driver, By.NAME, "searchForm:j_id347")
         search_helper(driver, id)
 
 
 def search_qglobal(driver, actions, client):
-    logging.info(f"Searching QGlobal for {client['account_number']}")
+    utils.log.info(f"Searching QGlobal for {client['account_number']}")
     id = client["account_number"]
     utils.click_element(driver, By.NAME, "searchForm:j_id347")
 
     search_helper(driver, id)
 
-    logging.info("Waiting for page to load")
+    utils.log.info("Waiting for page to load")
     sleep(1)
 
-    logging.info("Submitting search form")
+    utils.log.info("Submitting search form")
     actions.send_keys(Keys.ENTER)
     actions.perform()
 
 
 def add_client_to_qglobal(driver, actions, client):
     # We deliberately do not use utils.click_element here, since the point of this function requires it to error out sometimes
-    logging.info(
+    utils.log.info(
         f"Attempting to add {client['firstname']} {client['lastname']} to QGlobal"
     )
     firstname = client["firstname"]
@@ -177,32 +178,32 @@ def add_client_to_qglobal(driver, actions, client):
     dob = client["birthdate"]
     gender = client["gender"]
 
-    logging.info("Clicking new examinee button")
+    utils.log.info("Clicking new examinee button")
     loop = True
     while loop:
         try:
             driver.find_element(By.ID, "searchForm:newExamineeButton").click()
             loop = False
         except:  # noqa: E722
-            logging.info("Failed to click new examinee, trying again.")
+            utils.log.info("Failed to click new examinee, trying again.")
             driver.refresh()
 
-    logging.info("Entering first name")
+    utils.log.info("Entering first name")
     first = driver.find_element(By.ID, "firstName")
 
-    logging.info("Entering last name")
+    utils.log.info("Entering last name")
     last = driver.find_element(By.ID, "lastName")
 
-    logging.info("Entering examinee id")
+    utils.log.info("Entering examinee id")
     examineeID = driver.find_element(By.ID, "examineeId")
 
-    logging.info("Entering birthdate")
+    utils.log.info("Entering birthdate")
     birth = driver.find_element(By.ID, "calendarInputDate")
     first.send_keys(firstname)
     last.send_keys(lastname)
     examineeID.send_keys(id)
 
-    logging.info("Selecting gender")
+    utils.log.info("Selecting gender")
     purpose_element = driver.find_element(By.ID, "genderMenu")
     purpose = Select(purpose_element)
     sleep(1)
@@ -213,18 +214,18 @@ def add_client_to_qglobal(driver, actions, client):
     else:
         print("edge case")
 
-    logging.info("Entering birthdate")
+    utils.log.info("Entering birthdate")
     dob = rearrangedob(dob)
     birth.send_keys(dob)
 
-    logging.info("Saving new examinee")
+    utils.log.info("Saving new examinee")
     driver.find_element(By.ID, "save").click()
     try:
-        logging.info("Checking if client already exists")
+        utils.log.info("Checking if client already exists")
         error = driver.find_element(By.NAME, "j_id201")
         exists = True
     except:  # noqa: E722
-        logging.info("Client doesn't exist")
+        utils.log.info("Client doesn't exist")
         exists = False
         return 0
     if error:
@@ -244,7 +245,9 @@ def add_client_to_qglobal(driver, actions, client):
 
 
 def add_client_to_mhs(driver, actions, client, questionnaire):
-    logging.info(f"Atempting to add {client['firstname']} {client['lastname']} to MHS")
+    utils.log.info(
+        f"Atempting to add {client['firstname']} {client['lastname']} to MHS"
+    )
     firstname = client["firstname"]
     lastname = client["lastname"]
     id = client["account_number"]
@@ -256,7 +259,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
 
     firstname_label = driver.find_element(By.XPATH, "//label[text()='FIRST NAME']")
 
-    logging.info("Entering first name")
+    utils.log.info("Entering first name")
     firstname_field = firstname_label.find_element(
         By.XPATH, "./following-sibling::input"
     )
@@ -264,24 +267,24 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
 
     lastname_label = driver.find_element(By.XPATH, "//label[text()='LAST NAME']")
 
-    logging.info("Entering last name")
+    utils.log.info("Entering last name")
     lastname_field = lastname_label.find_element(By.XPATH, "./following-sibling::input")
     lastname_field.send_keys(lastname)
 
     id_label = driver.find_element(By.XPATH, "//label[text()='ID']")
 
-    logging.info("Entering ID")
+    utils.log.info("Entering ID")
     id_field = id_label.find_element(By.XPATH, "./following-sibling::input")
     id_field.send_keys(id)
 
-    logging.info("Entering birthdate")
+    utils.log.info("Entering birthdate")
     date_of_birth_field = driver.find_element(
         By.CSS_SELECTOR, "input[placeholder='YYYY/Mmm/DD']"
     )
     date_of_birth_field.send_keys(dob)
 
     if questionnaire == "Conners EC" or questionnaire == "ASRS":
-        logging.info("Selecting gender")
+        utils.log.info("Selecting gender")
         male_label = driver.find_element(By.XPATH, "//label[text()='Male']")
         female_label = driver.find_element(By.XPATH, "//label[text()='Female']")
         if gender == "Male":
@@ -289,7 +292,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
         else:
             female_label.click()
     else:
-        logging.info("Selecting gender")
+        utils.log.info("Selecting gender")
         gender_element = driver.find_element(
             By.ID,
             "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_ddl_Gender",
@@ -303,7 +306,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
         else:
             gender_select.select_by_visible_text("Other")
 
-    logging.info("Selecting purpose")
+    utils.log.info("Selecting purpose")
     purpose_element = driver.find_element(
         By.CSS_SELECTOR, "select[placeholder='Select an option']"
     )
@@ -311,7 +314,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
     sleep(1)
     purpose.select_by_visible_text("Psychoeducational Evaluation")
 
-    logging.info("Saving")
+    utils.log.info("Saving")
     utils.click_element(driver, By.CSS_SELECTOR, ".pull-right > input[type='submit']")
     try:
         error = driver.find_element(
@@ -319,16 +322,16 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
             "//span[contains(text(), 'A client with the same ID already exists')]",
         )
     except:  # noqa: E722
-        logging.info("No error")
+        utils.log.info("No error")
         return 0
     if error:
-        logging.info("Client already exists, adding to existing")
+        utils.log.info("Client already exists, adding to existing")
         utils.click_element(
             driver,
             By.XPATH,
             "//span[contains(normalize-space(text()), 'My Assessments')]",
         )
-        logging.info(f"Selecting {questionnaire}")
+        utils.log.info(f"Selecting {questionnaire}")
         utils.click_element(
             driver,
             By.XPATH,
@@ -350,41 +353,41 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
                 "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input']",
             )
 
-        logging.info("Searching for client")
+        utils.log.info("Searching for client")
         search.send_keys(id)
         actions.send_keys(Keys.ENTER)
         actions.perform()
         sleep(1)
         if questionnaire == "ASRS":
-            logging.info("Selecting client")
+            utils.log.info("Selecting client")
             utils.click_element(
                 driver,
                 By.XPATH,
                 "//tr[@id='ctrlControls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_SelectClient_gdClients_ctl00__0']/td[2]",
             )
 
-            logging.info("Submitting")
+            utils.log.info("Submitting")
             utils.click_element(
                 driver,
                 By.XPATH,
                 "//input[@id='ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_btnNext']",
             )
         else:
-            logging.info("Selecting client")
+            utils.log.info("Selecting client")
             utils.click_element(
                 driver,
                 By.XPATH,
                 "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_gdClients_ctl00_ctl04_ClientSelectSelectCheckBox']",
             )
 
-            logging.info("Submitting")
+            utils.log.info("Submitting")
             utils.click_element(
                 driver,
                 By.XPATH,
                 "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_btnNext']",
             )
 
-        logging.info("Selecting purpose")
+        utils.log.info("Selecting purpose")
         purpose_element = driver.find_element(
             By.CSS_SELECTOR, "select[placeholder='Select an option']"
         )
@@ -392,14 +395,14 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
         sleep(1)
         purpose.select_by_visible_text("Psychoeducational Evaluation")
         if questionnaire == "ASRS":
-            logging.info("Submitting")
+            utils.log.info("Submitting")
             utils.click_element(
                 driver,
                 By.ID,
                 "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
             )
         else:
-            logging.info("Submitting")
+            utils.log.info("Submitting")
             utils.click_element(
                 driver,
                 By.XPATH,
@@ -524,7 +527,7 @@ def get_questionnaires(age, check, daeval, vineland):
 
 
 def assign_questionnaire(driver, actions, client, questionnaire):
-    logging.info(
+    utils.log.info(
         f"Assigning questionnaire '{questionnaire}' to client {client['firstname']} {client['lastname']}"
     )
     mhs_url = "https://assess.mhs.com/MainPortal.aspx"
@@ -532,56 +535,56 @@ def assign_questionnaire(driver, actions, client, questionnaire):
     wps_url = "https://platform.wpspublish.com/administration/details/4116148"
 
     if questionnaire == "Conners EC":
-        logging.info(f"Navigating to MHS for {questionnaire}")
+        utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
         return gen_conners_ec(driver, actions, client)
     elif questionnaire == "Conners 4":
-        logging.info(f"Navigating to MHS for {questionnaire}")
+        utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
         return gen_conners_4(driver, actions, client)
     elif questionnaire == "Conners 4 Self":
-        logging.info(f"Navigating to MHS for {questionnaire}")
+        utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
         return gen_conners_4_self(driver, actions, client)
     elif questionnaire == "BASC Preschool":
-        logging.info(f"Navigating to QGlobal and adding client for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal and adding client for {questionnaire}")
         driver.get(qglobal_url)
         add_client_to_qglobal(driver, actions, client)
         return gen_basc_preschool(driver, actions, client)
     elif questionnaire == "BASC Child":
-        logging.info(f"Navigating to QGlobal and adding client for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal and adding client for {questionnaire}")
         driver.get(qglobal_url)
         add_client_to_qglobal(driver, actions, client)
         return gen_basc_child(driver, actions, client)
     elif questionnaire == "BASC Adolescent":
-        logging.info(f"Navigating to QGlobal and adding client for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal and adding client for {questionnaire}")
         driver.get(qglobal_url)
         add_client_to_qglobal(driver, actions, client)
         return gen_basc_adolescent(driver, actions, client)
     elif questionnaire == "ASRS (2-5 Years)":
-        logging.info(f"Navigating to MHS for {questionnaire}")
+        utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
         return gen_asrs_2_5(driver, actions, client)
     elif questionnaire == "ASRS (6-18 Years)":
-        logging.info(f"Navigating to MHS for {questionnaire}")
+        utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
         return gen_asrs_6_18(driver, actions, client)
     elif questionnaire == "Vineland":
-        logging.info(f"Navigating to QGlobal for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
         return gen_vineland(driver, actions, client)
     elif questionnaire == "CAARS 2":
-        logging.info(f"Navigating to MHS for {questionnaire}")
+        utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
         return gen_caars_2(driver, actions, client)
     elif questionnaire == "DP4":
-        logging.info(f"Navigating to WPS for {questionnaire}")
+        utils.log.info(f"Navigating to WPS for {questionnaire}")
         driver.get(wps_url)
         return gen_dp4(driver, actions, client)
 
 
 def gen_dp4(driver, actions, client):
-    logging.info(f"Generating DP4 for {client['firstname']} {client['lastname']}")
+    utils.log.info(f"Generating DP4 for {client['firstname']} {client['lastname']}")
     firstname = client["firstname"]
     lastname = client["lastname"]
     id = client["account_number"]
@@ -593,14 +596,14 @@ def gen_dp4(driver, actions, client):
     last = driver.find_element(By.XPATH, "//td[@id='LastName']/input")
     account = driver.find_element(By.XPATH, "//td[@id='CaseAltId']/input")
 
-    logging.info("Entering first name")
+    utils.log.info("Entering first name")
     first.send_keys(firstname)
-    logging.info("Entering last name")
+    utils.log.info("Entering last name")
     last.send_keys(lastname)
-    logging.info("Entering account number")
+    utils.log.info("Entering account number")
     account.send_keys(id)
 
-    logging.info("Selecting gender")
+    utils.log.info("Selecting gender")
     purpose_element = driver.find_element(By.ID, "genderOpt")
     purpose = Select(purpose_element)
     sleep(1)
@@ -641,7 +644,7 @@ def gen_dp4(driver, actions, client):
     elif month == "12":
         month = "December"
 
-    logging.info("Selecting birthdate")
+    utils.log.info("Selecting birthdate")
     purpose_element = driver.find_element(By.ID, "dobMonth")
     purpose = Select(purpose_element)
     sleep(1)
@@ -655,298 +658,302 @@ def gen_dp4(driver, actions, client):
     sleep(1)
     purpose.select_by_visible_text(year)
 
-    logging.info("Saving new client")
+    utils.log.info("Saving new client")
     utils.click_element(driver, By.ID, "clientSave")
 
-    logging.info("Confirming new client")
+    utils.log.info("Confirming new client")
     utils.click_element(driver, By.XPATH, "//input[@id='successClientCreate']")
 
-    logging.info("Navigating to client list")
+    utils.log.info("Navigating to client list")
     driver.get("https://platform.wpspublish.com")
     search = driver.find_element(By.XPATH, "//input[@type='search']")
 
-    logging.info("Searching for client")
+    utils.log.info("Searching for client")
     search.send_keys(firstname, " ", lastname)
 
-    logging.info("Selecting client")
+    utils.log.info("Selecting client")
     utils.click_element(driver, By.XPATH, "//table[@id='case']/tbody/tr/td/div")
 
-    logging.info("Creating new administration")
+    utils.log.info("Creating new administration")
     utils.click_element(driver, By.XPATH, "//input[@id='newAdministration']")
 
-    logging.info("Selecting test")
+    utils.log.info("Selecting test")
     utils.click_element(
         driver,
         By.XPATH,
         "//img[contains(@src,'https://oes-cdn01.wpspublish.com/content/img/DP-4.png')]",
     )
 
-    logging.info("Adding form")
+    utils.log.info("Adding form")
     utils.click_element(driver, By.ID, "addForm")
     form_element = driver.find_element(By.ID, "TestFormId")
     form = Select(form_element)
     sleep(1)
 
-    logging.info("Selecting form")
+    utils.log.info("Selecting form")
     form.select_by_visible_text("Parent/Caregiver Checklist")
 
-    logging.info("Setting delivery method")
+    utils.log.info("Setting delivery method")
     utils.click_element(driver, By.ID, "DeliveryMethod")
 
-    logging.info("Entering rater name")
+    utils.log.info("Entering rater name")
     driver.find_element(By.ID, "RaterName").send_keys("Parent/Caregiver")
 
-    logging.info("Entering email")
+    utils.log.info("Entering email")
     driver.find_element(By.ID, "RemoteAdminEmail_ToEmail").send_keys(
         "maddy@driftwoodeval.com"
     )
 
-    logging.info("Selecting copy me")
+    utils.log.info("Selecting copy me")
     utils.click_element(driver, By.ID, "RemoteAdminEmail_CopyMe")
 
-    logging.info("Pretending to send form")
+    utils.log.info("Pretending to send form")
     utils.click_element(driver, By.XPATH, "//input[@value='Send Form']")
 
-    logging.info("Selecting form link")
+    utils.log.info("Selecting form link")
     utils.click_element(
         driver, By.XPATH, "//td[contains(.,'Parent/Caregiver Checklist')]"
     )
 
-    logging.info("Selecting delivery method")
+    utils.log.info("Selecting delivery method")
     utils.click_element(driver, By.ID, "DeliveryMethod")
     sleep(3)
 
-    logging.info("Getting form link")
+    utils.log.info("Getting form link")
     body = driver.find_element(By.ID, "RemoteAdminEmail_Content").get_attribute("value")
     body = body.split()
     body = body[3]
     link = body[6:-1]
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_conners_ec(driver, actions, client):
-    logging.info(
+    utils.log.info(
         f"Generating Conners EC for {client['firstname']} {client['lastname']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     )
 
-    logging.info("Selecting Conners EC")
+    utils.log.info("Selecting Conners EC")
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'Conners EC')]"
     )
 
-    logging.info("Selecting Email Invitation")
+    utils.log.info("Selecting Email Invitation")
     utils.click_element(
         driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     )
 
     add_client_to_mhs(driver, actions, client, "Conners EC")
 
-    logging.info("Selecting assessment description")
+    utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
 
-    logging.info("Selecting Conners EC")
+    utils.log.info("Selecting Conners EC")
     purpose.select_by_visible_text("Conners EC")
 
-    logging.info("Selecting rater type")
+    utils.log.info("Selecting rater type")
     purpose_element = driver.find_element(By.ID, "ddl_RaterType")
     purpose = Select(purpose_element)
     sleep(1)
 
-    logging.info("Selecting Parent")
+    utils.log.info("Selecting Parent")
     purpose.select_by_visible_text("Parent")
 
-    logging.info("Selecting language")
+    utils.log.info("Selecting language")
     purpose_element = driver.find_element(By.ID, "ddl_Language")
     purpose = Select(purpose_element)
     sleep(1)
 
-    logging.info("Selecting English")
+    utils.log.info("Selecting English")
     purpose.select_by_visible_text("English")
 
-    logging.info("Entering rater name")
+    utils.log.info("Entering rater name")
     driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
-    logging.info("Selecting next")
+    utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
 
-    logging.info("Selecting generate link")
+    utils.log.info("Selecting generate link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(3)
 
-    logging.info("Getting link")
+    utils.log.info("Getting link")
     link = driver.find_element(By.ID, "txtLink").get_attribute("value")
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_conners_4(driver, actions, client):
-    logging.info(f"Generating Conners 4 for {client['firstname']} {client['lastname']}")
+    utils.log.info(
+        f"Generating Conners 4 for {client['firstname']} {client['lastname']}"
+    )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     )
 
-    logging.info("Selecting Conners 4")
+    utils.log.info("Selecting Conners 4")
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'Conners 4')]"
     )
 
-    logging.info("Selecting Email Invitation")
+    utils.log.info("Selecting Email Invitation")
     utils.click_element(
         driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     )
 
-    logging.info("Adding client to MHS")
+    utils.log.info("Adding client to MHS")
     add_client_to_mhs(driver, actions, client, "Conners 4")
 
-    logging.info("Selecting assessment description")
+    utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("Conners 4")
 
-    logging.info("Selecting rater type")
+    utils.log.info("Selecting rater type")
     purpose_element = driver.find_element(By.ID, "ddl_RaterType")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("Parent")
 
-    logging.info("Selecting language")
+    utils.log.info("Selecting language")
     purpose_element = driver.find_element(By.ID, "ddl_Language")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("English")
 
-    logging.info("Entering rater name")
+    utils.log.info("Entering rater name")
     driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
-    logging.info("Selecting next")
+    utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
 
-    logging.info("Selecting generate link")
+    utils.log.info("Selecting generate link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(3)
     link = driver.find_element(By.ID, "txtLink").get_attribute("value")
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_conners_4_self(driver, actions, client):
-    logging.info(f"Generating Conners 4 for {client['firstname']} {client['lastname']}")
+    utils.log.info(
+        f"Generating Conners 4 for {client['firstname']} {client['lastname']}"
+    )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     )
 
-    logging.info("Selecting Conners 4")
+    utils.log.info("Selecting Conners 4")
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'Conners 4')]"
     )
 
-    logging.info("Selecting Email Invitation")
+    utils.log.info("Selecting Email Invitation")
     utils.click_element(
         driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     )
 
-    logging.info("Adding client to MHS")
+    utils.log.info("Adding client to MHS")
     add_client_to_mhs(driver, actions, client, "Conners 4")
 
-    logging.info("Selecting assessment description")
+    utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
 
-    logging.info("Selecting Conners 4")
+    utils.log.info("Selecting Conners 4")
     purpose.select_by_visible_text("Conners 4")
 
-    logging.info("Selecting rater type")
+    utils.log.info("Selecting rater type")
     purpose_element = driver.find_element(By.ID, "ddl_RaterType")
     purpose = Select(purpose_element)
     sleep(1)
 
-    logging.info("Selecting Self-Report")
+    utils.log.info("Selecting Self-Report")
     purpose.select_by_visible_text("Self-Report")
 
-    logging.info("Selecting language")
+    utils.log.info("Selecting language")
     purpose_element = driver.find_element(By.ID, "ddl_Language")
     purpose = Select(purpose_element)
     sleep(1)
 
-    logging.info("Selecting English")
+    utils.log.info("Selecting English")
     purpose.select_by_visible_text("English")
 
-    logging.info("Entering rater name")
+    utils.log.info("Entering rater name")
     driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
-    logging.info("Selecting next")
+    utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
 
-    logging.info("Selecting generate link")
+    utils.log.info("Selecting generate link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(3)
     link = driver.find_element(By.ID, "txtLink").get_attribute("value")
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_asrs_2_5(driver, actions, client):
-    logging.info(
+    utils.log.info(
         f"Generating ASRS (2-5 Years) for {client['firstname']} {client['lastname']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     )
 
-    logging.info("Selecting ASRS")
+    utils.log.info("Selecting ASRS")
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'ASRS')]"
     )
 
-    logging.info("Selecting Email Invitation")
+    utils.log.info("Selecting Email Invitation")
     utils.click_element(
         driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     )
 
-    logging.info("Adding client to MHS")
+    utils.log.info("Adding client to MHS")
     add_client_to_mhs(driver, actions, client, "ASRS")
 
-    logging.info("Selecting assessment description")
+    utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("ASRS (2-5 Years)")
 
-    logging.info("Selecting rater type")
+    utils.log.info("Selecting rater type")
     purpose_element = driver.find_element(By.ID, "ddl_RaterType")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("Parent")
 
-    logging.info("Selecting language")
+    utils.log.info("Selecting language")
     purpose_element = driver.find_element(By.ID, "ddl_Language")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("English")
 
-    logging.info("Entering rater name")
+    utils.log.info("Entering rater name")
     driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
-    logging.info("Selecting next")
+    utils.log.info("Selecting next")
     utils.click_element(
         driver,
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_btnNext",
     )
 
-    logging.info("Generating link")
+    utils.log.info("Generating link")
     utils.click_element(
         driver,
         By.ID,
@@ -958,59 +965,59 @@ def gen_asrs_2_5(driver, actions, client):
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_asrs_6_18(driver, actions, client):
-    logging.info(
+    utils.log.info(
         f"Generating ASRS (6-18 Years) for {client['firstname']} {client['lastname']}"
     )
     driver.find_element(
         By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     ).click()
 
-    logging.info("Selecting ASRS")
+    utils.log.info("Selecting ASRS")
     driver.find_element(
         By.XPATH, "//span[contains(normalize-space(text()), 'ASRS')]"
     ).click()
 
-    logging.info("Selecting Email Invitation")
+    utils.log.info("Selecting Email Invitation")
     driver.find_element(
         By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     ).click()
 
-    logging.info("Adding client to MHS")
+    utils.log.info("Adding client to MHS")
     add_client_to_mhs(driver, actions, client, "ASRS")
     sleep(1)
 
-    logging.info("Selecting assessment description")
+    utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     purpose.select_by_visible_text("ASRS (6-18 Years)")
     sleep(1)
 
-    logging.info("Selecting rater type")
+    utils.log.info("Selecting rater type")
     purpose_element = driver.find_element(By.ID, "ddl_RaterType")
     purpose = Select(purpose_element)
     purpose.select_by_visible_text("Parent")
     sleep(1)
 
-    logging.info("Selecting language")
+    utils.log.info("Selecting language")
     purpose_element = driver.find_element(By.ID, "ddl_Language")
     purpose = Select(purpose_element)
     purpose.select_by_visible_text("English")
 
-    logging.info("Entering rater name")
+    utils.log.info("Entering rater name")
     driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
-    logging.info("Selecting next")
+    utils.log.info("Selecting next")
     driver.find_element(
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_btnNext",
     ).click()
 
-    logging.info("Generating link")
+    utils.log.info("Generating link")
     driver.find_element(
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
@@ -1021,46 +1028,46 @@ def gen_asrs_6_18(driver, actions, client):
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_basc_preschool(driver, actions, client):
-    logging.info(
+    utils.log.info(
         f"Generating BASC Preschool for {client['firstname']} {client['lastname']}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logging.info("Selecting client")
+    utils.log.info("Selecting client")
     utils.click_element(driver, By.XPATH, "//tr[2]/td[5]")
 
-    logging.info("Clicking add assessment")
+    utils.log.info("Clicking add assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
 
-    logging.info("Selecting BASC Preschool")
+    utils.log.info("Selecting BASC Preschool")
     utils.click_element(driver, By.ID, "2600_radio")
 
-    logging.info("Assigning assessment")
+    utils.log.info("Assigning assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
-    logging.info("Selecting send via email")
+    utils.log.info("Selecting send via email")
     driver.find_element(
         By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
     ).click()
 
-    logging.info("Entering respondent first name")
+    utils.log.info("Entering respondent first name")
     driver.find_element(By.ID, "respondentFirstName").send_keys("M")
 
-    logging.info("Entering respondent last name")
+    utils.log.info("Entering respondent last name")
     driver.find_element(By.ID, "respondentLastName").send_keys("P")
 
-    logging.info("Clicking continue to email")
+    utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
     sleep(5)
 
-    logging.info("Clicking create e-mail")
+    utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
         driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
@@ -1069,46 +1076,46 @@ def gen_basc_preschool(driver, actions, client):
 
     driver.switch_to.default_content()
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_basc_child(driver, actions, client):
-    logging.info(
+    utils.log.info(
         f"Generating BASC Child for {client['firstname']} {client['lastname']}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logging.info("Selecting client")
+    utils.log.info("Selecting client")
     utils.click_element(driver, By.XPATH, "//tr[2]/td[5]")
 
-    logging.info("Clicking add assessment")
+    utils.log.info("Clicking add assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
 
-    logging.info("Selecting BASC Child")
+    utils.log.info("Selecting BASC Child")
     utils.click_element(driver, By.ID, "2598_radio")
 
-    logging.info("Assigning assessment")
+    utils.log.info("Assigning assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
-    logging.info("Selecting send via email")
+    utils.log.info("Selecting send via email")
     driver.find_element(
         By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
     ).click()
 
-    logging.info("Entering respondent first name")
+    utils.log.info("Entering respondent first name")
     driver.find_element(By.ID, "respondentFirstName").send_keys("M")
 
-    logging.info("Entering respondent last name")
+    utils.log.info("Entering respondent last name")
     driver.find_element(By.ID, "respondentLastName").send_keys("P")
 
-    logging.info("Clicking continue to email")
+    utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
     sleep(5)
 
-    logging.info("Clicking create e-mail")
+    utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
         driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
@@ -1117,46 +1124,46 @@ def gen_basc_child(driver, actions, client):
 
     driver.switch_to.default_content()
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_basc_adolescent(driver, actions, client):
-    logging.info(
+    utils.log.info(
         f"Generating BASC Adolescent for {client['firstname']} {client['lastname']}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logging.info("Selecting client")
+    utils.log.info("Selecting client")
     utils.click_element(driver, By.XPATH, "//tr[2]/td[5]")
 
-    logging.info("Clicking add assessment")
+    utils.log.info("Clicking add assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
 
-    logging.info("Selecting BASC Adolescent")
+    utils.log.info("Selecting BASC Adolescent")
     utils.click_element(driver, By.ID, "2596_radio")
 
-    logging.info("Assigning assessment")
+    utils.log.info("Assigning assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
-    logging.info("Selecting send via email")
+    utils.log.info("Selecting send via email")
     driver.find_element(
         By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
     ).click()
 
-    logging.info("Entering respondent first name")
+    utils.log.info("Entering respondent first name")
     driver.find_element(By.ID, "respondentFirstName").send_keys("M")
 
-    logging.info("Entering respondent last name")
+    utils.log.info("Entering respondent last name")
     driver.find_element(By.ID, "respondentLastName").send_keys("P")
 
-    logging.info("Clicking continue to email")
+    utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
     sleep(5)
 
-    logging.info("Clicking create e-mail")
+    utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
         driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
@@ -1165,55 +1172,57 @@ def gen_basc_adolescent(driver, actions, client):
 
     driver.switch_to.default_content()
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_vineland(driver, actions, client):
-    logging.info(f"Generating Vineland for {client['firstname']} {client['lastname']}")
-    logging.info("Searching QGlobal")
+    utils.log.info(
+        f"Generating Vineland for {client['firstname']} {client['lastname']}"
+    )
+    utils.log.info("Searching QGlobal")
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logging.info("Selecting client")
+    utils.log.info("Selecting client")
     utils.click_element(driver, By.XPATH, "//tr[2]/td[5]")
 
-    logging.info("Clicking add assessment")
+    utils.log.info("Clicking add assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
 
-    logging.info("Selecting Vineland assessment")
+    utils.log.info("Selecting Vineland assessment")
     utils.click_element(driver, By.ID, "2728_radio")
 
-    logging.info("Assigning assessment")
+    utils.log.info("Assigning assessment")
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
-    logging.info("Selecting send via email")
+    utils.log.info("Selecting send via email")
     driver.find_element(
         By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
     ).click()
 
-    logging.info("Entering respondent first name")
+    utils.log.info("Entering respondent first name")
     driver.find_element(By.ID, "respondentFirstName").send_keys("M")
 
-    logging.info("Entering respondent last name")
+    utils.log.info("Entering respondent last name")
     driver.find_element(By.ID, "respondentLastName").send_keys("P")
 
-    logging.info("Continuing to email step")
+    utils.log.info("Continuing to email step")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
-    logging.info("Selecting email options")
+    utils.log.info("Selecting email options")
     utils.click_element(driver, By.XPATH, "//div/div[2]/label")
     driver.find_element(
         By.XPATH,
         "//div[2]/qg2-multi-column-layout/div/section[2]/div/qg2-form-radio-button/div/div/section[2]/div/div[2]/label",
     ).click()
 
-    logging.info("Clicking continue to email")
+    utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
     sleep(5)
 
-    logging.info("Clicking create e-mail")
+    utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
         driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
@@ -1222,51 +1231,51 @@ def gen_vineland(driver, actions, client):
 
     driver.switch_to.default_content()
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def gen_caars_2(driver, actions, client):
-    logging.info(f"Generating CAARS 2 for {client['firstname']} {client['lastname']}")
+    utils.log.info(f"Generating CAARS 2 for {client['firstname']} {client['lastname']}")
     driver.find_element(
         By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     ).click()
 
-    logging.info("Selecting CAARS 2")
+    utils.log.info("Selecting CAARS 2")
     driver.find_element(
         By.XPATH, "//span[contains(normalize-space(text()), 'CAARS 2')]"
     ).click()
 
-    logging.info("Selecting Email Invitation")
+    utils.log.info("Selecting Email Invitation")
     driver.find_element(
         By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     ).click()
 
-    logging.info("Adding client to MHS")
+    utils.log.info("Adding client to MHS")
     add_client_to_mhs(driver, actions, client, "CAARS 2")
 
-    logging.info("Selecting assessment description")
+    utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("CAARS 2")
 
-    logging.info("Selecting rater type")
+    utils.log.info("Selecting rater type")
     purpose_element = driver.find_element(By.ID, "ddl_RaterType")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("Self-Report")
 
-    logging.info("Selecting language")
+    utils.log.info("Selecting language")
     purpose_element = driver.find_element(By.ID, "ddl_Language")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("English")
 
-    logging.info("Selecting next")
+    utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
 
-    logging.info("Generating link")
+    utils.log.info("Generating link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(5)
     link = driver.find_element(
@@ -1274,30 +1283,30 @@ def gen_caars_2(driver, actions, client):
         "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx$CreateLink$txtLink",
     ).get_attribute("value")
 
-    logging.info(f"Returning link {link}")
+    utils.log.info(f"Returning link {link}")
     return link
 
 
 def search_clients(driver, actions, firstname, lastname):
-    logging.info(f"Searching for {firstname} {lastname}")
+    utils.log.info(f"Searching for {firstname} {lastname}")
     sleep(2)
 
-    logging.info("Trying to escape random popups")
+    utils.log.info("Trying to escape random popups")
     actions.send_keys(Keys.ESCAPE)
     actions.perform()
-    logging.info("Entering first name")
+    utils.log.info("Entering first name")
     firstname_label = driver.find_element(By.XPATH, "//label[text()='First Name']")
     firstname_field = firstname_label.find_element(
         By.XPATH, "./following-sibling::input"
     )
     firstname_field.send_keys(firstname)
 
-    logging.info("Entering last name")
+    utils.log.info("Entering last name")
     lastname_label = driver.find_element(By.XPATH, "//label[text()='Last Name']")
     lastname_field = lastname_label.find_element(By.XPATH, "./following-sibling::input")
     lastname_field.send_keys(lastname)
 
-    logging.info("Clicking search")
+    utils.log.info("Clicking search")
     search_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Search'")
     search_button.click()
 
@@ -1305,7 +1314,7 @@ def search_clients(driver, actions, firstname, lastname):
 def go_to_client(driver, actions, firstname, lastname):
     driver.get("https://portal.therapyappointment.com")
     sleep(1)
-    logging.info("Navigating to Clients section")
+    utils.log.info("Navigating to Clients section")
     clients_button = driver.find_element(
         By.XPATH, value="//*[contains(text(), 'Clients')]"
     )
@@ -1316,12 +1325,12 @@ def go_to_client(driver, actions, firstname, lastname):
             search_clients(driver, actions, firstname, lastname)
             break
         except Exception as e:
-            logging.info(f"Failed to search: {e}, trying again")
+            utils.log.info(f"Failed to search: {e}, trying again")
             driver.refresh()
 
     sleep(1)
 
-    logging.info("Selecting client profile")
+    utils.log.info("Selecting client profile")
 
     try:
         driver.find_element(
@@ -1329,17 +1338,17 @@ def go_to_client(driver, actions, firstname, lastname):
             "a[aria-description*='Press Enter to view the profile of",
         ).click()
     except Exception as e:
-        logging.info(f"Failed to select client: {e}, trying again")
+        utils.log.info(f"Failed to select client: {e}, trying again")
         driver.refresh()
         go_to_client(driver, actions, firstname, lastname)
 
     current_url = driver.current_url
-    logging.info(f"Navigated to client profile: {current_url}")
+    utils.log.info(f"Navigated to client profile: {current_url}")
     return current_url
 
 
 def extract_client_data(driver):
-    logging.info("Attempting to extract client data")
+    utils.log.info("Attempting to extract client data")
     name = driver.find_element(By.CLASS_NAME, "text-h4").text
     firstname = name.split(" ")[0]
     lastname = name.split(" ")[-1]
@@ -1382,7 +1391,7 @@ def extract_client_data(driver):
     gender = gender_element.text.split(" ")[0]
 
     age = relativedelta(datetime.now(), datetime.strptime(birthdate, "%Y/%m/%d")).years
-    logging.info("Returned client data")
+    utils.log.info("Returned client data")
     return {
         "firstname": firstname,
         "lastname": lastname,
@@ -1395,47 +1404,47 @@ def extract_client_data(driver):
 
 
 def format_ta_message(questionnaires):
-    logging.info("Formatting TA message")
+    utils.log.info("Formatting TA message")
     message = ""
     for id, questionnaire in enumerate(questionnaires, start=1):
         notes = ""
         if "Self" in questionnaire["type"]:
             notes = " - For client being tested"
         message += f"{id}) {questionnaire['link']}{notes}\n"
-    logging.info("Finished formatting TA message")
+    utils.log.info("Finished formatting TA message")
     return message
 
 
 def send_message_ta(driver, client_url, message):
-    logging.info("Navigating to client URL")
+    utils.log.info("Navigating to client URL")
     driver.get(client_url)
 
-    logging.info("Accessing Messages section")
+    utils.log.info("Accessing Messages section")
     driver.find_element(
         By.XPATH, "//a[contains(normalize-space(text()), 'Messages')]"
     ).click()
 
-    logging.info("Initiating new message")
+    utils.log.info("Initiating new message")
     driver.find_element(
         By.XPATH,
         "//div[2]/section/div/a/span/span",
     ).click()
     sleep(1)
 
-    logging.info("Setting message subject")
+    utils.log.info("Setting message subject")
     driver.find_element(By.ID, "message_thread_subject").send_keys(
         "Please complete the link(s) below"
     )
     sleep(1)
 
-    logging.info("Entering message content")
+    utils.log.info("Entering message content")
     text_field = driver.find_element(By.XPATH, "//section/div/div[3]")
     text_field.click()
     sleep(1)
     text_field.send_keys(message)
     sleep(1)
 
-    logging.info("Submitting the message")
+    utils.log.info("Submitting the message")
     text_field.click()
     utils.click_element(driver, By.CSS_SELECTOR, "button[type='submit']")
 
@@ -1468,24 +1477,24 @@ def add_fail_date(client):
 def write_file(filepath, data):
     data = data.strip("\n")
     try:
-        logging.info(f"Opening file {filepath} for reading")
+        utils.log.info(f"Opening file {filepath} for reading")
         with open(filepath, "r") as file:
             existing_content = file.read().strip("\n")
             if data == existing_content or data in existing_content.split(", "):
-                logging.info("Data already exists in file, skipping write")
+                utils.log.info("Data already exists in file, skipping write")
                 return
             new_content = (
                 data if not existing_content else f"{existing_content}, {data}"
             )
-        logging.info(f"Opening file {filepath} for writing")
+        utils.log.info(f"Opening file {filepath} for writing")
         with open(filepath, "w") as file:
             file.write(new_content)
-            logging.info("Wrote new content to file")
+            utils.log.info("Wrote new content to file")
     except FileNotFoundError:
-        logging.warning(f"File {filepath} not found, creating new file")
+        utils.log.warning(f"File {filepath} not found, creating new file")
         with open(filepath, "w") as file:
             file.write(data)
-            logging.info("Wrote data to new file")
+            utils.log.info("Wrote data to new file")
 
 
 def check_client_in_yaml(prev_clients, client_info):
@@ -1509,7 +1518,7 @@ def main():
                 sleep(1)
                 break
             except Exception as e:
-                logging.info(f"Login failed: {e}, trying again")
+                utils.log.info(f"Login failed: {e}, trying again")
                 sleep(1)
     clients = get_clients()
     prev_clients = utils.get_previous_clients(failed=True)
@@ -1517,7 +1526,7 @@ def main():
     for client in clients:
         client_params = parameterize(client)
 
-        logging.info(
+        utils.log.info(
             f"Starting loop for {client_params['firstname']} {client_params['lastname']}"
         )
 
@@ -1531,12 +1540,12 @@ def main():
                 prev_clients, combined_client_info
             )
         except NoSuchElementException as e:
-            logging.error(f"Element not found: {e}")
+            utils.log.error(f"Element not found: {e}")
             utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
             break
 
         if client_already_ran:
-            logging.warning(
+            utils.log.warning(
                 f"{client_params['firstname']} {client_params['lastname']} with {combined_client_info['daeval']} has been run before with an overlapping appointment type, skipping."
             )
             continue
@@ -1568,7 +1577,7 @@ def main():
             formatted_client = format_client(combined_client_info)
 
             if str(questionnaires) == "Too young":
-                logging.warning(
+                utils.log.warning(
                     f"{formatted_client[client_info['account_number']]['firstname']} "
                     f"{formatted_client[client_info['account_number']]['lastname']} is too young at age "
                     f"{formatted_client[client_info['account_number']]['age']}"
@@ -1579,7 +1588,7 @@ def main():
                 utils.update_yaml(add_fail_date(formatted_client), "./put/qfailure.yml")
                 break
 
-            logging.info(
+            utils.log.info(
                 f"Questionnaires needed for {formatted_client[client_info['account_number']]['firstname']} "
                 f"{formatted_client[client_info['account_number']]['lastname']} for "
                 f"a {formatted_client[client_info['account_number']]['check']} "
@@ -1593,7 +1602,7 @@ def main():
                         driver, actions, combined_client_info, questionnaire
                     )
                 except Exception as e:  # noqa: E722
-                    logging.error(f"Error assigning {questionnaire}: {e}")
+                    utils.log.error(f"Error assigning {questionnaire}: {e}")
                     utils.update_yaml(
                         add_fail_date(formatted_client), "./put/qfailure.yml"
                     )
@@ -1631,7 +1640,7 @@ def main():
                 )
                 send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
-            logging.error(f"Element not found: {e}")
+            utils.log.error(f"Element not found: {e}")
             utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
 
 

@@ -3,7 +3,6 @@ import logging
 import os.path
 from datetime import datetime
 from email.message import EmailMessage
-from email.mime.text import MIMEText
 
 from dateutil.relativedelta import relativedelta
 from google.auth.transport.requests import Request
@@ -14,10 +13,14 @@ from googleapiclient.errors import HttpError
 
 import shared_utils as utils
 
-logging.basicConfig(
+utils.log.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("qmail.log"), logging.StreamHandler()],
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("qmail.log"),
+    ],
+    force=True,
 )
 
 services, config = utils.load_config()
@@ -110,6 +113,8 @@ def generate_evaluator_email(evaluator_address):
             if client.get("sent_date")
             else ""
         )
+
+        # TODO: add reminded amount once we are far enough out
 
         email_text += f"{client['firstname']} {client['lastname']} ({asana_link}){sent_date_str}: \n"
         for questionnaire in client["questionnaires"]:

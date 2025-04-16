@@ -17,10 +17,12 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 
+log = logging
+
 
 def load_config():
     with open("./config/info.yml", "r") as file:
-        logging.info("Loading info file")
+        log.info("Loading info file")
         info = yaml.safe_load(file)
         services = info["services"]
         config = info["config"]
@@ -28,7 +30,7 @@ def load_config():
 
 
 def initialize_selenium():
-    logging.info("Initializing Selenium")
+    log.info("Initializing Selenium")
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     if os.getenv("HEADLESS") == "true":
@@ -48,9 +50,9 @@ def click_element(driver, by, locator, max_attempts=3, delay=1):
             element.click()
             return True
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            logging.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+            log.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
             sleep(delay)
-    logging.error(f"Failed to click element after {max_attempts} attempts")
+    log.error(f"Failed to click element after {max_attempts} attempts")
     return False
 
 
@@ -60,14 +62,14 @@ def find_element(driver, by, locator, max_attempts=3, delay=1):
             driver.find_element(by, locator)
             return True
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            logging.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+            log.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
             sleep(delay)
-    logging.error(f"Failed to find element after {max_attempts} attempts")
+    log.error(f"Failed to find element after {max_attempts} attempts")
     return False
 
 
 def get_previous_clients(failed=False):
-    logging.info("Loading previous clients")
+    log.info("Loading previous clients")
     clients_filepath = "./put/clients.yml"
     qfailure_filepath = "./put/qfailure.yml"
 
@@ -78,14 +80,14 @@ def get_previous_clients(failed=False):
             with open(qfailure_filepath, "r") as file:
                 prev_clients = yaml.safe_load(file) or {}
         except FileNotFoundError:
-            logging.info(f"{qfailure_filepath} does not exist.")
+            log.info(f"{qfailure_filepath} does not exist.")
 
     try:
         with open(clients_filepath, "r") as file:
             clients_data = yaml.safe_load(file) or {}
             prev_clients.update(clients_data)
     except FileNotFoundError:
-        logging.info(f"{clients_filepath} does not exist.")
+        log.info(f"{clients_filepath} does not exist.")
 
     return prev_clients if prev_clients else None
 
@@ -95,18 +97,18 @@ def update_yaml(clients, filepath):
         with open(filepath, "r") as file:
             current_yaml = yaml.safe_load(file)
     except FileNotFoundError:
-        logging.info(f"{filepath} does not exist, creating new file")
+        log.info(f"{filepath} does not exist, creating new file")
         current_yaml = None
 
     if current_yaml is None:
-        logging.info(f"Dumping {clients} to {filepath}")
+        log.info(f"Dumping {clients} to {filepath}")
         with open(filepath, "w") as file:
             yaml.dump(clients, file, default_flow_style=False)
     else:
-        logging.info(f"Updating {filepath}")
+        log.info(f"Updating {filepath}")
         current_yaml.update(clients)
         with open(filepath, "w") as file:
-            logging.info(f"Dumping {clients} to {filepath}")
+            log.info(f"Dumping {clients} to {filepath}")
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
@@ -123,20 +125,20 @@ def fetch_project(
     opt_fields: str = "name,color,permalink_url,notes,created_at",
 ) -> dict | None:
     """Fetch the latest version of a single project by its GID"""
-    logging.info(f"Fetching project {project_gid}")
+    log.info(f"Fetching project {project_gid}")
     try:
         return projects_api.get_project(
             project_gid,
             opts={"opt_fields": opt_fields},  # type: ignore
         )
     except ApiException as e:
-        logging.exception(f"Exception when calling ProjectsApi->get_project: {e}")
+        log.exception(f"Exception when calling ProjectsApi->get_project: {e}")
         return None
 
 
 def replace_notes(projects_api: asana.ProjectsApi, new_note: str, project_gid: str):
     """Update the notes field in a project."""
-    logging.info(f"Updating project {project_gid} with note '{new_note}'")
+    log.info(f"Updating project {project_gid} with note '{new_note}'")
     body = {"data": {"notes": new_note}}
     try:
         projects_api.update_project(
@@ -144,7 +146,7 @@ def replace_notes(projects_api: asana.ProjectsApi, new_note: str, project_gid: s
         )
         return True
     except ApiException as e:
-        logging.exception(f"Exception when calling ProjectsApi->update_project: {e}")
+        log.exception(f"Exception when calling ProjectsApi->update_project: {e}")
         return False
 
 
@@ -214,12 +216,12 @@ def search_by_name(projects_api: asana.ProjectsApi, services, name):
         correct_project = None
 
         if project_count == 0:
-            logging.warning(f"No projects found for {name}.")
+            log.warning(f"No projects found for {name}.")
         elif project_count == 1:
-            logging.info(f"Found 1 project for {name}.")
+            log.info(f"Found 1 project for {name}.")
             correct_project = filtered_projects[0]
         else:
-            logging.warning(f"Found {project_count} projects for {name}.")
+            log.warning(f"Found {project_count} projects for {name}.")
         if correct_project:
             return correct_project
         else:
@@ -274,14 +276,14 @@ def mark_link_done(
         notes = project["notes"]
         link_start = notes.find(link)
         if link_start == -1:
-            logging.warning(f"Link {link} not found in project notes")
+            log.warning(f"Link {link} not found in project notes")
             return
         link_end = notes.find("\n", link_start)
         if link_end == -1:
             link_end = len(notes)
         link_done = notes[link_start:link_end].strip()
         if " - DONE" in link_done:
-            logging.info(f"Link {link} is already marked as DONE")
+            log.info(f"Link {link} is already marked as DONE")
             return
         link_done = f"{link_done} - DONE"
         new_note = notes[:link_start] + link_done + notes[link_end:]
@@ -336,7 +338,7 @@ def check_questionnaires(driver, config, services, clients=get_previous_clients(
                 if questionnaire["done"]:
                     continue
                 questionnaire["done"] = check_q_done(driver, questionnaire["link"])
-                logging.info(
+                log.info(
                     f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
                 )
                 if not questionnaire["done"]:
@@ -376,7 +378,7 @@ def send_text(
         "to": [to_number],
         "userId": user_blame,
     }
-    logging.info(f"Attempting to send message '{message}' to {to_number}")
+    log.info(f"Attempting to send message '{message}' to {to_number}")
     response = requests.post(url, headers=headers, json=data)
     response_data = response.json().get("data")
     return response_data
@@ -394,6 +396,6 @@ def mark_links_in_asana(projects_api, client, services, config):
                     questionnaire["link"],
                 )
     else:
-        logging.warning(
+        log.warning(
             f"Client {client['firstname']} {client['lastname']} has no Asana link"
         )

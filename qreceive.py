@@ -3,14 +3,14 @@ from datetime import date, datetime
 from time import sleep
 
 import requests
-from selenium.common.exceptions import NoSuchElementException
 
 import shared_utils as utils
 
-logging.basicConfig(
+utils.log.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("qreceive.log"), logging.StreamHandler()],
+    force=True,
 )
 
 services, config = utils.load_config()
@@ -37,7 +37,7 @@ def send_text_and_ensure(
         config, services, message, to_number, from_number, user_blame
     )
     if not attempt_text:
-        logging.warning(f"Possibly failed to send message {message} to {to_number}")
+        utils.log.warning(f"Possibly failed to send message {message} to {to_number}")
         return False
     message_id = attempt_text["id"]
     for i in range(3):
@@ -45,11 +45,11 @@ def send_text_and_ensure(
         sleep(sleep_time)
         message_info = get_text_info(message_id)
         message_status = message_info["status"]
-        logging.info(f"Message status on attempt {i + 1}: {message_status}")
+        utils.log.info(f"Message status on attempt {i + 1}: {message_status}")
         if message_status == "delivered":
             return True
     else:
-        logging.warning(f"Failed to send message {message} to {to_number}")
+        utils.log.warning(f"Failed to send message {message} to {to_number}")
         return False
 
 
