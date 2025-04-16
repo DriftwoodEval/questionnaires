@@ -8,10 +8,10 @@ COPY pyproject.toml .
 COPY uv.lock .
 RUN uv sync --frozen
 
-FROM base as qreceive
+FROM base AS qreceive
 COPY shared_utils.py qreceive.py .
 CMD ["uv", "run", "qreceive.py"]
 
-FROM base as qmail
+FROM base AS qmail
 COPY shared_utils.py qmail.py .
 CMD ["uv", "run", "qmail.py"]
