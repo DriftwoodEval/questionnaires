@@ -5,6 +5,7 @@ from datetime import datetime
 from time import sleep
 
 import asana
+import requests
 import yaml
 from asana.rest import ApiException
 from selenium import webdriver
@@ -14,6 +15,7 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
 
 
 def load_config():
@@ -284,3 +286,114 @@ def mark_link_done(
         link_done = f"{link_done} - DONE"
         new_note = notes[:link_start] + link_done + notes[link_end:]
         replace_notes(projects_api, new_note, project_gid)
+
+
+def all_questionnaires_done(client):
+    return all(q["done"] for q in client["questionnaires"])
+
+
+def check_q_done(driver, q_link):
+    driver.implicitly_wait(3)
+    url = q_link
+    driver.get(url)
+
+    complete = False
+
+    if "mhs.com" in url:
+        complete = find_element(
+            driver,
+            By.XPATH,
+            "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')]",
+        )
+    elif "pearsonassessments.com" in url:
+        complete = find_element(
+            driver, By.XPATH, "//*[contains(text(), 'Test Completed!')]"
+        )
+    elif "wpspublish" in url:
+        complete = find_element(
+            driver,
+            By.XPATH,
+            "//*[contains(text(), 'This assessment is not available at this time')]",
+        )
+
+    return complete
+
+
+def format_appointment(client):
+    appointment = client["date"]
+    return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
+
+
+def check_questionnaires(driver, config, services, clients=get_previous_clients()):
+    if clients:
+        for id in clients:
+            client = clients[id]
+            if all_questionnaires_done(client):
+                continue
+            else:
+                done = False
+            for questionnaire in client["questionnaires"]:
+                if questionnaire["done"]:
+                    continue
+                questionnaire["done"] = check_q_done(driver, questionnaire["link"])
+                logging.info(
+                    f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
+                )
+                if not questionnaire["done"]:
+                    break
+            if all_questionnaires_done(client) and not done:
+                send_text(
+                    config,
+                    services,
+                    f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
+                    services["openphone"]["users"][config["name"].lower()]["phone"],
+                )
+        update_yaml(clients, "./put/clients.yml")
+
+
+def send_text(
+    config,
+    services,
+    message,
+    to_number,
+    from_number=None,
+    user_blame=None,
+):
+    if not from_number:
+        from_number = services["openphone"]["main_number"]
+    if not user_blame:
+        user_blame = services["openphone"]["users"][config["name"].lower()]["id"]
+
+    to_number = "+1" + "".join(filter(str.isdigit, to_number))
+    url = "https://api.openphone.com/v1/messages"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": services["openphone"]["key"],
+    }
+    data = {
+        "content": message,
+        "from": from_number,
+        "to": [to_number],
+        "userId": user_blame,
+    }
+    logging.info(f"Attempting to send message '{message}' to {to_number}")
+    response = requests.post(url, headers=headers, json=data)
+    response_data = response.json().get("data")
+    return response_data
+
+
+def mark_links_in_asana(projects_api, client, services, config):
+    if client.get("asana") and client["asana"]:
+        for questionnaire in client["questionnaires"]:
+            if questionnaire["done"]:
+                mark_link_done(
+                    projects_api,
+                    services,
+                    config,
+                    client["asana"],
+                    questionnaire["link"],
+                )
+    else:
+        logging.warning(
+            f"Client {client['firstname']} {client['lastname']} has no Asana link"
+        )
