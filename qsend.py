@@ -1445,6 +1445,11 @@ def format_client(client):
     return {account_number: client}
 
 
+def add_sent_date(formatted_client):
+    formatted_client["sent_date"] = datetime.today().strftime("%Y/%m/%d")
+    return formatted_client
+
+
 def format_failed_client(client_params):
     client_info = {
         "check": client_params["check"],
@@ -1616,6 +1621,7 @@ def main():
                         formatted_client[client_info["account_number"]],
                     )
                 )
+                formatted_client = add_sent_date(formatted_client)
                 utils.update_yaml(
                     formatted_client,
                     "./put/clients.yml",
