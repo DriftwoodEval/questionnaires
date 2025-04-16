@@ -103,6 +103,7 @@ def main():
                         )
                         if message_sent:
                             client["reminded"] = 1
+                            utils.sent_reminder_asana(config, projects_api, client)
                         else:
                             utils.send_text(
                                 config,
@@ -118,6 +119,7 @@ def main():
                         )
                         if message_sent:
                             client["reminded"] += 1
+                            utils.sent_reminder_asana(config, projects_api, client)
                         else:
                             utils.send_text(
                                 config,
@@ -143,6 +145,7 @@ def main():
                         )
                         if message_sent:
                             client["reminded"] = 1
+                            utils.sent_reminder_asana(config, projects_api, client)
                         else:
                             utils.send_text(
                                 config,
@@ -158,6 +161,7 @@ def main():
                         )
                         if message_sent:
                             client["reminded"] += 1
+                            utils.sent_reminder_asana(config, projects_api, client)
                         else:
                             utils.send_text(
                                 config,

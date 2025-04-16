@@ -399,3 +399,17 @@ def mark_links_in_asana(projects_api, client, services, config):
         log.warning(
             f"Client {client['firstname']} {client['lastname']} has no Asana link"
         )
+
+
+def sent_reminder_asana(config, projects_api, client):
+    if client.get("asana") and client["asana"]:
+        add_note(
+            config,
+            projects_api,
+            client["asana"],
+            "Sent reminder",
+        )
+    else:
+        log.warning(
+            f"Client {client['firstname']} {client['lastname']} has no Asana link"
+        )
