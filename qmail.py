@@ -104,7 +104,14 @@ def generate_evaluator_email(evaluator_address):
     for client in sorted_clients:
         if client.get("asana") and client["asana"]:
             asana_link = f"https://app.asana.com/1/{services['asana']['workspace']}/project/{client['asana']}/overview"
-        email_text += f"{client['firstname']} {client['lastname']} ({asana_link}): \n"  # TODO: add reminded amount and intial sent date once we've collected it for long enough
+
+        sent_date_str = (
+            f" [sent on {datetime.strptime(client['sent_date'], '%Y/%m/%d').strftime('%m/%d')}]"
+            if client.get("sent_date")
+            else ""
+        )
+
+        email_text += f"{client['firstname']} {client['lastname']} ({asana_link}){sent_date_str}: \n"
         for questionnaire in client["questionnaires"]:
             email_text += f"  - {questionnaire['type']} - {'Done' if questionnaire['done'] else 'NOT DONE'}{f' - {questionnaire["link"]}' if not questionnaire['done'] else ''}\n"
         email_text += "\n"
