@@ -200,7 +200,7 @@ def main():
                             message, client["phone_number"]
                         )
                         if message_sent:
-                            client["reminded"] = True
+                            client["reminded"] = 1
                         else:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
@@ -212,7 +212,9 @@ def main():
                         message_sent = send_text_and_ensure(
                             message, client["phone_number"]
                         )
-                        if not message_sent:
+                        if message_sent:
+                            client["reminded"] += 1
+                        else:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
                                 services["openphone"]["users"][config["name"].lower()][
@@ -232,7 +234,7 @@ def main():
                             message, client["phone_number"]
                         )
                         if message_sent:
-                            client["reminded"] = True
+                            client["reminded"] = 1
                         else:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
@@ -244,7 +246,9 @@ def main():
                         message_sent = send_text_and_ensure(
                             message, client["phone_number"]
                         )
-                        if not message_sent:
+                        if message_sent:
+                            client["reminded"] += 1
+                        else:
                             send_text(
                                 f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
                                 services["openphone"]["users"][config["name"].lower()][
