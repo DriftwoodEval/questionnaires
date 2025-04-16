@@ -53,12 +53,6 @@ def google_authenticate():
 
 
 def send_gmail(message_text, subject, to_addr, from_addr):
-    """Create and insert a draft email.
-      Print the returned draft's message and id.
-      Returns: Draft object, including draft id and message meta data.
-
-    Load pre-authorized user credentials from the environment.
-    """
     creds = google_authenticate()
 
     try:
@@ -78,10 +72,10 @@ def send_gmail(message_text, subject, to_addr, from_addr):
             service.users().messages().send(userId="me", body=create_message).execute()
         )
 
-        logging.info(f"Sent email to {to_addr}: {subject}")
+        utils.log.info(f"Sent email to {to_addr}: {subject}")
 
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        utils.log.error(error)
         send_message = None
     return send_message
 
