@@ -30,17 +30,18 @@ def get_clients():
 
 def parameterize(client):
     client = client.split()
-    first = client[0]
-    last = client[1]
-    check = client[2]
+    evaluator_email = client[0]
+    first = client[1]
+    last = client[2]
+    check = client[3]
     daeval = "DA"
     if check == "ADHD":
-        date = client[3]
-    else:
-        daeval = client[3]
         date = client[4]
+    else:
+        daeval = client[4]
+        date = client[5]
     logging.info(
-        f"Client: {first} {last}, {check}, {daeval}, with an appointment on {date}"
+        f"Client: {first} {last}, {check}, {daeval}, with an appointment on {date} with {evaluator_email}"
     )
     return {
         "firstname": first,
@@ -48,6 +49,7 @@ def parameterize(client):
         "check": check,
         "daeval": daeval,
         "date": date,
+        "evaluator_email": evaluator_email,
     }
 
 
