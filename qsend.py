@@ -41,6 +41,12 @@ def parameterize(client):
     else:
         daeval = client[4]
         date = client[5]
+
+    english = True
+    if "INT" in daeval:
+        daeval = daeval.replace("INT", "").strip()
+        english = False
+
     utils.log.info(
         f"Client: {first} {last}, {check}, {daeval}, with an appointment on {date} with {evaluator_email}"
     )
@@ -51,6 +57,7 @@ def parameterize(client):
         "daeval": daeval,
         "date": date,
         "evaluator_email": evaluator_email,
+        "english": english,
     }
 
 
@@ -1464,6 +1471,7 @@ def format_failed_client(client_params):
         "check": client_params["check"],
         "daeval": client_params["daeval"],
         "date": client_params["date"],
+        "english": client_params["english"],
         "failed_date": datetime.today().strftime("%Y/%m/%d"),
     }
     return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
@@ -1529,6 +1537,13 @@ def main():
         utils.log.info(
             f"Starting loop for {client_params['firstname']} {client_params['lastname']}"
         )
+
+        if client_params["english"] is False:
+            utils.log.warning(
+                f"Skipping Non-English client {client_params['firstname']} {client_params['lastname']}"
+            )
+            utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            continue
 
         try:
             client_url = go_to_client(
