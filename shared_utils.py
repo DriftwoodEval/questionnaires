@@ -305,7 +305,7 @@ def check_q_done(driver, q_link):
         complete = find_element(
             driver,
             By.XPATH,
-            "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')]",
+            "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
         )
     elif "pearsonassessments.com" in url:
         complete = find_element(
