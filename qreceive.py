@@ -136,7 +136,7 @@ def main():
                         f"{client['firstname']} {client['lastname']} has an appointment on {(utils.format_appointment(client))} (in {distance} days) and hasn't done everything, please call them.",
                         services["openphone"]["users"][config["name"].lower()]["phone"],
                     )
-                elif distance < 0:
+                elif distance < 0 and distance % 3 == 2:
                     message = build_message(config, client, distance)
                     # If this is the first reminder
                     if not client.get("reminded"):
