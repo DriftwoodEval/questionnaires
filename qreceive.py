@@ -102,39 +102,19 @@ def main():
                         f"Sending reminder TO {client['firstname']} {client['lastname']}"
                     )
                     message = build_message(config, client, distance)
-                    # If this is the first reminder
-                    if not client.get("reminded"):
-                        message_sent = send_text_and_ensure(
-                            message, client["phone_number"]
-                        )
-                        if message_sent:
-                            client["reminded"] = 1
-                            utils.sent_reminder_asana(config, projects_api, client)
-                        else:
-                            utils.send_text(
-                                config,
-                                services,
-                                f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                services["openphone"]["users"][config["name"].lower()][
-                                    "phone"
-                                ],
-                            )
+                    message_sent = send_text_and_ensure(message, client["phone_number"])
+                    if message_sent:
+                        client["reminded"] = client.get("reminded", 0) + 1
+                        utils.sent_reminder_asana(config, projects_api, client)
                     else:
-                        message_sent = send_text_and_ensure(
-                            message, client["phone_number"]
+                        utils.send_text(
+                            config,
+                            services,
+                            f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
+                            services["openphone"]["users"][config["name"].lower()][
+                                "phone"
+                            ],
                         )
-                        if message_sent:
-                            client["reminded"] += 1
-                            utils.sent_reminder_asana(config, projects_api, client)
-                        else:
-                            utils.send_text(
-                                config,
-                                services,
-                                f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                services["openphone"]["users"][config["name"].lower()][
-                                    "phone"
-                                ],
-                            )
                 elif 0 <= distance < 5:
                     utils.log.info(
                         f"Sending reminder ABOUT {client['firstname']} {client['lastname']}"
@@ -150,39 +130,19 @@ def main():
                         f"Sending reminder TO overdue {client['firstname']} {client['lastname']}"
                     )
                     message = build_message(config, client, distance)
-                    # If this is the first reminder
-                    if not client.get("reminded"):
-                        message_sent = send_text_and_ensure(
-                            message, client["phone_number"]
-                        )
-                        if message_sent:
-                            client["reminded"] = 1
-                            utils.sent_reminder_asana(config, projects_api, client)
-                        else:
-                            utils.send_text(
-                                config,
-                                services,
-                                f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                services["openphone"]["users"][config["name"].lower()][
-                                    "phone"
-                                ],
-                            )
+                    message_sent = send_text_and_ensure(message, client["phone_number"])
+                    if message_sent:
+                        client["reminded"] = client.get("reminded", 0) + 1
+                        utils.sent_reminder_asana(config, projects_api, client)
                     else:
-                        message_sent = send_text_and_ensure(
-                            message, client["phone_number"]
+                        utils.send_text(
+                            config,
+                            services,
+                            f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
+                            services["openphone"]["users"][config["name"].lower()][
+                                "phone"
+                            ],
                         )
-                        if message_sent:
-                            client["reminded"] += 1
-                            utils.sent_reminder_asana(config, projects_api, client)
-                        else:
-                            utils.send_text(
-                                config,
-                                services,
-                                f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                                services["openphone"]["users"][config["name"].lower()][
-                                    "phone"
-                                ],
-                            )
 
             utils.update_yaml(clients, "./put/clients.yml")
 
