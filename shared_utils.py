@@ -113,6 +113,7 @@ def update_yaml(clients, filepath):
 
 
 def init_asana(services):
+    log.info("Initializing Asana")
     configuration = asana.Configuration()
     configuration.access_token = services["asana"]["token"]
     projects_api = asana.ProjectsApi(asana.ApiClient(configuration))
@@ -278,6 +279,7 @@ def mark_link_done(
         if link_start == -1:
             log.warning(f"Link {link} not found in project notes")
             return
+        log.info(f"Found link {link} in project notes")
         link_end = notes.find("\n", link_start)
         if link_end == -1:
             link_end = len(notes)
@@ -285,6 +287,7 @@ def mark_link_done(
         if " - DONE" in link_done:
             log.info(f"Link {link} is already marked as DONE")
             return
+        log.info(f"Marking link {link} as DONE")
         link_done = f"{link_done} - DONE"
         new_note = notes[:link_start] + link_done + notes[link_end:]
         replace_notes(projects_api, new_note, project_gid)
@@ -302,16 +305,19 @@ def check_q_done(driver, q_link):
     complete = False
 
     if "mhs.com" in url:
+        log.info(f"Checking MHS completion for {url}")
         complete = find_element(
             driver,
             By.XPATH,
             "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
         )
     elif "pearsonassessments.com" in url:
+        log.info(f"Checking Pearson completion for {url}")
         complete = find_element(
             driver, By.XPATH, "//*[contains(text(), 'Test Completed!')]"
         )
     elif "wpspublish" in url:
+        log.info(f"Checking WPS completion for {url}")
         complete = find_element(
             driver,
             By.XPATH,
@@ -331,19 +337,29 @@ def check_questionnaires(driver, config, services, clients=get_previous_clients(
         for id in clients:
             client = clients[id]
             if all_questionnaires_done(client):
+                log.info(
+                    f"{client['firstname']} {client['lastname']} has already completed their questionnaires for an appointment on {format_appointment(client)}"
+                )
                 continue
-            else:
-                done = False
             for questionnaire in client["questionnaires"]:
                 if questionnaire["done"]:
+                    log.info(
+                        f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is already done"
+                    )
                     continue
+                log.info(
+                    f"Checking {client['firstname']} {client['lastname']}'s {questionnaire['type']}"
+                )
                 questionnaire["done"] = check_q_done(driver, questionnaire["link"])
                 log.info(
                     f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
                 )
                 if not questionnaire["done"]:
+                    log.info(
+                        f"At least one questionnaire is not done for {client['firstname']} {client['lastname']}"
+                    )
                     break
-            if all_questionnaires_done(client) and not done:
+            if all_questionnaires_done(client):
                 send_text(
                     config,
                     services,

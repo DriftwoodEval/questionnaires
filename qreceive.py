@@ -93,8 +93,14 @@ def main():
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
             )
             done = utils.all_questionnaires_done(client)
+            utils.log.info(
+                f"{client['firstname']} {client['lastname']} is {distance} days away and {'done' if done else 'not done'}"
+            )
             if not done:
                 if distance >= 5 and distance % 3 == 2:
+                    utils.log.info(
+                        f"Sending reminder TO {client['firstname']} {client['lastname']}"
+                    )
                     message = build_message(config, client, distance)
                     # If this is the first reminder
                     if not client.get("reminded"):
@@ -130,6 +136,9 @@ def main():
                                 ],
                             )
                 elif 0 <= distance < 5:
+                    utils.log.info(
+                        f"Sending reminder ABOUT {client['firstname']} {client['lastname']}"
+                    )
                     utils.send_text(
                         config,
                         services,
@@ -137,6 +146,9 @@ def main():
                         services["openphone"]["users"][config["name"].lower()]["phone"],
                     )
                 elif distance < 0 and distance % 3 == 2:
+                    utils.log.info(
+                        f"Sending reminder TO overdue {client['firstname']} {client['lastname']}"
+                    )
                     message = build_message(config, client, distance)
                     # If this is the first reminder
                     if not client.get("reminded"):
