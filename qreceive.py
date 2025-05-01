@@ -17,6 +17,7 @@ services, config = utils.load_config()
 
 
 def get_text_info(message_id):
+    sleep(0.2)
     url = f"https://api.openphone.com/v1/messages/{message_id}"
     headers = {
         "Content-Type": "application/json",

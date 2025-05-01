@@ -377,6 +377,7 @@ def send_text(
     from_number=None,
     user_blame=None,
 ):
+    sleep(0.2)
     if not from_number:
         from_number = services["openphone"]["main_number"]
     if not user_blame:
