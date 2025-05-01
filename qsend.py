@@ -1410,6 +1410,25 @@ def extract_client_data(driver):
     }
 
 
+def check_if_opened_portal(driver):
+    try:
+        driver.find_element(By.CSS_SELECTOR, "input[aria-checked='true']")
+        return True
+    except NoSuchElementException:
+        return False
+
+
+def check_if_docs_signed(driver):
+    try:
+        driver.find_element(
+            By.XPATH,
+            "//div[contains(normalize-space(text()), 'has completed registration')]",
+        )
+        return True
+    except NoSuchElementException:
+        return False
+
+
 def format_ta_message(questionnaires):
     utils.log.info("Formatting TA message")
     message = ""
@@ -1461,25 +1480,28 @@ def format_client(client):
     return {account_number: client}
 
 
+def add_key(client, key, info):
+    client[key] = info
+    return client
+
+
 def add_sent_date(formatted_client):
-    formatted_client["sent_date"] = datetime.today().strftime("%Y/%m/%d")
-    return formatted_client
+    return add_key(formatted_client, "sent_date", datetime.today().strftime("%Y/%m/%d"))
 
 
-def format_failed_client(client_params):
+def add_failed_date(client):
+    return add_key(client, "failed_date", datetime.today().strftime("%Y/%m/%d"))
+
+
+def format_failed_client(client_params, error):
     client_info = {
         "check": client_params["check"],
         "daeval": client_params["daeval"],
         "date": client_params["date"],
-        "english": client_params["english"],
         "failed_date": datetime.today().strftime("%Y/%m/%d"),
+        "error": error,
     }
     return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
-
-
-def add_fail_date(client):
-    client["failed_date"] = datetime.today().strftime("%Y/%m/%d")
-    return client
 
 
 def write_file(filepath, data):
@@ -1542,13 +1564,27 @@ def main():
             utils.log.warning(
                 f"Skipping Non-English client {client_params['firstname']} {client_params['lastname']}"
             )
-            utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            utils.update_yaml(
+                format_failed_client(client_params, "Non-English"), "./put/qfailure.yml"
+            )
             continue
 
         try:
             client_url = go_to_client(
                 driver, actions, client_params["firstname"], client_params["lastname"]
             )
+            if not check_if_opened_portal(driver):
+                utils.update_yaml(
+                    format_failed_client(client_params, "Portal not opened"),
+                    "./put/qfailure.yml",
+                )
+                continue
+            if not check_if_docs_signed(driver):
+                utils.update_yaml(
+                    format_failed_client(client_params, "Docs not signed"),
+                    "./put/qfailure.yml",
+                )
+                continue
             client_info = extract_client_data(driver)
             combined_client_info = client_params | client_info
             client_already_ran = check_client_in_yaml(
@@ -1556,7 +1592,10 @@ def main():
             )
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
-            utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            utils.update_yaml(
+                format_failed_client(client_params, "Unable to find client"),
+                "./put/qfailure.yml",
+            )
             break
 
         if client_already_ran:
@@ -1600,7 +1639,9 @@ def main():
                 formatted_client[client_info["account_number"]][
                     "questionnaires"
                 ].append({"error": "Too young"})
-                utils.update_yaml(add_fail_date(formatted_client), "./put/qfailure.yml")
+                utils.update_yaml(
+                    add_failed_date(formatted_client), "./put/qfailure.yml"
+                )
                 break
 
             utils.log.info(
@@ -1618,15 +1659,21 @@ def main():
                     )
                 except Exception as e:  # noqa: E722
                     utils.log.error(f"Error assigning {questionnaire}: {e}")
+                    formatted_client = add_key(
+                        formatted_client, "error", "Error assigning questionnaires"
+                    )
                     utils.update_yaml(
-                        add_fail_date(formatted_client), "./put/qfailure.yml"
+                        add_failed_date(formatted_client), "./put/qfailure.yml"
                     )
                     send = False
                     break
 
                 if link is None or link == "":
+                    formatted_client = add_key(
+                        formatted_client, "error", "Gap in elif statement"
+                    )
                     utils.update_yaml(
-                        add_fail_date(formatted_client), "./put/qfailure.yml"
+                        add_failed_date(formatted_client), "./put/qfailure.yml"
                     )
                     send = False
                     break
@@ -1656,7 +1703,10 @@ def main():
                 send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
-            utils.update_yaml(format_failed_client(client_params), "./put/qfailure.yml")
+            utils.update_yaml(
+                format_failed_client(client_params, "Error on questionnaire website"),
+                "./put/qfailure.yml",
+            )
 
 
 main()
