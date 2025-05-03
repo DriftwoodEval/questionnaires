@@ -295,7 +295,7 @@ def mark_link_done(
 
 def all_questionnaires_done(client):
     for q in client["questionnaires"]:
-      if not is instance(q, dict):
+      if not isinstance(q, dict):
         log.error(f"{q} in {client['firstname]} {client['lastname']} is not a dictionary.")
         return false
     return all(q["done"] for q in client["questionnaires"] if isinstance(q, dict))
