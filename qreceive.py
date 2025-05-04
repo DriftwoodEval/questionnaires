@@ -99,7 +99,11 @@ def main():
                 f"{client['firstname']} {client['lastname']} is {distance} days away and {'done' if done else 'not done'}"
             )
             if not done:
-                already_messaged_today = client["phone_number"] in numbers_sent
+                already_messaged_today = (
+                    client["phone_number"] in numbers_sent
+                    and client["phone_number"]
+                    != services["openphone"]["users"][config["name"].lower()]["phone"]
+                )
                 if already_messaged_today:
                     utils.log.info(
                         f"Already messaged {client['firstname']} {client['lastname']} at {client['phone_number']} today"
