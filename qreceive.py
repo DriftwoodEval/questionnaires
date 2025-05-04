@@ -86,6 +86,7 @@ def main():
     utils.check_questionnaires(driver, config, services)
     clients = utils.get_previous_clients()
     if clients:
+        numbers_sent = []
         for id in clients:
             client = clients[id]
             utils.mark_links_in_asana(projects_api, client, services, config)
@@ -98,7 +99,12 @@ def main():
                 f"{client['firstname']} {client['lastname']} is {distance} days away and {'done' if done else 'not done'}"
             )
             if not done:
-                if distance >= 5 and distance % 3 == 2:
+                already_messaged_today = client["phone_number"] in numbers_sent
+                if already_messaged_today:
+                    utils.log.info(
+                        f"Already messaged {client['firstname']} {client['lastname']} at {client['phone_number']} today"
+                    )
+                if distance >= 5 and distance % 3 == 2 and not already_messaged_today:
                     utils.log.info(
                         f"Sending reminder TO {client['firstname']} {client['lastname']}"
                     )
@@ -106,6 +112,7 @@ def main():
                     message_sent = send_text_and_ensure(message, client["phone_number"])
                     if message_sent:
                         client["reminded"] = client.get("reminded", 0) + 1
+                        numbers_sent.append(client["phone_number"])
                         utils.sent_reminder_asana(config, projects_api, client)
                     else:
                         utils.send_text(
@@ -126,7 +133,7 @@ def main():
                         f"{client['firstname']} {client['lastname']} has an appointment on {(utils.format_appointment(client))} (in {distance} days) and hasn't done everything, please call them.",
                         services["openphone"]["users"][config["name"].lower()]["phone"],
                     )
-                elif distance < 0 and distance % 3 == 2:
+                elif distance < 0 and distance % 3 == 2 and not already_messaged_today:
                     utils.log.info(
                         f"Sending reminder TO overdue {client['firstname']} {client['lastname']}"
                     )
@@ -134,6 +141,7 @@ def main():
                     message_sent = send_text_and_ensure(message, client["phone_number"])
                     if message_sent:
                         client["reminded"] = client.get("reminded", 0) + 1
+                        numbers_sent.append(client["phone_number"])
                         utils.sent_reminder_asana(config, projects_api, client)
                     else:
                         utils.send_text(
