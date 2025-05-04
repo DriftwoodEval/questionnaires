@@ -349,6 +349,10 @@ def format_appointment(client):
     return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
 
 
+def format_phone_number(raw_number):
+    return f"({raw_number[:3]}) {raw_number[3:6]}-{raw_number[6:]}"
+
+
 def check_questionnaires(driver, config, services, clients=get_previous_clients()):
     if clients:
         for id in clients:
