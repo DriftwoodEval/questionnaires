@@ -105,14 +105,14 @@ def update_yaml(clients, filepath):
         current_yaml = None
 
     if current_yaml is None:
-        log.info(f"Dumping {clients} to {filepath}")
+        log.info(f"Dumping to {filepath}")
         with open(filepath, "w") as file:
             yaml.dump(clients, file, default_flow_style=False)
     else:
         log.info(f"Updating {filepath}")
         current_yaml.update(clients)
         with open(filepath, "w") as file:
-            log.info(f"Dumping {clients} to {filepath}")
+            log.info(f"Dumping to {filepath}")
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
