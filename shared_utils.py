@@ -210,7 +210,8 @@ def search_by_name(projects_api: asana.ProjectsApi, services, name):
         filtered_projects = [
             data
             for data in api_response
-            if name.lower() in re.sub(r"\s+", " ", data["name"]).strip().lower()
+            if name.lower()
+            in re.sub(r"\s+", " ", data["name"].replace('"', "")).strip().lower()
         ]
         project_count = len(filtered_projects)
 
