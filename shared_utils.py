@@ -266,6 +266,16 @@ def search_and_add_questionnaires(
         questionnaire_links_str,
         True,
     )
+    if not asana_link and (client.get("cal_firstname") or client.get("cal_lastname")):
+        name = f"{client.get('cal_firstname', client['firstname'])} {client.get('cal_lastname', client['lastname'])}"
+        asana_link = search_and_add_note(
+            projects_api,
+            services,
+            config,
+            name,
+            questionnaire_links_str,
+            True,
+        )
     client["asana"] = asana_link
     return client
 

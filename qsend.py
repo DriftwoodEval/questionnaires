@@ -1586,7 +1586,16 @@ def main():
                 )
                 continue
             client_info = extract_client_data(driver)
-            combined_client_info = client_params | client_info
+
+            combined_client_info = client_params.copy()
+            for key, value in client_info.items():
+                if key in ["firstname", "lastname"]:
+                    if value.lower() != client_params[key].lower():
+                        combined_client_info[f"cal_{key}"] = client_params[key]
+                        combined_client_info[key] = value
+                else:
+                    combined_client_info[key] = value
+
             client_already_ran = check_client_in_yaml(
                 prev_clients, combined_client_info
             )
