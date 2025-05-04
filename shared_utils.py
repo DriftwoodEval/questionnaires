@@ -305,6 +305,7 @@ def mark_link_done(
 
 
 def all_questionnaires_done(client):
+    log.info(client)  # TODO: remove later, for testing
     for q in client["questionnaires"]:
         if not isinstance(q, dict):
             log.error(
