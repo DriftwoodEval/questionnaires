@@ -50,7 +50,9 @@ def click_element(driver, by, locator, max_attempts=3, delay=1):
             element.click()
             return True
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            log.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+            log.warning(
+                f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
+            )
             sleep(delay)
     log.error(f"Failed to click element after {max_attempts} attempts")
     return False
@@ -62,7 +64,9 @@ def find_element(driver, by, locator, max_attempts=3, delay=1):
             driver.find_element(by, locator)
             return True
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            log.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+            log.warning(
+                f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
+            )
             sleep(delay)
     log.error(f"Failed to find element after {max_attempts} attempts")
     return False
