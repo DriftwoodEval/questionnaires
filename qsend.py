@@ -36,7 +36,7 @@ def parameterize(client):
     last = client[2]
     check = client[3]
     daeval = "DA"
-    if check == "ADHD":
+    if "ADHD" in check:
         date = client[4]
     else:
         daeval = client[4]
@@ -45,6 +45,9 @@ def parameterize(client):
     english = True
     if "INT" in daeval:
         daeval = daeval.replace("INT", "").strip()
+        english = False
+    if "INT" in check:
+        check = check.replace("INT", "").strip()
         english = False
 
     utils.log.info(
