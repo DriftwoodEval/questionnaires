@@ -1484,7 +1484,7 @@ def format_client(client):
 
 
 def add_key(client, key, info):
-    client[key] = info
+    client[list(client.keys())[0]][key] = info
     return client
 
 
