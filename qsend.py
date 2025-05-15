@@ -1535,6 +1535,10 @@ def add_failed_date(client):
     return add_key(client, "failed_date", datetime.today().strftime("%Y/%m/%d"))
 
 
+def add_questionnaires_needed(client, questionnaires):
+    return add_key(client, "questionnaires_needed", questionnaires)
+
+
 def format_failed_client(client_params, error):
     client_info = {
         "check": client_params["check"],
@@ -1690,9 +1694,11 @@ def main():
                 formatted_client[client_info["account_number"]][
                     "questionnaires"
                 ].append({"error": "Too young"})
-                utils.update_yaml(
-                    add_failed_date(formatted_client), "./put/qfailure.yml"
+                formatted_client = add_failed_date(formatted_client)
+                formatted_client = add_questionnaires_needed(
+                    formatted_client, questionnaires
                 )
+                utils.update_yaml(formatted_client, "./put/qfailure.yml")
                 break
 
             utils.log.info(
@@ -1713,9 +1719,11 @@ def main():
                     formatted_client = add_key(
                         formatted_client, "error", "Error assigning questionnaires"
                     )
-                    utils.update_yaml(
-                        add_failed_date(formatted_client), "./put/qfailure.yml"
+                    formatted_client = add_failed_date(formatted_client)
+                    formatted_client = add_questionnaires_needed(
+                        formatted_client, questionnaires
                     )
+                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
                     send = False
                     break
 
@@ -1723,9 +1731,11 @@ def main():
                     formatted_client = add_key(
                         formatted_client, "error", "Gap in elif statement"
                     )
-                    utils.update_yaml(
-                        add_failed_date(formatted_client), "./put/qfailure.yml"
+                    formatted_client = add_failed_date(formatted_client)
+                    formatted_client = add_questionnaires_needed(
+                        formatted_client, questionnaires
                     )
+                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
                     send = False
                     break
 
@@ -1761,5 +1771,3 @@ def main():
 
 
 main()
-
-# TODO: do not try to add client accounts multiple times
