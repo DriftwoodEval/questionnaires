@@ -263,6 +263,7 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
     id = client["account_number"]
     dob = client["birthdate"]
     gender = client["gender"]
+    age = client["age"]
     utils.click_element(
         driver, By.XPATH, "//div[@class='pull-right']//input[@type='submit']"
     )
@@ -417,6 +418,44 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
                 driver,
                 By.XPATH,
                 "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext']",
+            )
+
+        try:
+            utils.log.info("Making sure age matches")
+            error = driver.find_element(
+                By.XPATH,
+                "//span[contains(text(), 'Selected Birthdate does not match the Age.')]",
+            )
+        except NoSuchElementException:
+            utils.log.info("Age matches")
+            return 0
+        if error:
+            utils.log.warning("Age does not match previous client, updating age")
+            age_field = driver.find_element(
+                By.ID,
+                "txtAge",
+            )
+            age_field.send_keys(Keys.CONTROL + "a")
+            age_field.send_keys(Keys.BACKSPACE)
+            age_field.send_keys(age)
+            if questionnaire == "ASRS":
+                utils.log.info("Submitting")
+                utils.click_element(
+                    driver,
+                    By.ID,
+                    "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
+                )
+            else:
+                utils.log.info("Submitting")
+                utils.click_element(
+                    driver,
+                    By.XPATH,
+                    "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext']",
+                )
+            utils.click_element(
+                driver,
+                By.ID,
+                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_SaveSuccessWindow_C_btnConfirmOK",
             )
 
 
@@ -988,9 +1027,9 @@ def gen_asrs_6_18(driver, actions, client):
     ).click()
 
     utils.log.info("Selecting ASRS")
-    driver.find_element(
-        By.XPATH, "//span[contains(normalize-space(text()), 'ASRS')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//span[contains(normalize-space(text()), 'ASRS')]"
+    )
 
     utils.log.info("Selecting Email Invitation")
     driver.find_element(
