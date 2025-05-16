@@ -789,9 +789,7 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     driver.find_element(By.ID, "RaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Entering email")
-    driver.find_element(By.ID, "RemoteAdminEmail_ToEmail").send_keys(
-        "maddy@driftwoodeval.com"
-    )
+    driver.find_element(By.ID, "RemoteAdminEmail_ToEmail").send_keys(config["email"])
 
     utils.log.info("Selecting copy me")
     utils.click_element(driver, By.ID, "RemoteAdminEmail_CopyMe")
@@ -1188,10 +1186,10 @@ def gen_basc_preschool(driver: WebDriver, actions: ActionChains, client: dict) -
     ).click()
 
     utils.log.info("Entering respondent first name")
-    driver.find_element(By.ID, "respondentFirstName").send_keys("M")
+    driver.find_element(By.ID, "respondentFirstName").send_keys(config["initials"][0])
 
     utils.log.info("Entering respondent last name")
-    driver.find_element(By.ID, "respondentLastName").send_keys("P")
+    driver.find_element(By.ID, "respondentLastName").send_keys(config["initials"][-1])
 
     utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
