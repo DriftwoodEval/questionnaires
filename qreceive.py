@@ -16,7 +16,7 @@ utils.log.basicConfig(
 services, config = utils.load_config()
 
 
-def get_text_info(message_id):
+def get_text_info(message_id: str):
     sleep(0.2)
     url = f"https://api.openphone.com/v1/messages/{message_id}"
     headers = {
@@ -29,11 +29,11 @@ def get_text_info(message_id):
 
 
 def send_text_and_ensure(
-    message,
-    to_number,
-    from_number=services["openphone"]["main_number"],
-    user_blame=services["openphone"]["users"][config["name"].lower()]["id"],
-):
+    message: str,
+    to_number: str,
+    from_number: str = services["openphone"]["main_number"],
+    user_blame: str = services["openphone"]["users"][config["name"].lower()]["id"],
+) -> bool:
     attempt_text = utils.send_text(
         config, services, message, to_number, from_number, user_blame
     )
@@ -54,13 +54,13 @@ def send_text_and_ensure(
         return False
 
 
-def check_appointment_distance(appointment: date):
+def check_appointment_distance(appointment: date) -> int:
     today = date.today()
     delta = appointment - today
     return delta.days
 
 
-def build_message(config, client, distance):
+def build_message(config: dict, client: dict, distance: int) -> str:
     link_count = len(client.get("questionnaires", []))
     if distance < 0:
         if distance == -1:

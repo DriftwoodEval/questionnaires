@@ -52,7 +52,7 @@ def google_authenticate():
     return creds
 
 
-def send_gmail(message_text, subject, to_addr, from_addr):
+def send_gmail(message_text: str, subject: str, to_addr: str, from_addr: str):
     creds = google_authenticate()
 
     try:
@@ -80,7 +80,7 @@ def send_gmail(message_text, subject, to_addr, from_addr):
     return send_message
 
 
-def get_tomorrow_clients():
+def get_tomorrow_clients() -> dict:
     clients = utils.get_previous_clients()
     tomorrow_clients = {}
     if clients:
@@ -99,6 +99,7 @@ def generate_evaluator_email(evaluator_address):
     sorted_clients = sorted(evaluator_address, key=lambda k: k["lastname"])
     email_text = f"Here is the status of the questionnaires for tomorrow, {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}:\n\n"
     for client in sorted_clients:
+        asana_link = ""
         if client.get("asana") and client["asana"]:
             asana_link = f"https://app.asana.com/1/{services['asana']['workspace']}/project/{client['asana']}/overview"
 
@@ -110,7 +111,7 @@ def generate_evaluator_email(evaluator_address):
 
         # TODO: add reminded amount once we are far enough out
 
-        email_text += f"{client['firstname']} {client['lastname']} ({asana_link}){sent_date_str}: \n"
+        email_text += f"{client['firstname']} {client['lastname']} {f'({asana_link})' if asana_link else ''}{sent_date_str}: \n"
         for questionnaire in client["questionnaires"]:
             email_text += f"  - {questionnaire['type']} - {'Done' if questionnaire['done'] else 'NOT DONE'}{f' - {questionnaire["link"]}' if not questionnaire['done'] else ''}\n"
         email_text += "\n"
@@ -122,7 +123,7 @@ def generate_evaluator_email(evaluator_address):
     )
 
 
-def generate_ipad_email(client):
+def generate_ipad_email(client) -> str:
     email_text = ""
     for questionnaire in client["questionnaires"]:
         if not questionnaire["done"]:

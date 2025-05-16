@@ -16,11 +16,12 @@ from selenium.common.exceptions import (
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import WebDriver
 
 log = logging
 
 
-def load_config():
+def load_config() -> tuple[dict, dict]:
     with open("./config/info.yml", "r") as file:
         log.info("Loading info file")
         info = yaml.safe_load(file)
@@ -29,9 +30,9 @@ def load_config():
         return services, config
 
 
-def initialize_selenium():
+def initialize_selenium() -> tuple[WebDriver, ActionChains]:
     log.info("Initializing Selenium")
-    chrome_options = Options()
+    chrome_options: Options = Options()
     chrome_options.add_argument("--no-sandbox")
     if os.getenv("HEADLESS") == "true":
         chrome_options.add_argument("--headless")
@@ -43,7 +44,9 @@ def initialize_selenium():
     return driver, actions
 
 
-def click_element(driver, by, locator, max_attempts=3, delay=1):
+def click_element(
+    driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
+) -> bool:
     for attempt in range(max_attempts):
         try:
             element = driver.find_element(by, locator)
@@ -58,7 +61,9 @@ def click_element(driver, by, locator, max_attempts=3, delay=1):
     return False
 
 
-def find_element(driver, by, locator, max_attempts=3, delay=1):
+def find_element(
+    driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
+) -> bool:
     for attempt in range(max_attempts):
         try:
             driver.find_element(by, locator)
@@ -72,7 +77,7 @@ def find_element(driver, by, locator, max_attempts=3, delay=1):
     return False
 
 
-def get_previous_clients(failed=False):
+def get_previous_clients(failed: bool = False) -> dict | None:
     log.info("Loading previous clients")
     clients_filepath = "./put/clients.yml"
     qfailure_filepath = "./put/qfailure.yml"
@@ -96,7 +101,7 @@ def get_previous_clients(failed=False):
     return prev_clients if prev_clients else None
 
 
-def update_yaml(clients, filepath):
+def update_yaml(clients: dict, filepath: str) -> None:
     try:
         with open(filepath, "r") as file:
             current_yaml = yaml.safe_load(file)
@@ -116,7 +121,7 @@ def update_yaml(clients, filepath):
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
-def init_asana(services):
+def init_asana(services: dict) -> asana.ProjectsApi:
     log.info("Initializing Asana")
     configuration = asana.Configuration()
     configuration.access_token = services["asana"]["token"]
@@ -141,7 +146,9 @@ def fetch_project(
         return None
 
 
-def replace_notes(projects_api: asana.ProjectsApi, new_note: str, project_gid: str):
+def replace_notes(
+    projects_api: asana.ProjectsApi, new_note: str, project_gid: str
+) -> bool:
     """Update the notes field in a project."""
     log.info(f"Updating project {project_gid} with note '{new_note}'")
     body = {"data": {"notes": new_note}}
@@ -188,7 +195,9 @@ def add_note(
         replace_notes(projects_api, new_notes, project_gid)
 
 
-def search_by_name(projects_api: asana.ProjectsApi, services, name):
+def search_by_name(
+    projects_api: asana.ProjectsApi, services: dict, name: str
+) -> dict | None:
     opts = {
         "limit": 100,
         "archived": False,
@@ -241,7 +250,7 @@ def search_and_add_note(
     name,
     note,
     raw_note: bool = False,
-):
+) -> str | bool:
     project = search_by_name(projects_api, services, name)
     if project:
         add_note(config, projects_api, project["gid"], note, raw_note)
@@ -252,7 +261,7 @@ def search_and_add_note(
 
 def search_and_add_questionnaires(
     projects_api: asana.ProjectsApi, services, config, client: dict
-):
+) -> dict:
     questionnaire_links_format = [
         f"{item['link']} - {item['type']}" for item in client["questionnaires"]
     ]
@@ -286,7 +295,7 @@ def search_and_add_questionnaires(
 
 def mark_link_done(
     projects_api: asana.ProjectsApi, services, config, project_gid: str, link: str
-):
+) -> None:
     project = fetch_project(projects_api, project_gid)
     if project:
         notes = project["notes"]
@@ -308,7 +317,7 @@ def mark_link_done(
         replace_notes(projects_api, new_note, project_gid)
 
 
-def all_questionnaires_done(client):
+def all_questionnaires_done(client) -> bool:
     for q in client["questionnaires"]:
         if not isinstance(q, dict):
             log.error(
@@ -318,7 +327,7 @@ def all_questionnaires_done(client):
     return all(q["done"] for q in client["questionnaires"] if isinstance(q, dict))
 
 
-def check_q_done(driver, q_link):
+def check_q_done(driver: WebDriver, q_link: str) -> bool:
     driver.implicitly_wait(3)
     url = q_link
     driver.get(url)
@@ -348,16 +357,21 @@ def check_q_done(driver, q_link):
     return complete
 
 
-def format_appointment(client):
+def format_appointment(client: dict) -> str:
     appointment = client["date"]
     return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
 
 
-def format_phone_number(raw_number):
+def format_phone_number(raw_number: str) -> str:
     return f"({raw_number[:3]}) {raw_number[3:6]}-{raw_number[6:]}"
 
 
-def check_questionnaires(driver, config, services, clients=get_previous_clients()):
+def check_questionnaires(
+    driver: WebDriver,
+    config: dict,
+    services: dict,
+    clients: dict | None = get_previous_clients(),
+) -> None:
     if clients:
         for id in clients:
             client = clients[id]
@@ -395,12 +409,12 @@ def check_questionnaires(driver, config, services, clients=get_previous_clients(
 
 
 def send_text(
-    config,
-    services,
-    message,
-    to_number,
-    from_number=None,
-    user_blame=None,
+    config: dict,
+    services: dict,
+    message: str,
+    to_number: str,
+    from_number: str | None = None,
+    user_blame: str | None = None,
 ):
     sleep(0.2)
     if not from_number:
@@ -426,7 +440,9 @@ def send_text(
     return response_data
 
 
-def mark_links_in_asana(projects_api, client, services, config):
+def mark_links_in_asana(
+    projects_api: asana.ProjectsApi, client: dict, services: dict, config: dict
+) -> None:
     if client.get("asana") and client["asana"]:
         for questionnaire in client["questionnaires"]:
             if questionnaire["done"]:
@@ -443,7 +459,9 @@ def mark_links_in_asana(projects_api, client, services, config):
         )
 
 
-def sent_reminder_asana(config, projects_api, client):
+def sent_reminder_asana(
+    config: dict, projects_api: asana.ProjectsApi, client: dict
+) -> None:
     if client.get("asana") and client["asana"]:
         add_note(
             config,
