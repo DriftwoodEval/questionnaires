@@ -4,8 +4,10 @@ from time import sleep, strftime, strptime
 
 from dateutil.relativedelta import relativedelta
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
 
 import shared_utils as utils
@@ -20,7 +22,7 @@ utils.log.basicConfig(
 services, config = utils.load_config()
 
 
-def get_clients():
+def get_clients() -> list[str]:
     utils.log.info("Loading clients list file")
     with open("./put/automation.txt", "r") as f:
         automation = f.read()
@@ -29,18 +31,18 @@ def get_clients():
     return clients
 
 
-def parameterize(client):
-    client = client.split()
-    evaluator_email = client[0]
-    first = client[1]
-    last = client[2]
-    check = client[3]
+def parameterize(client: str) -> dict:
+    client_split = client.split()
+    evaluator_email = client_split[0]
+    first = client_split[1]
+    last = client_split[2]
+    check = client_split[3]
     daeval = "DA"
     if "ADHD" in check:
-        date = client[4]
+        date = client_split[4]
     else:
-        daeval = client[4]
-        date = client[5]
+        daeval = client_split[4]
+        date = client_split[5]
 
     english = True
     if "INT" in daeval:
@@ -64,14 +66,14 @@ def parameterize(client):
     }
 
 
-def rearrangedob(dob):
+def rearrangedob(dob: str) -> str:
     year = dob[0:4]
     month = dob[5:7]
     day = dob[8:10]
     return f"{month}/{day}/{year}"
 
 
-def login_ta(driver, actions):
+def login_ta(driver: WebDriver, actions: ActionChains) -> None:
     utils.log.info("Logging in to TherapyAppointment")
 
     utils.log.info("Going to login page")
@@ -90,7 +92,7 @@ def login_ta(driver, actions):
     actions.perform()
 
 
-def login_wps(driver, actions):
+def login_wps(driver: WebDriver, actions: ActionChains) -> None:
     utils.log.info("Logging in to WPS")
     driver.get("https://platform.wpspublish.com")
 
@@ -108,7 +110,7 @@ def login_wps(driver, actions):
     actions.perform()
 
 
-def login_qglobal(driver, actions):
+def login_qglobal(driver: WebDriver, actions: ActionChains) -> None:
     utils.log.info("Logging in to QGlobal")
     driver.get("https://qglobal.pearsonassessments.com/")
 
@@ -133,7 +135,7 @@ def login_qglobal(driver, actions):
     password.send_keys(Keys.ENTER)
 
 
-def login_mhs(driver, actions):
+def login_mhs(driver: WebDriver, actions: ActionChains) -> None:
     utils.log.info("Logging in to MHS")
     driver.get("https://assess.mhs.com/Account/Login.aspx")
 
@@ -150,7 +152,7 @@ def login_mhs(driver, actions):
     actions.perform()
 
 
-def search_helper(driver, id):
+def search_helper(driver: WebDriver, id: str) -> None:
     utils.log.info(f"Attempting to search for {id}")
     try:
         sleep(1)
@@ -162,7 +164,7 @@ def search_helper(driver, id):
         search_helper(driver, id)
 
 
-def search_qglobal(driver, actions, client):
+def search_qglobal(driver: WebDriver, actions: ActionChains, client: dict) -> None:
     utils.log.info(f"Searching QGlobal for {client['account_number']}")
     id = client["account_number"]
     utils.click_element(driver, By.NAME, "searchForm:j_id347")
@@ -177,7 +179,9 @@ def search_qglobal(driver, actions, client):
     actions.perform()
 
 
-def add_client_to_qglobal(driver, actions, client):
+def add_client_to_qglobal(
+    driver: WebDriver, actions: ActionChains, client: dict
+) -> bool:
     # We deliberately do not use utils.click_element here, since the point of this function requires it to error out sometimes
     utils.log.info(
         f"Attempting to add {client['firstname']} {client['lastname']} to QGlobal"
@@ -230,15 +234,15 @@ def add_client_to_qglobal(driver, actions, client):
 
     utils.log.info("Saving new examinee")
     driver.find_element(By.ID, "save").click()
+    error = None
     try:
         utils.log.info("Checking if client already exists")
         error = driver.find_element(By.NAME, "j_id201")
         exists = True
-    except:  # noqa: E722
+    except NoSuchElementException:
         utils.log.info("Client doesn't exist")
         exists = False
-        return 0
-    if error:
+    if error is not None:
         sleep(3)
         # TODO: log this, I'm not sure what conditions cause this
         try:
@@ -254,7 +258,143 @@ def add_client_to_qglobal(driver, actions, client):
     return exists
 
 
-def add_client_to_mhs(driver, actions, client, questionnaire):
+def add_client_to_mhs(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    questionnaire: str,
+    accounts_created: dict[str, bool],
+) -> bool:
+    def add_to_existing(
+        driver: WebDriver, actions: ActionChains, client: dict, questionnaire: str
+    ) -> bool:
+        utils.log.info("Client already exists, adding to existing")
+        utils.click_element(
+            driver,
+            By.XPATH,
+            "//span[contains(normalize-space(text()), 'My Assessments')]",
+        )
+        utils.log.info(f"Selecting {questionnaire}")
+        utils.click_element(
+            driver,
+            By.XPATH,
+            f"//span[contains(normalize-space(text()), '{questionnaire}')]",
+        )
+        utils.click_element(
+            driver,
+            By.XPATH,
+            "//div[contains(normalize-space(text()), 'Email Invitation')]",
+        )
+        if questionnaire == "ASRS":
+            search = driver.find_element(
+                By.ID,
+                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input",
+            )
+        else:
+            search = driver.find_element(
+                By.XPATH,
+                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input']",
+            )
+
+        utils.log.info("Searching for client")
+        search.send_keys(client["account_number"])
+        actions.send_keys(Keys.ENTER)
+        actions.perform()
+        sleep(1)
+        if questionnaire == "ASRS":
+            utils.log.info("Selecting client")
+            utils.click_element(
+                driver,
+                By.XPATH,
+                "//tr[@id='ctrlControls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_SelectClient_gdClients_ctl00__0']/td[2]",
+            )
+
+            utils.log.info("Submitting")
+            utils.click_element(
+                driver,
+                By.XPATH,
+                "//input[@id='ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_btnNext']",
+            )
+        else:
+            utils.log.info("Selecting client")
+            utils.click_element(
+                driver,
+                By.XPATH,
+                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_gdClients_ctl00_ctl04_ClientSelectSelectCheckBox']",
+            )
+
+            utils.log.info("Submitting")
+            utils.click_element(
+                driver,
+                By.XPATH,
+                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_btnNext']",
+            )
+
+        utils.log.info("Selecting purpose")
+        purpose_element = driver.find_element(
+            By.CSS_SELECTOR, "select[placeholder='Select an option']"
+        )
+        purpose = Select(purpose_element)
+        sleep(1)
+        purpose.select_by_visible_text("Psychoeducational Evaluation")
+
+        if questionnaire == "ASRS":
+            utils.log.info("Submitting")
+            utils.click_element(
+                driver,
+                By.ID,
+                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
+            )
+        else:
+            utils.log.info("Submitting")
+            utils.click_element(
+                driver,
+                By.XPATH,
+                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext']",
+            )
+
+        try:
+            utils.log.info("Making sure age matches")
+            error = driver.find_element(
+                By.XPATH,
+                "//span[contains(text(), 'Selected Birthdate does not match the Age.')]",
+            )
+        except NoSuchElementException:
+            utils.log.info("Age matches")
+            return True
+        if error:
+            utils.log.warning("Age does not match previous client, updating age")
+            age_field = driver.find_element(
+                By.ID,
+                "txtAge",
+            )
+            age_field.send_keys(Keys.CONTROL + "a")
+            age_field.send_keys(Keys.BACKSPACE)
+            age_field.send_keys(client["age"])
+            if questionnaire == "ASRS":
+                utils.log.info("Submitting")
+                utils.click_element(
+                    driver,
+                    By.ID,
+                    "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
+                )
+            else:
+                utils.log.info("Submitting")
+                utils.click_element(
+                    driver,
+                    By.ID,
+                    "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
+                )
+            utils.click_element(
+                driver,
+                By.ID,
+                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_SaveSuccessWindow_C_btnConfirmOK",
+            )
+        return True
+
+    if "mhs" in accounts_created and accounts_created["mhs"]:
+        return add_to_existing(driver, actions, client, questionnaire)
+
     utils.log.info(
         f"Atempting to add {client['firstname']} {client['lastname']} to MHS"
     )
@@ -263,7 +403,6 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
     id = client["account_number"]
     dob = client["birthdate"]
     gender = client["gender"]
-    age = client["age"]
     utils.click_element(
         driver, By.XPATH, "//div[@class='pull-right']//input[@type='submit']"
     )
@@ -328,138 +467,19 @@ def add_client_to_mhs(driver, actions, client, questionnaire):
     utils.log.info("Saving")
     utils.click_element(driver, By.CSS_SELECTOR, ".pull-right > input[type='submit']")
     try:
-        error = driver.find_element(
+        driver.find_element(
             By.XPATH,
             "//span[contains(text(), 'A client with the same ID already exists')]",
         )
     except:  # noqa: E722
-        utils.log.info("No error")
-        return 0
-    if error:
-        utils.log.info("Client already exists, adding to existing")
-        utils.click_element(
-            driver,
-            By.XPATH,
-            "//span[contains(normalize-space(text()), 'My Assessments')]",
-        )
-        utils.log.info(f"Selecting {questionnaire}")
-        utils.click_element(
-            driver,
-            By.XPATH,
-            f"//span[contains(normalize-space(text()), '{questionnaire}')]",
-        )
-        utils.click_element(
-            driver,
-            By.XPATH,
-            "//div[contains(normalize-space(text()), 'Email Invitation')]",
-        )
-        if questionnaire == "ASRS":
-            search = driver.find_element(
-                By.ID,
-                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input",
-            )
-        else:
-            search = driver.find_element(
-                By.XPATH,
-                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input']",
-            )
-
-        utils.log.info("Searching for client")
-        search.send_keys(id)
-        actions.send_keys(Keys.ENTER)
-        actions.perform()
-        sleep(1)
-        if questionnaire == "ASRS":
-            utils.log.info("Selecting client")
-            utils.click_element(
-                driver,
-                By.XPATH,
-                "//tr[@id='ctrlControls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_SelectClient_gdClients_ctl00__0']/td[2]",
-            )
-
-            utils.log.info("Submitting")
-            utils.click_element(
-                driver,
-                By.XPATH,
-                "//input[@id='ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_btnNext']",
-            )
-        else:
-            utils.log.info("Selecting client")
-            utils.click_element(
-                driver,
-                By.XPATH,
-                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_gdClients_ctl00_ctl04_ClientSelectSelectCheckBox']",
-            )
-
-            utils.log.info("Submitting")
-            utils.click_element(
-                driver,
-                By.XPATH,
-                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_btnNext']",
-            )
-
-        utils.log.info("Selecting purpose")
-        purpose_element = driver.find_element(
-            By.CSS_SELECTOR, "select[placeholder='Select an option']"
-        )
-        purpose = Select(purpose_element)
-        sleep(1)
-        purpose.select_by_visible_text("Psychoeducational Evaluation")
-        if questionnaire == "ASRS":
-            utils.log.info("Submitting")
-            utils.click_element(
-                driver,
-                By.ID,
-                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
-            )
-        else:
-            utils.log.info("Submitting")
-            utils.click_element(
-                driver,
-                By.XPATH,
-                "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext']",
-            )
-
-        try:
-            utils.log.info("Making sure age matches")
-            error = driver.find_element(
-                By.XPATH,
-                "//span[contains(text(), 'Selected Birthdate does not match the Age.')]",
-            )
-        except NoSuchElementException:
-            utils.log.info("Age matches")
-            return 0
-        if error:
-            utils.log.warning("Age does not match previous client, updating age")
-            age_field = driver.find_element(
-                By.ID,
-                "txtAge",
-            )
-            age_field.send_keys(Keys.CONTROL + "a")
-            age_field.send_keys(Keys.BACKSPACE)
-            age_field.send_keys(age)
-            if questionnaire == "ASRS":
-                utils.log.info("Submitting")
-                utils.click_element(
-                    driver,
-                    By.ID,
-                    "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext",
-                )
-            else:
-                utils.log.info("Submitting")
-                utils.click_element(
-                    driver,
-                    By.XPATH,
-                    "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext']",
-                )
-            utils.click_element(
-                driver,
-                By.ID,
-                "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_SaveSuccessWindow_C_btnConfirmOK",
-            )
+        utils.log.info("Added to MHS")
+        return True
+    return add_to_existing(driver, actions, client, questionnaire)
 
 
-def get_questionnaires(age, check, daeval, vineland):
+def get_questionnaires(
+    age: int, check: str, daeval: str, vineland: bool
+) -> list[str] | str:
     if daeval == "EVAL":
         if check == "ASD":
             if age < 2:  # 1.5
@@ -499,8 +519,6 @@ def get_questionnaires(age, check, daeval, vineland):
                 return ["ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
             else:
                 return ["ABAS 3", "SRS-2", "CAARS 2", "PAI"]
-        else:
-            return
     elif daeval == "DA":
         if check == "ASD":
             if age < 2:  # 1.5
@@ -573,9 +591,16 @@ def get_questionnaires(age, check, daeval, vineland):
             return ["SRS Self", "ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
         else:
             return ["SRS Self", "ABAS 3", "SRS-2", "CAARS 2", "PAI"]
+    return "Unknown"
 
 
-def assign_questionnaire(driver, actions, client, questionnaire):
+def assign_questionnaire(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    questionnaire: str,
+    accounts_created: dict[str, bool],
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(
         f"Assigning questionnaire '{questionnaire}' to client {client['firstname']} {client['lastname']}"
     )
@@ -586,53 +611,68 @@ def assign_questionnaire(driver, actions, client, questionnaire):
     if questionnaire == "Conners EC":
         utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
-        return gen_conners_ec(driver, actions, client)
+        return gen_conners_ec(driver, actions, client, accounts_created)
     elif questionnaire == "Conners 4":
         utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
-        return gen_conners_4(driver, actions, client)
+        return gen_conners_4(driver, actions, client, accounts_created)
     elif questionnaire == "Conners 4 Self":
         utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
-        return gen_conners_4_self(driver, actions, client)
+        return gen_conners_4_self(driver, actions, client, accounts_created)
     elif questionnaire == "BASC Preschool":
-        utils.log.info(f"Navigating to QGlobal and adding client for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        add_client_to_qglobal(driver, actions, client)
-        return gen_basc_preschool(driver, actions, client)
+        if not accounts_created["qglobal"]:
+            utils.log.info("Adding client to QGlobal")
+            accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+        else:
+            utils.log.info("Client already added to QGlobal")
+        return gen_basc_preschool(driver, actions, client), accounts_created
     elif questionnaire == "BASC Child":
-        utils.log.info(f"Navigating to QGlobal and adding client for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        add_client_to_qglobal(driver, actions, client)
-        return gen_basc_child(driver, actions, client)
+        if not accounts_created["qglobal"]:
+            utils.log.info("Adding client to QGlobal")
+            accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+        else:
+            utils.log.info("Client already added to QGlobal")
+        return gen_basc_child(driver, actions, client), accounts_created
     elif questionnaire == "BASC Adolescent":
-        utils.log.info(f"Navigating to QGlobal and adding client for {questionnaire}")
+        utils.log.info(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        add_client_to_qglobal(driver, actions, client)
-        return gen_basc_adolescent(driver, actions, client)
+        if not accounts_created["qglobal"]:
+            utils.log.info("Adding client to QGlobal")
+            accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+        else:
+            utils.log.info("Client already added to QGlobal")
+        return gen_basc_adolescent(driver, actions, client), accounts_created
     elif questionnaire == "ASRS (2-5 Years)":
         utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
-        return gen_asrs_2_5(driver, actions, client)
+        return gen_asrs_2_5(driver, actions, client, accounts_created)
     elif questionnaire == "ASRS (6-18 Years)":
         utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
-        return gen_asrs_6_18(driver, actions, client)
+        return gen_asrs_6_18(driver, actions, client, accounts_created)
     elif questionnaire == "Vineland":
         utils.log.info(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        return gen_vineland(driver, actions, client)
+        return gen_vineland(driver, actions, client), accounts_created
     elif questionnaire == "CAARS 2":
         utils.log.info(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
-        return gen_caars_2(driver, actions, client)
+        return gen_caars_2(driver, actions, client, accounts_created)
     elif questionnaire == "DP4":
         utils.log.info(f"Navigating to WPS for {questionnaire}")
         driver.get(wps_url)
-        return gen_dp4(driver, actions, client)
+        return gen_dp4(driver, actions, client), accounts_created
+    else:
+        utils.log.error("Unexpected questionnaire type encountered")
+        raise ValueError("Unsupported questionnaire type")
 
 
-def gen_dp4(driver, actions, client):
+def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.log.info(f"Generating DP4 for {client['firstname']} {client['lastname']}")
     firstname = client["firstname"]
     lastname = client["lastname"]
@@ -770,6 +810,8 @@ def gen_dp4(driver, actions, client):
 
     utils.log.info("Getting form link")
     body = driver.find_element(By.ID, "RemoteAdminEmail_Content").get_attribute("value")
+    if body is None:
+        raise ValueError("Email body is None")
     body = body.split()
     body = body[3]
     link = body[6:-1]
@@ -778,7 +820,12 @@ def gen_dp4(driver, actions, client):
     return link
 
 
-def gen_conners_ec(driver, actions, client):
+def gen_conners_ec(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    accounts_created: dict[str, bool],
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(
         f"Generating Conners EC for {client['firstname']} {client['lastname']}"
     )
@@ -796,7 +843,9 @@ def gen_conners_ec(driver, actions, client):
         driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
     )
 
-    add_client_to_mhs(driver, actions, client, "Conners EC")
+    accounts_created["mhs"] = add_client_to_mhs(
+        driver, actions, client, "Conners EC", accounts_created
+    )
 
     utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
@@ -834,12 +883,16 @@ def gen_conners_ec(driver, actions, client):
 
     utils.log.info("Getting link")
     link = driver.find_element(By.ID, "txtLink").get_attribute("value")
+    if link is None:
+        raise ValueError("Link is None")
 
-    utils.log.info(f"Returning link {link}")
-    return link
+    utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
+    return link, accounts_created
 
 
-def gen_conners_4(driver, actions, client):
+def gen_conners_4(
+    driver, actions, client, accounts_created
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(
         f"Generating Conners 4 for {client['firstname']} {client['lastname']}"
     )
@@ -858,7 +911,9 @@ def gen_conners_4(driver, actions, client):
     )
 
     utils.log.info("Adding client to MHS")
-    add_client_to_mhs(driver, actions, client, "Conners 4")
+    accounts_created["mhs"] = add_client_to_mhs(
+        driver, actions, client, "Conners 4", accounts_created
+    )
 
     utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
@@ -889,11 +944,16 @@ def gen_conners_4(driver, actions, client):
     sleep(3)
     link = driver.find_element(By.ID, "txtLink").get_attribute("value")
 
-    utils.log.info(f"Returning link {link}")
-    return link
+    utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
+    return link, accounts_created
 
 
-def gen_conners_4_self(driver, actions, client):
+def gen_conners_4_self(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    accounts_created: dict[str, bool],
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(
         f"Generating Conners 4 for {client['firstname']} {client['lastname']}"
     )
@@ -912,7 +972,9 @@ def gen_conners_4_self(driver, actions, client):
     )
 
     utils.log.info("Adding client to MHS")
-    add_client_to_mhs(driver, actions, client, "Conners 4")
+    accounts_created["mhs"] = add_client_to_mhs(
+        driver, actions, client, "Conners 4", accounts_created
+    )
 
     utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
@@ -948,12 +1010,19 @@ def gen_conners_4_self(driver, actions, client):
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(3)
     link = driver.find_element(By.ID, "txtLink").get_attribute("value")
+    if link is None:
+        raise ValueError("Link is None")
 
-    utils.log.info(f"Returning link {link}")
-    return link
+    utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
+    return link, accounts_created
 
 
-def gen_asrs_2_5(driver, actions, client):
+def gen_asrs_2_5(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    accounts_created: dict[str, bool],
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(
         f"Generating ASRS (2-5 Years) for {client['firstname']} {client['lastname']}"
     )
@@ -972,7 +1041,9 @@ def gen_asrs_2_5(driver, actions, client):
     )
 
     utils.log.info("Adding client to MHS")
-    add_client_to_mhs(driver, actions, client, "ASRS")
+    accounts_created["mhs"] = add_client_to_mhs(
+        driver, actions, client, "ASRS", accounts_created
+    )
 
     utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
@@ -1013,12 +1084,19 @@ def gen_asrs_2_5(driver, actions, client):
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
+    if link is None:
+        raise ValueError("Link is None")
 
-    utils.log.info(f"Returning link {link}")
-    return link
+    utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
+    return link, accounts_created
 
 
-def gen_asrs_6_18(driver, actions, client):
+def gen_asrs_6_18(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    accounts_created: dict[str, bool],
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(
         f"Generating ASRS (6-18 Years) for {client['firstname']} {client['lastname']}"
     )
@@ -1037,7 +1115,9 @@ def gen_asrs_6_18(driver, actions, client):
     ).click()
 
     utils.log.info("Adding client to MHS")
-    add_client_to_mhs(driver, actions, client, "ASRS")
+    accounts_created["mhs"] = add_client_to_mhs(
+        driver, actions, client, "ASRS", accounts_created
+    )
     sleep(1)
 
     utils.log.info("Selecting assessment description")
@@ -1076,12 +1156,14 @@ def gen_asrs_6_18(driver, actions, client):
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
+    if link is None:
+        raise ValueError("Link is None")
 
-    utils.log.info(f"Returning link {link}")
-    return link
+    utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
+    return link, accounts_created
 
 
-def gen_basc_preschool(driver, actions, client):
+def gen_basc_preschool(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.log.info(
         f"Generating BASC Preschool for {client['firstname']} {client['lastname']}"
     )
@@ -1125,11 +1207,14 @@ def gen_basc_preschool(driver, actions, client):
 
     driver.switch_to.default_content()
 
+    if link is None:
+        raise ValueError("Link is None")
+
     utils.log.info(f"Returning link {link}")
     return link
 
 
-def gen_basc_child(driver, actions, client):
+def gen_basc_child(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.log.info(
         f"Generating BASC Child for {client['firstname']} {client['lastname']}"
     )
@@ -1173,11 +1258,14 @@ def gen_basc_child(driver, actions, client):
 
     driver.switch_to.default_content()
 
+    if link is None:
+        raise ValueError("Link is None")
+
     utils.log.info(f"Returning link {link}")
     return link
 
 
-def gen_basc_adolescent(driver, actions, client):
+def gen_basc_adolescent(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.log.info(
         f"Generating BASC Adolescent for {client['firstname']} {client['lastname']}"
     )
@@ -1221,11 +1309,14 @@ def gen_basc_adolescent(driver, actions, client):
 
     driver.switch_to.default_content()
 
+    if link is None:
+        raise ValueError("Link is None")
+
     utils.log.info(f"Returning link {link}")
     return link
 
 
-def gen_vineland(driver, actions, client):
+def gen_vineland(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.log.info(
         f"Generating Vineland for {client['firstname']} {client['lastname']}"
     )
@@ -1280,11 +1371,19 @@ def gen_vineland(driver, actions, client):
 
     driver.switch_to.default_content()
 
+    if link is None:
+        raise ValueError("Link is None")
+
     utils.log.info(f"Returning link {link}")
     return link
 
 
-def gen_caars_2(driver, actions, client):
+def gen_caars_2(
+    driver: WebDriver,
+    actions: ActionChains,
+    client: dict,
+    accounts_created: dict[str, bool],
+) -> tuple[str, dict[str, bool]]:
     utils.log.info(f"Generating CAARS 2 for {client['firstname']} {client['lastname']}")
     driver.find_element(
         By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1301,7 +1400,9 @@ def gen_caars_2(driver, actions, client):
     ).click()
 
     utils.log.info("Adding client to MHS")
-    add_client_to_mhs(driver, actions, client, "CAARS 2")
+    accounts_created["mhs"] = add_client_to_mhs(
+        driver, actions, client, "CAARS 2", accounts_created
+    )
 
     utils.log.info("Selecting assessment description")
     purpose_element = driver.find_element(By.ID, "ddl_Description")
@@ -1332,11 +1433,16 @@ def gen_caars_2(driver, actions, client):
         "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx$CreateLink$txtLink",
     ).get_attribute("value")
 
-    utils.log.info(f"Returning link {link}")
-    return link
+    if link is None:
+        raise ValueError("Link is None")
+
+    utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
+    return link, accounts_created
 
 
-def search_clients(driver, actions, firstname, lastname):
+def search_clients(
+    driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+) -> None:
     utils.log.info(f"Searching for {firstname} {lastname}")
     sleep(2)
 
@@ -1360,7 +1466,9 @@ def search_clients(driver, actions, firstname, lastname):
     search_button.click()
 
 
-def go_to_client(driver, actions, firstname, lastname):
+def go_to_client(
+    driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+) -> str:
     driver.get("https://portal.therapyappointment.com")
     sleep(1)
     utils.log.info("Navigating to Clients section")
@@ -1396,7 +1504,7 @@ def go_to_client(driver, actions, firstname, lastname):
     return current_url
 
 
-def extract_client_data(driver):
+def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     utils.log.info("Attempting to extract client data")
     name = driver.find_element(By.CLASS_NAME, "text-h4").text
     firstname = name.split(" ")[0]
@@ -1452,7 +1560,7 @@ def extract_client_data(driver):
     }
 
 
-def check_if_opened_portal(driver):
+def check_if_opened_portal(driver: WebDriver) -> bool:
     try:
         driver.find_element(By.CSS_SELECTOR, "input[aria-checked='true']")
         return True
@@ -1460,7 +1568,7 @@ def check_if_opened_portal(driver):
         return False
 
 
-def check_if_docs_signed(driver):
+def check_if_docs_signed(driver: WebDriver) -> bool:
     try:
         driver.find_element(
             By.XPATH,
@@ -1471,7 +1579,7 @@ def check_if_docs_signed(driver):
         return False
 
 
-def format_ta_message(questionnaires):
+def format_ta_message(questionnaires: list[dict]) -> str:
     utils.log.info("Formatting TA message")
     message = ""
     for id, questionnaire in enumerate(questionnaires, start=1):
@@ -1483,7 +1591,7 @@ def format_ta_message(questionnaires):
     return message
 
 
-def send_message_ta(driver, client_url, message):
+def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
     utils.log.info("Navigating to client URL")
     driver.get(client_url)
 
@@ -1517,29 +1625,29 @@ def send_message_ta(driver, client_url, message):
     utils.click_element(driver, By.CSS_SELECTOR, "button[type='submit']")
 
 
-def format_client(client):
+def format_client(client) -> dict:
     account_number = client["account_number"]
     return {account_number: client}
 
 
-def add_key(client, key, info):
+def add_key(client: dict, key: str, info) -> dict:
     client[list(client.keys())[0]][key] = info
     return client
 
 
-def add_sent_date(formatted_client):
+def add_sent_date(formatted_client: dict) -> dict:
     return add_key(formatted_client, "sent_date", datetime.today().strftime("%Y/%m/%d"))
 
 
-def add_failed_date(client):
+def add_failed_date(client: dict) -> dict:
     return add_key(client, "failed_date", datetime.today().strftime("%Y/%m/%d"))
 
 
-def add_questionnaires_needed(client, questionnaires):
+def add_questionnaires_needed(client: dict, questionnaires: list[str] | str) -> dict:
     return add_key(client, "questionnaires_needed", questionnaires)
 
 
-def format_failed_client(client_params, error):
+def format_failed_client(client_params: dict, error: str) -> dict:
     client_info = {
         "check": client_params["check"],
         "daeval": client_params["daeval"],
@@ -1550,7 +1658,7 @@ def format_failed_client(client_params, error):
     return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
 
 
-def write_file(filepath, data):
+def write_file(filepath: str, data: str) -> None:
     data = data.strip("\n")
     try:
         utils.log.info(f"Opening file {filepath} for reading")
@@ -1573,7 +1681,7 @@ def write_file(filepath, data):
             utils.log.info("Wrote data to new file")
 
 
-def check_client_in_yaml(prev_clients, client_info):
+def check_client_in_yaml(prev_clients: dict, client_info: dict) -> bool:
     if prev_clients is None:
         return False
     account_number = client_info.get("account_number")
@@ -1635,16 +1743,20 @@ def main():
 
             combined_client_info = client_params.copy()
             for key, value in client_info.items():
-                if key in ["firstname", "lastname"]:
+                if key in ["firstname", "lastname"] and isinstance(value, str):
                     if value.lower() != client_params[key].lower():
                         combined_client_info[f"cal_{key}"] = client_params[key]
                         combined_client_info[key] = value
                 else:
                     combined_client_info[key] = value
 
-            client_already_ran = check_client_in_yaml(
-                prev_clients, combined_client_info
-            )
+            if prev_clients is not None:
+                client_already_ran = check_client_in_yaml(
+                    prev_clients, combined_client_info
+                )
+            else:
+                client_already_ran = False
+
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
             utils.update_yaml(
@@ -1665,6 +1777,7 @@ def main():
         )
 
         try:
+            accounts_created = {}
             if (
                 int(combined_client_info["age"]) < 19
                 and client_params["daeval"] != "DA"
@@ -1673,8 +1786,11 @@ def main():
                     "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
                 )
                 vineland = add_client_to_qglobal(driver, actions, combined_client_info)
+                accounts_created["qglobal"] = True
             else:
                 vineland = False
+                accounts_created["qglobal"] = False
+
             questionnaires = get_questionnaires(
                 combined_client_info["age"],
                 combined_client_info["check"],
@@ -1701,6 +1817,18 @@ def main():
                 utils.update_yaml(formatted_client, "./put/qfailure.yml")
                 break
 
+            if str(questionnaires) == "Unknown":
+                utils.log.warning(
+                    f"{formatted_client[client_info['account_number']]['firstname']} "
+                    f"{formatted_client[client_info['account_number']]['lastname']} has unknown questionnaire needs"
+                )
+                formatted_client[client_info["account_number"]][
+                    "questionnaires"
+                ].append({"error": "Unknown questionnaire needs"})
+                formatted_client = add_failed_date(formatted_client)
+                utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                break
+
             utils.log.info(
                 f"Questionnaires needed for {formatted_client[client_info['account_number']]['firstname']} "
                 f"{formatted_client[client_info['account_number']]['lastname']} for "
@@ -1711,8 +1839,12 @@ def main():
             send = True
             for questionnaire in questionnaires:
                 try:
-                    link = assign_questionnaire(
-                        driver, actions, combined_client_info, questionnaire
+                    link, accounts_created = assign_questionnaire(
+                        driver,
+                        actions,
+                        combined_client_info,
+                        questionnaire,
+                        accounts_created,
                     )
                 except Exception as e:  # noqa: E722
                     utils.log.error(f"Error assigning {questionnaire}: {e}")
