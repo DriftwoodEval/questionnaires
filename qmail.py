@@ -97,11 +97,11 @@ def get_tomorrow_clients() -> dict:
 
 def generate_evaluator_email(evaluator_address):
     sorted_clients = sorted(evaluator_address, key=lambda k: k["lastname"])
-    email_text = f"Here is the status of the questionnaires for tomorrow, {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}:\n\n"
+    email_text = f"What we know about questionnaires for your appointments tomorrow, {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}:\n"
     for client in sorted_clients:
-        asana_link = ""
-        if client.get("asana") and client["asana"]:
-            asana_link = f"https://app.asana.com/1/{services['asana']['workspace']}/project/{client['asana']}/overview"
+        # asana_link = ""
+        # if client.get("asana") and client["asana"]:
+        #     asana_link = f"https://app.asana.com/1/{services['asana']['workspace']}/project/{client['asana']}/overview"
 
         sent_date_str = (
             f" [sent on {datetime.strptime(client['sent_date'], '%Y/%m/%d').strftime('%m/%d')}]"
@@ -109,12 +109,14 @@ def generate_evaluator_email(evaluator_address):
             else ""
         )
 
-        # TODO: add reminded amount once we are far enough out
+        reminded_str = (
+            f" [reminded {client['reminded']} times]" if client.get("reminded") else ""
+        )
 
-        email_text += f"{client['firstname']} {client['lastname']} {f'({asana_link})' if asana_link else ''}{sent_date_str}: \n"
+        email_text += f"\n{client['firstname']} {client['lastname']}{sent_date_str}{reminded_str}:\n"
         for questionnaire in client["questionnaires"]:
             email_text += f"  - {questionnaire['type']} - {'Done' if questionnaire['done'] else 'NOT DONE'}{f' - {questionnaire["link"]}' if not questionnaire['done'] else ''}\n"
-        email_text += "\n"
+    email_text += "\nThis is an automated message, information may be incomplete (such as for non-English clients) or have changed."
     send_gmail(
         email_text,
         f"Questionnaires for {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}",
@@ -123,12 +125,9 @@ def generate_evaluator_email(evaluator_address):
     )
 
 
-def generate_ipad_email(client) -> str:
-    email_text = ""
-    for questionnaire in client["questionnaires"]:
-        if not questionnaire["done"]:
-            email_text += f"- {questionnaire['type']} - {questionnaire['link']}\n"
-    return email_text
+def generate_ipad_email(client):
+    # TODO: this will require location...
+    pass
 
 
 def main():
@@ -152,10 +151,6 @@ def main():
                 clients_by_evaluator[evaluator_email].append(client)
 
             utils.mark_links_in_asana(projects_api, client, services, config)
-
-            # TODO: send ipad emails?
-            # if not utils.all_questionnaires_done(client):
-            # print(generate_ipad_email(client))
 
     for evaluator in clients_by_evaluator:
         generate_evaluator_email(clients_by_evaluator[evaluator])
