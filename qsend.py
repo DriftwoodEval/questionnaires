@@ -1607,7 +1607,7 @@ def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
 
     utils.log.info("Setting message subject")
     driver.find_element(By.ID, "message_thread_subject").send_keys(
-        "Please complete the link(s) below"
+        "Please complete the link(s) below. Thank you."
     )
     sleep(1)
 
