@@ -1716,9 +1716,7 @@ def main():
             utils.log.warning(
                 f"Skipping Non-English client {client_params['firstname']} {client_params['lastname']}"
             )
-            utils.update_yaml(
-                format_failed_client(client_params, "Non-English"), "./put/qfailure.yml"
-            )
+            utils.add_failure(format_failed_client(client_params, "Non-English"))
             continue
 
         try:
@@ -1726,15 +1724,13 @@ def main():
                 driver, actions, client_params["firstname"], client_params["lastname"]
             )
             if not check_if_opened_portal(driver):
-                utils.update_yaml(
-                    format_failed_client(client_params, "Portal not opened"),
-                    "./put/qfailure.yml",
+                utils.add_failure(
+                    format_failed_client(client_params, "Portal not opened")
                 )
                 continue
             if not check_if_docs_signed(driver):
-                utils.update_yaml(
-                    format_failed_client(client_params, "Docs not signed"),
-                    "./put/qfailure.yml",
+                utils.add_failure(
+                    format_failed_client(client_params, "Docs not signed")
                 )
                 continue
             client_info = extract_client_data(driver)
@@ -1757,9 +1753,8 @@ def main():
 
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
-            utils.update_yaml(
-                format_failed_client(client_params, "Unable to find client"),
-                "./put/qfailure.yml",
+            utils.add_failure(
+                format_failed_client(client_params, "Unable to find client")
             )
             break
 
@@ -1812,7 +1807,7 @@ def main():
                 formatted_client = add_questionnaires_needed(
                     formatted_client, questionnaires
                 )
-                utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                utils.add_failure(formatted_client)
                 break
 
             if str(questionnaires) == "Unknown":
@@ -1824,7 +1819,7 @@ def main():
                     "questionnaires"
                 ].append({"error": "Unknown questionnaire needs"})
                 formatted_client = add_failed_date(formatted_client)
-                utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                utils.add_failure(formatted_client)
                 break
 
             utils.log.info(
@@ -1853,7 +1848,7 @@ def main():
                     formatted_client = add_questionnaires_needed(
                         formatted_client, questionnaires
                     )
-                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                    utils.add_failure(formatted_client)
                     send = False
                     break
 
@@ -1865,7 +1860,7 @@ def main():
                     formatted_client = add_questionnaires_needed(
                         formatted_client, questionnaires
                     )
-                    utils.update_yaml(formatted_client, "./put/qfailure.yml")
+                    utils.add_failure(formatted_client)
                     send = False
                     break
 
@@ -1884,19 +1879,15 @@ def main():
                     )
                 )
                 formatted_client = add_sent_date(formatted_client)
-                utils.update_yaml(
-                    formatted_client,
-                    "./put/clients.yml",
-                )
+                utils.add_failure(formatted_client)
                 message = format_ta_message(
                     formatted_client[client_info["account_number"]]["questionnaires"]
                 )
                 send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
-            utils.update_yaml(
-                format_failed_client(client_params, "Error on questionnaire website"),
-                "./put/qfailure.yml",
+            utils.add_failure(
+                format_failed_client(client_params, "Error on questionnaire website")
             )
 
 

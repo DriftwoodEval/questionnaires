@@ -121,6 +121,13 @@ def update_yaml(clients: dict, filepath: str) -> None:
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
+def add_failure(client: dict) -> None:
+    qfailure_filepath = "./put/qfailure.yml"
+    qfailsend_filepath = "./put/qfailsend.yml"
+    update_yaml(client, qfailure_filepath)
+    update_yaml(client, qfailsend_filepath)
+
+
 def init_asana(services: dict) -> asana.ProjectsApi:
     log.info("Initializing Asana")
     configuration = asana.Configuration()
