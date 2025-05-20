@@ -1936,7 +1936,7 @@ def main():
                     )
                 )
                 formatted_client = add_sent_date(formatted_client)
-                utils.add_failure(formatted_client)
+                utils.update_yaml(formatted_client, "./put/clients.yml")
                 message = format_ta_message(
                     formatted_client[client_info["account_number"]]["questionnaires"]
                 )
