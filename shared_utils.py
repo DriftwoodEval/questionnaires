@@ -52,22 +52,20 @@ def click_element(
     max_attempts: int = 3,
     delay: int = 1,
     refresh: bool = False,
-) -> bool:
+) -> None:
     for attempt in range(max_attempts):
         try:
             element = driver.find_element(by, locator)
             element.click()
-            return True
+            return
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            log.warning(
-                f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
-            )
+            log.warning(f"Attempt {attempt + 1} failed: {type(e).__name__}.")
+            sleep(delay)
             if refresh:
                 log.info("Refreshing page")
                 driver.refresh()
             sleep(delay)
-    log.error(f"Failed to click element after {max_attempts} attempts")
-    return False
+    raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
 
 
 def find_element(

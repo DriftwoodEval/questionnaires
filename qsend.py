@@ -1469,67 +1469,85 @@ def gen_caars_2(
     return link, accounts_created
 
 
-def search_clients(
-    driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
-) -> None:
-    utils.log.info(f"Searching for {firstname} {lastname}")
-    sleep(2)
-
-    utils.log.info("Trying to escape random popups")
-    actions.send_keys(Keys.ESCAPE)
-    actions.perform()
-    utils.log.info("Entering first name")
-    firstname_label = utils.find_element(
-        driver, By.XPATH, "//label[text()='First Name']"
-    )
-    firstname_field = firstname_label.find_element(
-        By.XPATH, "./following-sibling::input"
-    )
-    firstname_field.send_keys(firstname)
-
-    utils.log.info("Entering last name")
-    lastname_label = utils.find_element(driver, By.XPATH, "//label[text()='Last Name']")
-    lastname_field = lastname_label.find_element(By.XPATH, "./following-sibling::input")
-    lastname_field.send_keys(lastname)
-
-    utils.log.info("Clicking search")
-    utils.click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
-
-
 def go_to_client(
     driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
-) -> str:
-    driver.get("https://portal.therapyappointment.com")
-    sleep(1)
-    utils.log.info("Navigating to Clients section")
-    utils.click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
+) -> str | None:
+    def _search_clients(
+        driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+    ) -> None:
+        utils.log.info(f"Searching for {firstname} {lastname}")
+        sleep(2)
 
-    for _ in range(3):
-        try:
-            search_clients(driver, actions, firstname, lastname)
-            break
-        except Exception as e:
-            utils.log.info(f"Failed to search: {e}, trying again")
-            driver.refresh()
+        utils.log.info("Trying to escape random popups")
+        actions.send_keys(Keys.ESCAPE)
+        actions.perform()
+        utils.log.info("Entering first name")
+        firstname_label = utils.find_element(
+            driver, By.XPATH, "//label[text()='First Name']"
+        )
+        firstname_field = firstname_label.find_element(
+            By.XPATH, "./following-sibling::input"
+        )
+        firstname_field.send_keys(firstname)
 
-    sleep(1)
+        utils.log.info("Entering last name")
+        lastname_label = utils.find_element(
+            driver, By.XPATH, "//label[text()='Last Name']"
+        )
+        lastname_field = lastname_label.find_element(
+            By.XPATH, "./following-sibling::input"
+        )
+        lastname_field.send_keys(lastname)
 
-    utils.log.info("Selecting client profile")
+        utils.log.info("Clicking search")
+        utils.click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
 
-    try:
+    def _go_to_client_loop(
+        driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+    ) -> str:
+        driver.get("https://portal.therapyappointment.com")
+        sleep(1)
+        utils.log.info("Navigating to Clients section")
+        utils.click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
+
+        for attempt in range(3):
+            try:
+                _search_clients(driver, actions, firstname, lastname)
+                break
+            except Exception as e:
+                if attempt == 2:
+                    utils.log.error(f"Failed to search after 3 attempts: {e}")
+                    raise e
+                else:
+                    utils.log.info(f"Failed to search: {e}, trying again")
+                    driver.refresh()
+
+        sleep(1)
+
+        utils.log.info("Selecting client profile")
+
         utils.click_element(
             driver,
             By.CSS_SELECTOR,
             "a[aria-description*='Press Enter to view the profile of",
+            max_attempts=1,
         )
-    except Exception as e:
-        utils.log.info(f"Failed to select client: {e}, trying again")
-        driver.refresh()
-        go_to_client(driver, actions, firstname, lastname)
 
-    current_url = driver.current_url
-    utils.log.info(f"Navigated to client profile: {current_url}")
-    return current_url
+        current_url = driver.current_url
+        utils.log.info(f"Navigated to client profile: {current_url}")
+        return current_url
+
+    for attempt in range(3):
+        try:
+            return _go_to_client_loop(driver, actions, firstname, lastname)
+        except Exception as e:
+            if attempt == 2:
+                utils.log.error(f"Failed to go to client after 3 attempts: {e}")
+                return
+            else:
+                utils.log.info(f"Failed to go to client: {e}, trying again")
+                driver.refresh()
+    return
 
 
 def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
@@ -1756,6 +1774,12 @@ def main():
             client_url = go_to_client(
                 driver, actions, client_params["firstname"], client_params["lastname"]
             )
+            if not client_url:
+                utils.log.error("Client URL not found")
+                utils.add_failure(
+                    format_failed_client(client_params, "Unable to find client")
+                )
+                continue
             if not check_if_opened_portal(driver):
                 utils.add_failure(
                     format_failed_client(client_params, "Portal not opened")
