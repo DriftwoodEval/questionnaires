@@ -80,11 +80,11 @@ def login_ta(driver: WebDriver, actions: ActionChains) -> None:
     driver.get("https://portal.therapyappointment.com")
 
     utils.log.info("Entering username")
-    username_field = driver.find_element(By.NAME, "user_username")
+    username_field = utils.find_element(driver, By.NAME, "user_username")
     username_field.send_keys(services["therapyappointment"]["username"])
 
     utils.log.info("Entering password")
-    password_field = driver.find_element(By.NAME, "user_password")
+    password_field = utils.find_element(driver, By.NAME, "user_password")
     password_field.send_keys(services["therapyappointment"]["password"])
 
     utils.log.info("Submitting login form")
@@ -100,10 +100,10 @@ def login_wps(driver: WebDriver, actions: ActionChains) -> None:
     utils.click_element(driver, By.ID, "loginID")
 
     utils.log.info("Entering username")
-    driver.find_element(By.ID, "Username").send_keys(services["wps"]["username"])
+    utils.find_element(driver, By.ID, "Username").send_keys(services["wps"]["username"])
 
     utils.log.info("Entering password")
-    driver.find_element(By.ID, "Password").send_keys(services["wps"]["password"])
+    utils.find_element(driver, By.ID, "Password").send_keys(services["wps"]["password"])
 
     utils.log.info("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -124,10 +124,10 @@ def login_qglobal(driver: WebDriver, actions: ActionChains) -> None:
     actions.perform()
 
     utils.log.info("Entering username")
-    username = driver.find_element(By.NAME, value="login:uname")
+    username = utils.find_element(driver, By.NAME, "login:uname")
 
     utils.log.info("Entering password")
-    password = driver.find_element(By.NAME, value="login:pword")
+    password = utils.find_element(driver, By.NAME, "login:pword")
     username.send_keys(services["qglobal"]["username"])
 
     utils.log.info("Submitting login form")
@@ -140,10 +140,10 @@ def login_mhs(driver: WebDriver, actions: ActionChains) -> None:
     driver.get("https://assess.mhs.com/Account/Login.aspx")
 
     utils.log.info("Entering username")
-    username = driver.find_element(By.NAME, value="txtUsername")
+    username = utils.find_element(driver, By.NAME, "txtUsername")
 
     utils.log.info("Entering password")
-    password = driver.find_element(By.NAME, value="txtPassword")
+    password = utils.find_element(driver, By.NAME, "txtPassword")
     username.send_keys(services["mhs"]["username"])
     password.send_keys(services["mhs"]["password"])
 
@@ -156,7 +156,7 @@ def search_helper(driver: WebDriver, id: str) -> None:
     utils.log.info(f"Attempting to search for {id}")
     try:
         sleep(1)
-        driver.find_element(By.ID, "editExamineeForm:examineeId").send_keys(id)
+        utils.find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(id)
     except:  # noqa: E722
         utils.log.info("Failed to search, attempting to retry")
         driver.get("https://qglobal.pearsonassessments.com")
@@ -193,38 +193,30 @@ def add_client_to_qglobal(
     gender = client["gender"]
 
     utils.log.info("Clicking new examinee button")
-    loop = True
-    while loop:
-        try:
-            driver.find_element(By.ID, "searchForm:newExamineeButton").click()
-            loop = False
-        except:  # noqa: E722
-            utils.log.info("Failed to click new examinee, trying again.")
-            driver.refresh()
+    utils.click_element(driver, By.ID, "searchForm:newExamineeButton", refresh=True)
+
+    first = utils.find_element(driver, By.ID, "firstName")
+    last = utils.find_element(driver, By.ID, "lastName")
+    examineeID = utils.find_element(driver, By.ID, "examineeId")
+    birth = utils.find_element(driver, By.ID, "calendarInputDate")
 
     utils.log.info("Entering first name")
-    first = driver.find_element(By.ID, "firstName")
+    first.send_keys(firstname)
 
     utils.log.info("Entering last name")
-    last = driver.find_element(By.ID, "lastName")
+    last.send_keys(lastname)
 
     utils.log.info("Entering examinee id")
-    examineeID = driver.find_element(By.ID, "examineeId")
-
-    utils.log.info("Entering birthdate")
-    birth = driver.find_element(By.ID, "calendarInputDate")
-    first.send_keys(firstname)
-    last.send_keys(lastname)
     examineeID.send_keys(id)
 
     utils.log.info("Selecting gender")
-    purpose_element = driver.find_element(By.ID, "genderMenu")
-    purpose = Select(purpose_element)
+    gender_element = utils.find_element(driver, By.ID, "genderMenu")
+    gender_select = Select(gender_element)
     sleep(1)
     if gender == "Male":
-        purpose.select_by_visible_text("Male")
+        gender_select.select_by_visible_text("Male")
     elif gender == "Female":
-        purpose.select_by_visible_text("Female")
+        gender_select.select_by_visible_text("Female")
     else:
         print("edge case")
 
@@ -233,11 +225,11 @@ def add_client_to_qglobal(
     birth.send_keys(dob)
 
     utils.log.info("Saving new examinee")
-    driver.find_element(By.ID, "save").click()
+    utils.click_element(driver, By.ID, "save")
     error = None
     try:
         utils.log.info("Checking if client already exists")
-        error = driver.find_element(By.NAME, "j_id201")
+        error = utils.find_element(driver, By.NAME, "j_id201")
         exists = True
     except NoSuchElementException:
         utils.log.info("Client doesn't exist")
@@ -246,12 +238,12 @@ def add_client_to_qglobal(
         sleep(3)
         # TODO: log this, I'm not sure what conditions cause this
         try:
-            driver.find_element(By.NAME, "j_id201").click()
-            driver.find_element(By.ID, "j_id182").click()
-            driver.find_element(By.ID, "unSavedChangeForm:YesUnSavedChanges").click()
+            utils.click_element(driver, By.NAME, "j_id201")
+            utils.click_element(driver, By.ID, "j_id182")
+            utils.click_element(driver, By.ID, "unSavedChangeForm:YesUnSavedChanges")
         except:  # noqa: E722
             try:
-                driver.find_element(By.NAME, "j_id209").click()
+                utils.click_element(driver, By.NAME, "j_id209")
             except:  # noqa: E722
                 exists = False
     sleep(2)
@@ -286,12 +278,14 @@ def add_client_to_mhs(
             "//div[contains(normalize-space(text()), 'Email Invitation')]",
         )
         if questionnaire == "ASRS":
-            search = driver.find_element(
+            search = utils.find_element(
+                driver,
                 By.ID,
                 "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input",
             )
         else:
-            search = driver.find_element(
+            search = utils.find_element(
+                driver,
                 By.XPATH,
                 "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_SelectClient_clientSearchBox_Input']",
             )
@@ -331,8 +325,8 @@ def add_client_to_mhs(
             )
 
         utils.log.info("Selecting purpose")
-        purpose_element = driver.find_element(
-            By.CSS_SELECTOR, "select[placeholder='Select an option']"
+        purpose_element = utils.find_element(
+            driver, By.CSS_SELECTOR, "select[placeholder='Select an option']"
         )
         purpose = Select(purpose_element)
         sleep(1)
@@ -355,7 +349,8 @@ def add_client_to_mhs(
 
         try:
             utils.log.info("Making sure age matches")
-            error = driver.find_element(
+            error = utils.find_element(
+                driver,
                 By.XPATH,
                 "//span[contains(text(), 'Selected Birthdate does not match the Age.')]",
             )
@@ -364,7 +359,8 @@ def add_client_to_mhs(
             return True
         if error:
             utils.log.warning("Age does not match previous client, updating age")
-            age_field = driver.find_element(
+            age_field = utils.find_element(
+                driver,
                 By.ID,
                 "txtAge",
             )
@@ -407,7 +403,9 @@ def add_client_to_mhs(
         driver, By.XPATH, "//div[@class='pull-right']//input[@type='submit']"
     )
 
-    firstname_label = driver.find_element(By.XPATH, "//label[text()='FIRST NAME']")
+    firstname_label = utils.find_element(
+        driver, By.XPATH, "//label[text()='FIRST NAME']"
+    )
 
     utils.log.info("Entering first name")
     firstname_field = firstname_label.find_element(
@@ -415,35 +413,36 @@ def add_client_to_mhs(
     )
     firstname_field.send_keys(firstname)
 
-    lastname_label = driver.find_element(By.XPATH, "//label[text()='LAST NAME']")
+    lastname_label = utils.find_element(driver, By.XPATH, "//label[text()='LAST NAME']")
 
     utils.log.info("Entering last name")
     lastname_field = lastname_label.find_element(By.XPATH, "./following-sibling::input")
     lastname_field.send_keys(lastname)
 
-    id_label = driver.find_element(By.XPATH, "//label[text()='ID']")
+    id_label = utils.find_element(driver, By.XPATH, "//label[text()='ID']")
 
     utils.log.info("Entering ID")
     id_field = id_label.find_element(By.XPATH, "./following-sibling::input")
     id_field.send_keys(id)
 
     utils.log.info("Entering birthdate")
-    date_of_birth_field = driver.find_element(
-        By.CSS_SELECTOR, "input[placeholder='YYYY/Mmm/DD']"
+    date_of_birth_field = utils.find_element(
+        driver, By.CSS_SELECTOR, "input[placeholder='YYYY/Mmm/DD']"
     )
     date_of_birth_field.send_keys(dob)
 
     if questionnaire == "Conners EC" or questionnaire == "ASRS":
         utils.log.info("Selecting gender")
-        male_label = driver.find_element(By.XPATH, "//label[text()='Male']")
-        female_label = driver.find_element(By.XPATH, "//label[text()='Female']")
+        male_label = utils.find_element(driver, By.XPATH, "//label[text()='Male']")
+        female_label = utils.find_element(driver, By.XPATH, "//label[text()='Female']")
         if gender == "Male":
             male_label.click()
         else:
             female_label.click()
     else:
         utils.log.info("Selecting gender")
-        gender_element = driver.find_element(
+        gender_element = utils.find_element(
+            driver,
             By.ID,
             "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_ddl_Gender",
         )
@@ -457,8 +456,8 @@ def add_client_to_mhs(
             gender_select.select_by_visible_text("Other")
 
     utils.log.info("Selecting purpose")
-    purpose_element = driver.find_element(
-        By.CSS_SELECTOR, "select[placeholder='Select an option']"
+    purpose_element = utils.find_element(
+        driver, By.CSS_SELECTOR, "select[placeholder='Select an option']"
     )
     purpose = Select(purpose_element)
     sleep(1)
@@ -467,11 +466,13 @@ def add_client_to_mhs(
     utils.log.info("Saving")
     utils.click_element(driver, By.CSS_SELECTOR, ".pull-right > input[type='submit']")
     try:
-        driver.find_element(
+        utils.log.info("Checking for existing client")
+        utils.find_element(
+            driver,
             By.XPATH,
             "//span[contains(text(), 'A client with the same ID already exists')]",
         )
-    except:  # noqa: E722
+    except NoSuchElementException:
         utils.log.info("Added to MHS")
         return True
     return add_to_existing(driver, actions, client, questionnaire)
@@ -681,9 +682,9 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     gender = client["gender"]
     utils.click_element(driver, By.ID, "newCase")
 
-    first = driver.find_element(By.XPATH, "//td[@id='FirstName']/input")
-    last = driver.find_element(By.XPATH, "//td[@id='LastName']/input")
-    account = driver.find_element(By.XPATH, "//td[@id='CaseAltId']/input")
+    first = utils.find_element(driver, By.XPATH, "//td[@id='FirstName']/input")
+    last = utils.find_element(driver, By.XPATH, "//td[@id='LastName']/input")
+    account = utils.find_element(driver, By.XPATH, "//td[@id='CaseAltId']/input")
 
     utils.log.info("Entering first name")
     first.send_keys(firstname)
@@ -693,13 +694,13 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     account.send_keys(id)
 
     utils.log.info("Selecting gender")
-    purpose_element = driver.find_element(By.ID, "genderOpt")
-    purpose = Select(purpose_element)
+    gender_element = utils.find_element(driver, By.ID, "genderOpt")
+    gender_select = Select(gender_element)
     sleep(1)
     if gender == "Male":
-        purpose.select_by_visible_text("Male")
+        gender_select.select_by_visible_text("Male")
     else:
-        purpose.select_by_visible_text("Female")
+        gender_select.select_by_visible_text("Female")
 
     year = dob[:4]
     month = dob[5:7]
@@ -734,18 +735,20 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
         month = "December"
 
     utils.log.info("Selecting birthdate")
-    purpose_element = driver.find_element(By.ID, "dobMonth")
-    purpose = Select(purpose_element)
+    birthdate_month_element = utils.find_element(driver, By.ID, "dobMonth")
+    birthdate_month_select = Select(birthdate_month_element)
     sleep(1)
-    purpose.select_by_visible_text(month)
-    purpose_element = driver.find_element(By.ID, "dobDay")
-    purpose = Select(purpose_element)
+    birthdate_month_select.select_by_visible_text(month)
+
+    birthdate_day_element = utils.find_element(driver, By.ID, "dobDay")
+    birthdate_day_select = Select(birthdate_day_element)
     sleep(1)
-    purpose.select_by_visible_text(day)
-    purpose_element = driver.find_element(By.ID, "dobYear")
-    purpose = Select(purpose_element)
+    birthdate_day_select.select_by_visible_text(day)
+
+    birthdate_year_element = utils.find_element(driver, By.ID, "dobYear")
+    birthdate_year_select = Select(birthdate_year_element)
     sleep(1)
-    purpose.select_by_visible_text(year)
+    birthdate_year_select.select_by_visible_text(year)
 
     utils.log.info("Saving new client")
     utils.click_element(driver, By.ID, "clientSave")
@@ -755,7 +758,7 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
 
     utils.log.info("Navigating to client list")
     driver.get("https://platform.wpspublish.com")
-    search = driver.find_element(By.XPATH, "//input[@type='search']")
+    search = utils.find_element(driver, By.XPATH, "//input[@type='search']")
 
     utils.log.info("Searching for client")
     search.send_keys(firstname, " ", lastname)
@@ -775,7 +778,7 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
 
     utils.log.info("Adding form")
     utils.click_element(driver, By.ID, "addForm")
-    form_element = driver.find_element(By.ID, "TestFormId")
+    form_element = utils.find_element(driver, By.ID, "TestFormId")
     form = Select(form_element)
     sleep(1)
 
@@ -786,10 +789,12 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.click_element(driver, By.ID, "DeliveryMethod")
 
     utils.log.info("Entering rater name")
-    driver.find_element(By.ID, "RaterName").send_keys("Parent/Caregiver")
+    utils.find_element(driver, By.ID, "RaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Entering email")
-    driver.find_element(By.ID, "RemoteAdminEmail_ToEmail").send_keys(config["email"])
+    utils.find_element(driver, By.ID, "RemoteAdminEmail_ToEmail").send_keys(
+        config["email"]
+    )
 
     utils.log.info("Selecting copy me")
     utils.click_element(driver, By.ID, "RemoteAdminEmail_CopyMe")
@@ -807,7 +812,9 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     sleep(3)
 
     utils.log.info("Getting form link")
-    body = driver.find_element(By.ID, "RemoteAdminEmail_Content").get_attribute("value")
+    body = utils.find_element(driver, By.ID, "RemoteAdminEmail_Content").get_attribute(
+        "value"
+    )
     if body is None:
         raise ValueError("Email body is None")
     body = body.split()
@@ -846,7 +853,7 @@ def gen_conners_ec(
     )
 
     utils.log.info("Selecting assessment description")
-    purpose_element = driver.find_element(By.ID, "ddl_Description")
+    purpose_element = utils.find_element(driver, By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
 
@@ -854,23 +861,23 @@ def gen_conners_ec(
     purpose.select_by_visible_text("Conners EC")
 
     utils.log.info("Selecting rater type")
-    purpose_element = driver.find_element(By.ID, "ddl_RaterType")
-    purpose = Select(purpose_element)
+    rater_type_element = utils.find_element(driver, By.ID, "ddl_RaterType")
+    rater_type_select = Select(rater_type_element)
     sleep(1)
 
     utils.log.info("Selecting Parent")
-    purpose.select_by_visible_text("Parent")
+    rater_type_select.select_by_visible_text("Parent")
 
     utils.log.info("Selecting language")
-    purpose_element = driver.find_element(By.ID, "ddl_Language")
-    purpose = Select(purpose_element)
+    language_element = utils.find_element(driver, By.ID, "ddl_Language")
+    language_select = Select(language_element)
     sleep(1)
 
     utils.log.info("Selecting English")
-    purpose.select_by_visible_text("English")
+    language_select.select_by_visible_text("English")
 
     utils.log.info("Entering rater name")
-    driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    utils.find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
@@ -880,7 +887,7 @@ def gen_conners_ec(
     sleep(3)
 
     utils.log.info("Getting link")
-    link = driver.find_element(By.ID, "txtLink").get_attribute("value")
+    link = utils.find_element(driver, By.ID, "txtLink").get_attribute("value")
     if link is None:
         raise ValueError("Link is None")
 
@@ -914,25 +921,25 @@ def gen_conners_4(
     )
 
     utils.log.info("Selecting assessment description")
-    purpose_element = driver.find_element(By.ID, "ddl_Description")
+    purpose_element = utils.find_element(driver, By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("Conners 4")
 
     utils.log.info("Selecting rater type")
-    purpose_element = driver.find_element(By.ID, "ddl_RaterType")
-    purpose = Select(purpose_element)
+    rater_type_element = utils.find_element(driver, By.ID, "ddl_RaterType")
+    rater_type_select = Select(rater_type_element)
     sleep(1)
-    purpose.select_by_visible_text("Parent")
+    rater_type_select.select_by_visible_text("Parent")
 
     utils.log.info("Selecting language")
-    purpose_element = driver.find_element(By.ID, "ddl_Language")
-    purpose = Select(purpose_element)
+    language_element = utils.find_element(driver, By.ID, "ddl_Language")
+    language_select = Select(language_element)
     sleep(1)
-    purpose.select_by_visible_text("English")
+    language_select.select_by_visible_text("English")
 
     utils.log.info("Entering rater name")
-    driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    utils.find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
@@ -940,7 +947,9 @@ def gen_conners_4(
     utils.log.info("Selecting generate link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(3)
-    link = driver.find_element(By.ID, "txtLink").get_attribute("value")
+    link = utils.find_element(driver, By.ID, "txtLink").get_attribute("value")
+    if link is None:
+        raise ValueError("Link is None")
 
     utils.log.info(f"Returning link {link} and accounts_created {accounts_created}")
     return link, accounts_created
@@ -975,7 +984,7 @@ def gen_conners_4_self(
     )
 
     utils.log.info("Selecting assessment description")
-    purpose_element = driver.find_element(By.ID, "ddl_Description")
+    purpose_element = utils.find_element(driver, By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
 
@@ -983,23 +992,23 @@ def gen_conners_4_self(
     purpose.select_by_visible_text("Conners 4")
 
     utils.log.info("Selecting rater type")
-    purpose_element = driver.find_element(By.ID, "ddl_RaterType")
-    purpose = Select(purpose_element)
+    rater_type_element = utils.find_element(driver, By.ID, "ddl_RaterType")
+    rater_type_select = Select(rater_type_element)
     sleep(1)
 
     utils.log.info("Selecting Self-Report")
-    purpose.select_by_visible_text("Self-Report")
+    rater_type_select.select_by_visible_text("Self-Report")
 
     utils.log.info("Selecting language")
-    purpose_element = driver.find_element(By.ID, "ddl_Language")
-    purpose = Select(purpose_element)
+    language_element = utils.find_element(driver, By.ID, "ddl_Language")
+    language_select = Select(language_element)
     sleep(1)
 
     utils.log.info("Selecting English")
-    purpose.select_by_visible_text("English")
+    language_select.select_by_visible_text("English")
 
     utils.log.info("Entering rater name")
-    driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    utils.find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
@@ -1007,7 +1016,7 @@ def gen_conners_4_self(
     utils.log.info("Selecting generate link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(3)
-    link = driver.find_element(By.ID, "txtLink").get_attribute("value")
+    link = utils.find_element(driver, By.ID, "txtLink").get_attribute("value")
     if link is None:
         raise ValueError("Link is None")
 
@@ -1044,25 +1053,25 @@ def gen_asrs_2_5(
     )
 
     utils.log.info("Selecting assessment description")
-    purpose_element = driver.find_element(By.ID, "ddl_Description")
+    purpose_element = utils.find_element(driver, By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("ASRS (2-5 Years)")
 
     utils.log.info("Selecting rater type")
-    purpose_element = driver.find_element(By.ID, "ddl_RaterType")
-    purpose = Select(purpose_element)
+    rater_type_element = utils.find_element(driver, By.ID, "ddl_RaterType")
+    rater_select = Select(rater_type_element)
     sleep(1)
-    purpose.select_by_visible_text("Parent")
+    rater_select.select_by_visible_text("Parent")
 
     utils.log.info("Selecting language")
-    purpose_element = driver.find_element(By.ID, "ddl_Language")
-    purpose = Select(purpose_element)
+    language_element = utils.find_element(driver, By.ID, "ddl_Language")
+    language_select = Select(language_element)
     sleep(1)
-    purpose.select_by_visible_text("English")
+    language_select.select_by_visible_text("English")
 
     utils.log.info("Entering rater name")
-    driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    utils.find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Selecting next")
     utils.click_element(
@@ -1078,7 +1087,8 @@ def gen_asrs_2_5(
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
     )
     sleep(3)
-    link = driver.find_element(
+    link = utils.find_element(
+        driver,
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
@@ -1098,9 +1108,9 @@ def gen_asrs_6_18(
     utils.log.info(
         f"Generating ASRS (6-18 Years) for {client['firstname']} {client['lastname']}"
     )
-    driver.find_element(
-        By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
+    )
 
     utils.log.info("Selecting ASRS")
     utils.click_element(
@@ -1108,9 +1118,9 @@ def gen_asrs_6_18(
     )
 
     utils.log.info("Selecting Email Invitation")
-    driver.find_element(
-        By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
+    )
 
     utils.log.info("Adding client to MHS")
     accounts_created["mhs"] = add_client_to_mhs(
@@ -1119,38 +1129,41 @@ def gen_asrs_6_18(
     sleep(1)
 
     utils.log.info("Selecting assessment description")
-    purpose_element = driver.find_element(By.ID, "ddl_Description")
+    purpose_element = utils.find_element(driver, By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     purpose.select_by_visible_text("ASRS (6-18 Years)")
     sleep(1)
 
     utils.log.info("Selecting rater type")
-    purpose_element = driver.find_element(By.ID, "ddl_RaterType")
-    purpose = Select(purpose_element)
-    purpose.select_by_visible_text("Parent")
+    rater_type_element = utils.find_element(driver, By.ID, "ddl_RaterType")
+    rater_select = Select(rater_type_element)
+    rater_select.select_by_visible_text("Parent")
     sleep(1)
 
     utils.log.info("Selecting language")
-    purpose_element = driver.find_element(By.ID, "ddl_Language")
-    purpose = Select(purpose_element)
-    purpose.select_by_visible_text("English")
+    language_element = utils.find_element(driver, By.ID, "ddl_Language")
+    language_select = Select(language_element)
+    language_select.select_by_visible_text("English")
 
     utils.log.info("Entering rater name")
-    driver.find_element(By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    utils.find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
 
     utils.log.info("Selecting next")
-    driver.find_element(
+    utils.click_element(
+        driver,
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_btnNext",
-    ).click()
+    )
 
     utils.log.info("Generating link")
-    driver.find_element(
+    utils.click_element(
+        driver,
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
-    ).click()
+    )
     sleep(3)
-    link = driver.find_element(
+    link = utils.find_element(
+        driver,
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
@@ -1181,15 +1194,19 @@ def gen_basc_preschool(driver: WebDriver, actions: ActionChains, client: dict) -
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
     utils.log.info("Selecting send via email")
-    driver.find_element(
-        By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
+    )
 
     utils.log.info("Entering respondent first name")
-    driver.find_element(By.ID, "respondentFirstName").send_keys(config["initials"][0])
+    utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
+        config["initials"][0]
+    )
 
     utils.log.info("Entering respondent last name")
-    driver.find_element(By.ID, "respondentLastName").send_keys(config["initials"][-1])
+    utils.find_element(driver, By.ID, "respondentLastName").send_keys(
+        config["initials"][-1]
+    )
 
     utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
@@ -1199,9 +1216,9 @@ def gen_basc_preschool(driver: WebDriver, actions: ActionChains, client: dict) -
     utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
-        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
     )
-    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
 
     driver.switch_to.default_content()
 
@@ -1232,15 +1249,19 @@ def gen_basc_child(driver: WebDriver, actions: ActionChains, client: dict) -> st
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
     utils.log.info("Selecting send via email")
-    driver.find_element(
-        By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
+    )
 
     utils.log.info("Entering respondent first name")
-    driver.find_element(By.ID, "respondentFirstName").send_keys("M")
+    utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
+        config["initials"][0]
+    )
 
     utils.log.info("Entering respondent last name")
-    driver.find_element(By.ID, "respondentLastName").send_keys("P")
+    utils.find_element(driver, By.ID, "respondentLastName").send_keys(
+        config["initials"][-1]
+    )
 
     utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
@@ -1250,9 +1271,9 @@ def gen_basc_child(driver: WebDriver, actions: ActionChains, client: dict) -> st
     utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
-        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
     )
-    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
 
     driver.switch_to.default_content()
 
@@ -1283,15 +1304,19 @@ def gen_basc_adolescent(driver: WebDriver, actions: ActionChains, client: dict) 
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
     utils.log.info("Selecting send via email")
-    driver.find_element(
-        By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
+    )
 
     utils.log.info("Entering respondent first name")
-    driver.find_element(By.ID, "respondentFirstName").send_keys("M")
+    utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
+        config["initials"][0]
+    )
 
     utils.log.info("Entering respondent last name")
-    driver.find_element(By.ID, "respondentLastName").send_keys("P")
+    utils.find_element(driver, By.ID, "respondentLastName").send_keys(
+        config["initials"][-1]
+    )
 
     utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
@@ -1301,9 +1326,9 @@ def gen_basc_adolescent(driver: WebDriver, actions: ActionChains, client: dict) 
     utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
-        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
     )
-    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
 
     driver.switch_to.default_content()
 
@@ -1335,25 +1360,30 @@ def gen_vineland(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
 
     utils.log.info("Selecting send via email")
-    driver.find_element(
-        By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
+    )
 
     utils.log.info("Entering respondent first name")
-    driver.find_element(By.ID, "respondentFirstName").send_keys("M")
+    utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
+        config["initials"][0]
+    )
 
     utils.log.info("Entering respondent last name")
-    driver.find_element(By.ID, "respondentLastName").send_keys("P")
+    utils.find_element(driver, By.ID, "respondentLastName").send_keys(
+        config["initials"][-1]
+    )
 
     utils.log.info("Continuing to email step")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
     utils.log.info("Selecting email options")
     utils.click_element(driver, By.XPATH, "//div/div[2]/label")
-    driver.find_element(
+    utils.click_element(
+        driver,
         By.XPATH,
         "//div[2]/qg2-multi-column-layout/div/section[2]/div/qg2-form-radio-button/div/div/section[2]/div/div[2]/label",
-    ).click()
+    )
 
     utils.log.info("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
@@ -1363,9 +1393,9 @@ def gen_vineland(driver: WebDriver, actions: ActionChains, client: dict) -> str:
     utils.log.info("Clicking create e-mail")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
     driver.switch_to.frame(
-        driver.find_element(By.XPATH, "//iframe[@title='Editor, editor1']")
+        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
     )
-    link = driver.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
 
     driver.switch_to.default_content()
 
@@ -1383,19 +1413,19 @@ def gen_caars_2(
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(f"Generating CAARS 2 for {client['firstname']} {client['lastname']}")
-    driver.find_element(
-        By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
+    )
 
     utils.log.info("Selecting CAARS 2")
-    driver.find_element(
-        By.XPATH, "//span[contains(normalize-space(text()), 'CAARS 2')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//span[contains(normalize-space(text()), 'CAARS 2')]"
+    )
 
     utils.log.info("Selecting Email Invitation")
-    driver.find_element(
-        By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
+    )
 
     utils.log.info("Adding client to MHS")
     accounts_created["mhs"] = add_client_to_mhs(
@@ -1403,22 +1433,22 @@ def gen_caars_2(
     )
 
     utils.log.info("Selecting assessment description")
-    purpose_element = driver.find_element(By.ID, "ddl_Description")
+    purpose_element = utils.find_element(driver, By.ID, "ddl_Description")
     purpose = Select(purpose_element)
     sleep(1)
     purpose.select_by_visible_text("CAARS 2")
 
     utils.log.info("Selecting rater type")
-    purpose_element = driver.find_element(By.ID, "ddl_RaterType")
-    purpose = Select(purpose_element)
+    rater_type_element = utils.find_element(driver, By.ID, "ddl_RaterType")
+    rater_type_select = Select(rater_type_element)
     sleep(1)
-    purpose.select_by_visible_text("Self-Report")
+    rater_type_select.select_by_visible_text("Self-Report")
 
     utils.log.info("Selecting language")
-    purpose_element = driver.find_element(By.ID, "ddl_Language")
-    purpose = Select(purpose_element)
+    language_element = utils.find_element(driver, By.ID, "ddl_Language")
+    language_select = Select(language_element)
     sleep(1)
-    purpose.select_by_visible_text("English")
+    language_select.select_by_visible_text("English")
 
     utils.log.info("Selecting next")
     utils.click_element(driver, By.ID, "_btnnext")
@@ -1426,7 +1456,8 @@ def gen_caars_2(
     utils.log.info("Generating link")
     utils.click_element(driver, By.ID, "btnGenerateLinks")
     sleep(5)
-    link = driver.find_element(
+    link = utils.find_element(
+        driver,
         By.NAME,
         "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx$CreateLink$txtLink",
     ).get_attribute("value")
@@ -1448,20 +1479,21 @@ def search_clients(
     actions.send_keys(Keys.ESCAPE)
     actions.perform()
     utils.log.info("Entering first name")
-    firstname_label = driver.find_element(By.XPATH, "//label[text()='First Name']")
+    firstname_label = utils.find_element(
+        driver, By.XPATH, "//label[text()='First Name']"
+    )
     firstname_field = firstname_label.find_element(
         By.XPATH, "./following-sibling::input"
     )
     firstname_field.send_keys(firstname)
 
     utils.log.info("Entering last name")
-    lastname_label = driver.find_element(By.XPATH, "//label[text()='Last Name']")
+    lastname_label = utils.find_element(driver, By.XPATH, "//label[text()='Last Name']")
     lastname_field = lastname_label.find_element(By.XPATH, "./following-sibling::input")
     lastname_field.send_keys(lastname)
 
     utils.log.info("Clicking search")
-    search_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Search'")
-    search_button.click()
+    utils.click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
 
 
 def go_to_client(
@@ -1470,10 +1502,7 @@ def go_to_client(
     driver.get("https://portal.therapyappointment.com")
     sleep(1)
     utils.log.info("Navigating to Clients section")
-    clients_button = driver.find_element(
-        By.XPATH, value="//*[contains(text(), 'Clients')]"
-    )
-    clients_button.click()
+    utils.click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
 
     for _ in range(3):
         try:
@@ -1488,10 +1517,11 @@ def go_to_client(
     utils.log.info("Selecting client profile")
 
     try:
-        driver.find_element(
+        utils.click_element(
+            driver,
             By.CSS_SELECTOR,
             "a[aria-description*='Press Enter to view the profile of",
-        ).click()
+        )
     except Exception as e:
         utils.log.info(f"Failed to select client: {e}, trying again")
         driver.refresh()
@@ -1504,7 +1534,7 @@ def go_to_client(
 
 def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     utils.log.info("Attempting to extract client data")
-    name = driver.find_element(By.CLASS_NAME, "text-h4").text
+    name = utils.find_element(driver, By.CLASS_NAME, "text-h4").text
     firstname = name.split(" ")[0]
     lastname = name.split(" ")[-1]
     if lastname.lower() in [
@@ -1521,21 +1551,22 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
         "x",
     ]:
         lastname = name.split(" ")[-2]
-    account_number_element = driver.find_element(
-        By.XPATH, "//div[contains(normalize-space(text()), 'Account #')]"
+    account_number_element = utils.find_element(
+        driver, By.XPATH, "//div[contains(normalize-space(text()), 'Account #')]"
     ).text
     account_number = account_number_element.split(" ")[-1]
-    birthdate_element = driver.find_element(
-        By.XPATH, "//div[contains(normalize-space(text()), 'DOB ')]"
+    birthdate_element = utils.find_element(
+        driver, By.XPATH, "//div[contains(normalize-space(text()), 'DOB ')]"
     ).text
     birthdate_str = birthdate_element.split(" ")[-1]
     birthdate = strftime("%Y/%m/%d", strptime(birthdate_str, "%m/%d/%Y"))
-    phone_number_element = driver.find_element(
-        By.CSS_SELECTOR, "a[aria-description=' current default phone'"
+    phone_number_element = utils.find_element(
+        driver, By.CSS_SELECTOR, "a[aria-description=' current default phone'"
     )
     sleep(0.5)
     phone_number = phone_number_element.text
-    gender_title_element = driver.find_element(
+    gender_title_element = utils.find_element(
+        driver,
         By.XPATH,
         "//div[contains(normalize-space(text()), 'Gender') and contains(@class, 'v-list-item__title')]",
     )
@@ -1560,7 +1591,7 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
 
 def check_if_opened_portal(driver: WebDriver) -> bool:
     try:
-        driver.find_element(By.CSS_SELECTOR, "input[aria-checked='true']")
+        utils.find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']")
         return True
     except NoSuchElementException:
         return False
@@ -1568,7 +1599,8 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
 
 def check_if_docs_signed(driver: WebDriver) -> bool:
     try:
-        driver.find_element(
+        utils.find_element(
+            driver,
             By.XPATH,
             "//div[contains(normalize-space(text()), 'has completed registration')]",
         )
@@ -1594,25 +1626,26 @@ def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
     driver.get(client_url)
 
     utils.log.info("Accessing Messages section")
-    driver.find_element(
-        By.XPATH, "//a[contains(normalize-space(text()), 'Messages')]"
-    ).click()
+    utils.click_element(
+        driver, By.XPATH, "//a[contains(normalize-space(text()), 'Messages')]"
+    )
 
     utils.log.info("Initiating new message")
-    driver.find_element(
+    utils.click_element(
+        driver,
         By.XPATH,
         "//div[2]/section/div/a/span/span",
-    ).click()
+    )
     sleep(1)
 
     utils.log.info("Setting message subject")
-    driver.find_element(By.ID, "message_thread_subject").send_keys(
+    utils.find_element(driver, By.ID, "message_thread_subject").send_keys(
         "Please complete the link(s) below. Thank you."
     )
     sleep(1)
 
     utils.log.info("Entering message content")
-    text_field = driver.find_element(By.XPATH, "//section/div/div[3]")
+    text_field = utils.find_element(driver, By.XPATH, "//section/div/div[3]")
     text_field.click()
     sleep(1)
     text_field.send_keys(message)

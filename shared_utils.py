@@ -17,6 +17,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
 
 log = logging
 
@@ -45,7 +46,12 @@ def initialize_selenium() -> tuple[WebDriver, ActionChains]:
 
 
 def click_element(
-    driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
+    driver: WebDriver,
+    by: str,
+    locator: str,
+    max_attempts: int = 3,
+    delay: int = 1,
+    refresh: bool = False,
 ) -> bool:
     for attempt in range(max_attempts):
         try:
@@ -56,12 +62,30 @@ def click_element(
             log.warning(
                 f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
             )
+            if refresh:
+                log.info("Refreshing page")
+                driver.refresh()
             sleep(delay)
     log.error(f"Failed to click element after {max_attempts} attempts")
     return False
 
 
 def find_element(
+    driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
+) -> WebElement:
+    for attempt in range(max_attempts):
+        try:
+            element = driver.find_element(by, locator)
+            return element
+        except (StaleElementReferenceException, NoSuchElementException) as e:
+            log.warning(
+                f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
+            )
+            sleep(delay)
+    raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
+
+
+def check_if_element_exists(
     driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
 ) -> bool:
     for attempt in range(max_attempts):
@@ -343,19 +367,19 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 
     if "mhs.com" in url:
         log.info(f"Checking MHS completion for {url}")
-        complete = find_element(
+        complete = check_if_element_exists(
             driver,
             By.XPATH,
             "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
         )
     elif "pearsonassessments.com" in url:
         log.info(f"Checking Pearson completion for {url}")
-        complete = find_element(
+        complete = check_if_element_exists(
             driver, By.XPATH, "//*[contains(text(), 'Test Completed!')]"
         )
     elif "wpspublish" in url:
         log.info(f"Checking WPS completion for {url}")
-        complete = find_element(
+        complete = check_if_element_exists(
             driver,
             By.XPATH,
             "//*[contains(text(), 'This assessment is not available at this time')]",
