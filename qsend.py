@@ -3,7 +3,10 @@ from datetime import datetime
 from time import sleep, strftime, strptime
 
 from dateutil.relativedelta import relativedelta
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+)
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -347,16 +350,17 @@ def add_client_to_mhs(
                 "//input[@id='ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_btnNext']",
             )
 
+        utils.log.info("Making sure age matches")
         try:
-            utils.log.info("Making sure age matches")
-            error = utils.find_element(
+            age_error = utils.find_element(
                 driver,
-                By.XPATH,
-                "//span[contains(text(), 'Selected Birthdate does not match the Age.')]",
+                By.ID,
+                "agerr",
             )
-        except NoSuchElementException:
-            utils.log.info("Age matches")
-            return True
+            age_error_style = age_error.get_attribute("style")
+            error = age_error_style != "display: none;"
+        except (NoSuchElementException, StaleElementReferenceException):
+            error = False
         if error:
             utils.log.warning("Age does not match previous client, updating age")
             age_field = utils.find_element(
@@ -386,6 +390,9 @@ def add_client_to_mhs(
                 By.ID,
                 "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_SaveSuccessWindow_C_btnConfirmOK",
             )
+        else:
+            utils.log.info("Age matches")
+            return True
         return True
 
     if "mhs" in accounts_created and accounts_created["mhs"]:

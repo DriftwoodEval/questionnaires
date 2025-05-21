@@ -163,5 +163,3 @@ def main():
 
 
 main()
-
-# TODO: Generate reports
