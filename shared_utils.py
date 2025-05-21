@@ -338,10 +338,10 @@ def mark_link_done(
             link_end = len(notes)
         link_done = notes[link_start:link_end].strip()
         if " - DONE" in link_done:
-            log.info(f"Link {link} is already marked as DONE")
+            log.info(f"Link {link} is already marked as Ready to Download")
             return
-        log.info(f"Marking link {link} as DONE")
-        link_done = f"{link_done} - DONE"
+        log.info(f"Marking link {link} as Ready to Download")
+        link_done = f"{link_done} - Ready to Download"
         new_note = notes[:link_start] + link_done + notes[link_end:]
         replace_notes(projects_api, new_note, project_gid)
 
