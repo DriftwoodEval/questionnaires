@@ -52,7 +52,9 @@ def google_authenticate():
     return creds
 
 
-def send_gmail(message_text: str, subject: str, to_addr: str, from_addr: str):
+def send_gmail(
+    message_text: str, subject: str, to_addr: str, from_addr: str, cc_addr: str
+):
     creds = google_authenticate()
 
     try:
@@ -63,6 +65,7 @@ def send_gmail(message_text: str, subject: str, to_addr: str, from_addr: str):
         message["Subject"] = subject
         message["To"] = to_addr
         message["From"] = from_addr
+        message["Cc"] = cc_addr
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
@@ -121,7 +124,8 @@ def generate_evaluator_email(evaluator_address):
         email_text,
         f"Questionnaires for {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}",
         evaluator_address[0]["evaluator_email"],
-        config["email"],
+        config["automated_email"],
+        config["cc_emails"],
     )
 
 
