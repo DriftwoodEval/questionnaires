@@ -405,6 +405,11 @@ def check_questionnaires(
         for id in clients:
             client = clients[id]
             if all_questionnaires_done(client):
+                if client["date"] == "Reschedule":
+                    log.info(
+                        f"Client {client['firstname']} {client['lastname']} has rescheduled, but already completed their questionnaires for an appointment"
+                    )
+                    continue
                 log.info(
                     f"{client['firstname']} {client['lastname']} has already completed their questionnaires for an appointment on {format_appointment(client)}"
                 )

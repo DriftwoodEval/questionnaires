@@ -91,10 +91,25 @@ def main():
             client = clients[id]
             utils.mark_links_in_asana(projects_api, client, services, config)
 
+            done = utils.all_questionnaires_done(client)
+
+            if client["date"] == "Reschedule" and not done:
+                utils.log.warning(
+                    f"Client {client['firstname']} {client['lastname']} has rescheduled"
+                )
+                utils.send_text(
+                    config,
+                    services,
+                    f"{client['firstname']} {client['lastname']} asked to reschedule, check if they've rescheduled yet.",
+                    services["openphone"]["users"][config["name"].lower()]["phone"],
+                )
+                continue
+            elif client["date"] == "Reschedule" and done:
+                continue
+
             distance = check_appointment_distance(
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
             )
-            done = utils.all_questionnaires_done(client)
             utils.log.info(
                 f"{client['firstname']} {client['lastname']} is {distance} days away and {'done' if done else 'not done'}"
             )
