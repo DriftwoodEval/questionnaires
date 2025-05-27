@@ -337,7 +337,7 @@ def mark_link_done(
         if link_end == -1:
             link_end = len(notes)
         link_done = notes[link_start:link_end].strip()
-        if " - DONE" in link_done:
+        if " - Ready to Download" in link_done:
             log.info(f"Link {link} is already marked as Ready to Download")
             return
         log.info(f"Marking link {link} as Ready to Download")
