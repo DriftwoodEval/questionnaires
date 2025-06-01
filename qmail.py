@@ -166,6 +166,9 @@ def get_appointment_type(string: str) -> str:
     ADHDregex = r"ADHD"
     ADHDmatch = re.search(ADHDregex, string)
 
+    interpreterRegex = r"\*I\*"
+    interpreterMatch = re.search(interpreterRegex, string)
+
     wInterpRegex = r"w/interp (\w+)"
     wInterpMatch = re.search(wInterpRegex, string)
 
@@ -194,7 +197,7 @@ def get_appointment_type(string: str) -> str:
     elif match2:
         typeString = "DA"
 
-    daEvalRegex = r"(^|\s)(DA|EVAL|DA\+EVAL)($|\s)"  # case-insensitive
+    daEvalRegex = r"(^|\s)(DA|EVAL|DA\+EVAL)($|\s)"
     daEvalMatch = re.search(daEvalRegex, string, re.IGNORECASE)
 
     if daEvalMatch:
@@ -208,6 +211,8 @@ def get_appointment_type(string: str) -> str:
 
     if wInterpMatch:
         additions.append(f"w/interp {wInterpMatch.group(1)}")
+    elif interpreterMatch:
+        additions.append("w/interp")
 
     if prefixAdditions:
         typeString = " ".join(prefixAdditions) + " " + typeString
@@ -225,12 +230,10 @@ def get_probable_name(event_title: str) -> str:
         event_title = event_title[:bracket_index].strip()
 
     # Now, perform the stripping and cleaning
-    event_title = (
-        event_title.replace(r"\s{2,}", " ")
-        .replace(r"{[^}]+}", "")
-        .replace(r"\*.*?\*", "")
-        .strip()
-    )
+    event_title = re.sub(r"\s{2,}", " ", event_title)
+    event_title = re.sub(r"{[^}]+}", "", event_title)
+    event_title = re.sub(r"\*.*?\*", "", event_title)
+    event_title = event_title.strip()
 
     appointment_type = get_appointment_type(event_title)
 
