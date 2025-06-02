@@ -571,8 +571,9 @@ def check_questionnaires(
     config: dict,
     services: dict,
     clients: dict | None = get_previous_clients(),
-) -> None:
+) -> dict | None:
     if clients:
+        completed_clients = {}
         for id in clients:
             client = clients[id]
             if all_questionnaires_done(client):
@@ -604,13 +605,16 @@ def check_questionnaires(
                     )
                     break
             if all_questionnaires_done(client):
-                send_text(
-                    config,
-                    services,
-                    f"{client['firstname']} {client['lastname']} has finished their questionnares for an appointment on {format_appointment(client)}. Please generate.",
-                    services["openphone"]["users"][config["name"].lower()]["phone"],
+                distance = check_appointment_distance(
+                    datetime.strptime(client["date"], "%Y/%m/%d").date()
+                )
+                if str(distance) not in completed_clients:
+                    completed_clients[str(distance)] = []
+                completed_clients[str(distance)].append(
+                    f"{client['firstname']} {client['lastname']}"
                 )
         update_yaml(clients, "./put/clients.yml")
+        return completed_clients
 
 
 ### FORMATTING ###
@@ -734,3 +738,65 @@ def send_gmail(
     return send_message
 
 
+def build_admin_email(email_info: dict) -> tuple[str, str]:
+    email_text = ""
+    email_html = ""
+    if email_info["completed"]:
+        completed_text = []
+        completed_html = []
+        for days, client_list in email_info["completed"].items():
+            if days == "-1":
+                completed_text.append("  Appointment yesterday:")
+                completed_html.append("<h3>Appointment yesterday:</h3><ul>")
+            elif days == "0":
+                completed_text.append("  Appointment today:")
+                completed_html.append("<h3>Appointment today:</h3><ul>")
+            elif days == "1":
+                completed_text.append("  Appointment tomorrow:")
+                completed_html.append("<h3>Appointment tomorrow:</h3><ul>")
+            elif int(days) < 0:
+                completed_text.append(f"  Appointment {abs(int(days))} days ago:")
+                completed_html.append(
+                    f"<h3>Appointment {abs(int(days))} days ago:</h3><ul>"
+                )
+            else:
+                completed_text.append(f"  Appointment in {days} days:")
+                completed_html.append(f"<h3>Appointment in {days} days:</h3><ul>")
+            for client in client_list:
+                completed_text.append(f"    - {client}")
+                completed_html.append(f"<li>{client}</li>")
+            completed_html.append("</ul>")
+        email_text += "Download:\n" + "\n".join(completed_text) + "\n"
+        email_html += "<h2>Download</h2>" + "".join(completed_html)
+    if email_info["reschedule"]:
+        email_text += f"Check on rescheduled: {', '.join(email_info['reschedule'])}\n"
+        email_html += f"<h2>Check on rescheduled</h2><ul><li>{'</li><li>'.join(email_info['reschedule'])}</li></ul>"
+    if email_info["failed"]:
+        email_text += f"Failed to message: {', '.join(email_info['failed'])}\n"
+        email_html += f"<h2>Failed to message</h2><ul><li>{'</li><li>'.join(email_info['failed'])}</li></ul>"
+    if email_info["call"]:
+        call_text = []
+        call_html = []
+        for days, client_list in email_info["call"].items():
+            if days == "-1":
+                call_text.append("  Appointment yesterday:")
+                call_html.append("<h3>Appointment yesterday:</h3><ul>")
+            elif days == "0":
+                call_text.append("  Appointment today:")
+                call_html.append("<h3>Appointment today:</h3><ul>")
+            elif days == "1":
+                call_text.append("  Appointment tomorrow:")
+                call_html.append("<h3>Appointment tomorrow:</h3><ul>")
+            elif int(days) < 0:
+                call_text.append(f"  Appointment {abs(int(days))} days ago:")
+                call_html.append(f"<h3>Appointment {abs(int(days))} days ago:</h3><ul>")
+            else:
+                call_text.append(f"  Appointment in {days} days:")
+                call_html.append(f"<h3>Appointment in {days} days:</h3><ul>")
+            for client in client_list:
+                call_text.append(f"    - {client}")
+                call_html.append(f"<li>{client}</li>")
+            call_html.append("</ul>")
+        email_text += "Call:\n" + "\n".join(call_text)
+        email_html += "<h2>Call</h2>" + "".join(call_html)
+    return email_text, email_html

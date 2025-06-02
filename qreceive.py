@@ -77,7 +77,13 @@ def build_message(config: dict, client: dict, distance: int) -> str:
 def main():
     projects_api = utils.init_asana(services)
     driver, actions = utils.initialize_selenium()
-    utils.check_questionnaires(driver, config, services)
+    email_info = {
+        "reschedule": [],
+        "failed": [],
+        "call": {},
+        "completed": {},
+    }
+    email_info["completed"] = utils.check_questionnaires(driver, config, services)
     clients = utils.get_previous_clients()
     if clients:
         numbers_sent = []
@@ -89,15 +95,11 @@ def main():
 
             if client["date"] == "Reschedule" and not done:
                 utils.log.warning(
-                    f"Client {client['firstname']} {client['lastname']} has rescheduled"
+                    f"Client {client['firstname']} {client['lastname']} wants to/has rescheduled"
                 )
-                utils.send_text(
-                    config,
-                    services,
-                    f"{client['firstname']} {client['lastname']} asked to reschedule, check if they've rescheduled yet.",
-                    services["openphone"]["users"][config["name"].lower()]["phone"],
+                email_info["reschedule"].append(
+                    f"{client['firstname']} {client['lastname']}"
                 )
-                continue
             elif client["date"] == "Reschedule" and done:
                 continue
 
@@ -130,23 +132,17 @@ def main():
                         numbers_sent.append(client["phone_number"])
                         utils.sent_reminder_asana(config, projects_api, client)
                     else:
-                        utils.send_text(
-                            config,
-                            services,
-                            f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                            services["openphone"]["users"][config["name"].lower()][
-                                "phone"
-                            ],
+                        email_info["failed"].append(
+                            f"{client['firstname']} {client['lastname']}"
                         )
                 elif 0 <= distance < 5:
                     utils.log.info(
                         f"Sending reminder ABOUT {client['firstname']} {client['lastname']}"
                     )
-                    utils.send_text(
-                        config,
-                        services,
-                        f"{client['firstname']} {client['lastname']} has an appointment on {(utils.format_appointment(client))} (in {distance} days) and hasn't done everything, please call them.",
-                        services["openphone"]["users"][config["name"].lower()]["phone"],
+                    if str(distance) not in email_info["call"]:
+                        email_info["call"][str(distance)] = []
+                    email_info["call"][str(distance)].append(
+                        f"{client['firstname']} {client['lastname']}"
                     )
                 elif distance < 0 and distance % 3 == 2 and not already_messaged_today:
                     utils.log.info(
@@ -159,16 +155,19 @@ def main():
                         numbers_sent.append(client["phone_number"])
                         utils.sent_reminder_asana(config, projects_api, client)
                     else:
-                        utils.send_text(
-                            config,
-                            services,
-                            f"Message failed to deliver to {client['firstname']} {client['lastname']}.",
-                            services["openphone"]["users"][config["name"].lower()][
-                                "phone"
-                            ],
+                        email_info["failed"].append(
+                            f"{client['firstname']} {client['lastname']}"
                         )
-
             utils.update_yaml(clients, "./put/clients.yml")
+        admin_email_text, admin_email_html = utils.build_admin_email(email_info)
+        if admin_email_text != "":
+            utils.send_gmail(
+                admin_email_text,
+                f"Receive Run for {datetime.today().strftime('%a, %b %-d')}",
+                config["qreceive_emails"],
+                config["automated_email"],
+                html=admin_email_html,
+            )
 
 
 main()

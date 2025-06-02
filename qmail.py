@@ -356,7 +356,20 @@ def main():
 
     tomorrow_clients = get_tomorrow_clients_from_file()
     if tomorrow_clients:
-        utils.check_questionnaires(driver, config, services, tomorrow_clients)
+        email_info = {
+            "completed": utils.check_questionnaires(
+                driver, config, services, tomorrow_clients
+            )
+        }
+        admin_email_text, admin_email_html = utils.build_admin_email(email_info)
+        if admin_email_text != "":
+            utils.send_gmail(
+                admin_email_text,
+                f"Questionnaires completed on {datetime.today().strftime('%a, %b %-d')} for {(datetime.today() + relativedelta(days=1)).strftime('%m/%d')}",
+                config["qreceive_emails"],
+                config["automated_email"],
+                html=admin_email_html,
+            )
 
     driver.quit()
 
