@@ -1,10 +1,13 @@
+import hashlib
 import logging
 import os
 import re
 from datetime import datetime
 from time import sleep
+from urllib.parse import urlparse
 
 import asana
+import mysql.connector
 import requests
 import yaml
 from asana.rest import ApiException
@@ -121,6 +124,137 @@ def get_previous_clients(failed: bool = False) -> dict | None:
         log.info(f"{clients_filepath} does not exist.")
 
     return prev_clients if prev_clients else None
+
+
+def get_db(config):
+    db_url = urlparse(config["database_url"])
+    db_connection = mysql.connector.connect(
+        host=db_url.hostname,
+        port=db_url.port,
+        user=db_url.username,
+        password=db_url.password,
+        database=db_url.path[1:],
+    )
+    cursor = db_connection.cursor()
+    return db_connection, cursor
+
+
+def get_evaluator_npi(config, evaluator_email) -> str:
+    db_connection, cursor = get_db(config)
+    sql = "SELECT npi FROM emr_evaluator WHERE email = %s"
+    cursor.execute(sql, (evaluator_email,))
+    npi = cursor.fetchone()
+    db_connection.close()
+    return npi[0] if npi else None  # type: ignore
+
+
+def insert_basic_client(
+    config,
+    client_id: str,
+    asana_id: str,
+    dob,
+    first_name,
+    last_name,
+    asd_adhd,
+    interpreter,
+    gender,
+    phone_number,
+):
+    db_connection, cursor = get_db(config)
+    sql = """
+        INSERT INTO `emr_client` (id, hash, asanaId, dob, firstName, lastName, fullName, asdAdhd, interpreter, gender, phoneNumber)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE id=id
+    """
+
+    values = (
+        int(client_id),
+        hashlib.sha256(str(client_id).encode("utf-8")).hexdigest(),
+        asana_id if asana_id else None,
+        dob,
+        first_name,
+        last_name,
+        f"{first_name} {last_name}",
+        asd_adhd,
+        interpreter,
+        gender,
+        phone_number,
+    )
+
+    try:
+        cursor.execute(sql, values)
+        cursor.nextset()
+        db_connection.commit()
+    except mysql.connector.errors.IntegrityError as e:
+        log.error(e)
+
+    db_connection.close()
+
+
+def put_appointment_in_db(config, client_id, evaluator_email, date, appointment_type):
+    db_connection, cursor = get_db(config)
+
+    # Check if the client already has an appointment of the given type
+    check_sql = """
+        SELECT COUNT(*) FROM emr_appointment
+        WHERE clientId = %s AND type = %s
+    """
+    cursor.execute(check_sql, (int(client_id), appointment_type))
+    count = cursor.fetchone()
+
+    if count and count[0] > 0:  # type: ignore
+        log.info(
+            f"Client {client_id} already has an appointment of type {appointment_type}."
+        )
+        db_connection.close()
+        return None
+
+    # Insert the new appointment
+    sql = """
+        INSERT INTO emr_appointment (
+            clientId, evaluatorNpi, date, type
+        ) VALUES (%s, %s, %s, %s)
+    """
+
+    values = (
+        int(client_id),
+        get_evaluator_npi(config, evaluator_email),
+        date,
+        appointment_type,
+    )
+
+    try:
+        cursor.execute(sql, values)
+        appointment_id = cursor.lastrowid
+        cursor.nextset()
+        db_connection.commit()
+    except mysql.connector.errors.IntegrityError as e:
+        log.error(e)
+        appointment_id = None
+
+    db_connection.close()
+    return appointment_id
+
+
+def put_questionnaire_in_db(config, appointment_id, link, type, sent_date, completed):
+    db_connection, cursor = get_db(config)
+
+    sql = """
+        INSERT INTO emr_questionnaire (
+            appointmentId, link, questionnaireType, sent, completed
+        ) VALUES (%s, %s, %s, %s, %s)
+    """
+
+    values = (int(appointment_id), link, type, sent_date, completed)
+
+    try:
+        cursor.execute(sql, values)
+        cursor.nextset()
+        db_connection.commit()
+    except mysql.connector.errors.IntegrityError as e:
+        log.error(e)
+
+    db_connection.close()
 
 
 def update_yaml(clients: dict, filepath: str) -> None:

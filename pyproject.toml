@@ -11,4 +11,5 @@ dependencies = [
     "google-api-python-client>=2.167.0",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.1",
+    "mysql-connector-python>=9.3.0",
 ]
