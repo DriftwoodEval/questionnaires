@@ -27,69 +27,9 @@ utils.log.basicConfig(
 
 services, config = utils.load_config()
 
-# If modifying these scopes, delete the file token.json.
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/calendar.readonly",
-]
-
-
-def google_authenticate():
-    creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists("./config/token.json"):
-        creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "./config/credentials.json", SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open("./config/token.json", "w") as token:
-            token.write(creds.to_json())
-
-    return creds
-
-
-def send_gmail(
-    message_text: str, subject: str, to_addr: str, from_addr: str, cc_addr: str
-):
-    creds = google_authenticate()
-
-    try:
-        service = build("gmail", "v1", credentials=creds)
-
-        message = EmailMessage()
-        message.set_content(message_text)
-        message["Subject"] = subject
-        message["To"] = to_addr
-        message["From"] = from_addr
-        message["Cc"] = cc_addr
-
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
-        create_message = {"raw": encoded_message}
-
-        send_message = (
-            service.users().messages().send(userId="me", body=create_message).execute()
-        )
-
-        utils.log.info(f"Sent email to {to_addr}: {subject}")
-
-    except HttpError as error:
-        utils.log.error(error)
-        send_message = None
-    return send_message
-
 
 def get_calendar_list() -> list[str]:
-    creds = google_authenticate()
+    creds = utils.google_authenticate()
 
     calendar_list = []
     try:
@@ -267,7 +207,7 @@ def get_probable_name(event_title: str) -> str:
 
 
 def get_events_for_tomorrow() -> list:
-    creds = google_authenticate()
+    creds = utils.google_authenticate()
     events_tomorrow = []
 
     try:
@@ -396,7 +336,7 @@ def generate_evaluator_email(evaluator_address):
     email_text += (
         "\nThis is an automated message, information may be incomplete or have changed."
     )
-    send_gmail(
+    utils.send_gmail(
         email_text,
         f"Questionnaires for {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}",
         evaluator_address[0]["evaluator_email"],

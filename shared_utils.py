@@ -1,8 +1,10 @@
+import base64
 import hashlib
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import date, datetime
+from email.message import EmailMessage
 from time import sleep
 from urllib.parse import urlparse
 
@@ -11,6 +13,11 @@ import mysql.connector
 import requests
 import yaml
 from asana.rest import ApiException
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -34,6 +41,7 @@ def load_config() -> tuple[dict, dict]:
         return services, config
 
 
+### SELENIUM ###
 def initialize_selenium() -> tuple[WebDriver, ActionChains]:
     log.info("Initializing Selenium")
     chrome_options: Options = Options()
@@ -102,6 +110,7 @@ def check_if_element_exists(
     return False
 
 
+### DATABASE ###
 def get_previous_clients(failed: bool = False) -> dict | None:
     log.info("Loading previous clients")
     clients_filepath = "./put/clients.yml"
@@ -284,6 +293,7 @@ def add_failure(client: dict) -> None:
     update_yaml(client, qfailsend_filepath)
 
 
+### ASANA ###
 def init_asana(services: dict) -> asana.ProjectsApi:
     log.info("Initializing Asana")
     configuration = asana.Configuration()
@@ -480,6 +490,42 @@ def mark_link_done(
         replace_notes(projects_api, new_note, project_gid)
 
 
+def mark_links_in_asana(
+    projects_api: asana.ProjectsApi, client: dict, services: dict, config: dict
+) -> None:
+    if client.get("asana") and client["asana"]:
+        for questionnaire in client["questionnaires"]:
+            if questionnaire["done"]:
+                mark_link_done(
+                    projects_api,
+                    services,
+                    config,
+                    client["asana"],
+                    questionnaire["link"],
+                )
+    else:
+        log.warning(
+            f"Client {client['firstname']} {client['lastname']} has no Asana link"
+        )
+
+
+def sent_reminder_asana(
+    config: dict, projects_api: asana.ProjectsApi, client: dict
+) -> None:
+    if client.get("asana") and client["asana"]:
+        add_note(
+            config,
+            projects_api,
+            client["asana"],
+            "Sent reminder",
+        )
+    else:
+        log.warning(
+            f"Client {client['firstname']} {client['lastname']} has no Asana link"
+        )
+
+
+### QUESTIONNAIRES ###
 def all_questionnaires_done(client) -> bool:
     for q in client["questionnaires"]:
         if not isinstance(q, dict):
@@ -518,15 +564,6 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
         )
 
     return complete
-
-
-def format_appointment(client: dict) -> str:
-    appointment = client["date"]
-    return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
-
-
-def format_phone_number(raw_number: str) -> str:
-    return f"({raw_number[:3]}) {raw_number[3:6]}-{raw_number[6:]}"
 
 
 def check_questionnaires(
@@ -576,6 +613,23 @@ def check_questionnaires(
         update_yaml(clients, "./put/clients.yml")
 
 
+### FORMATTING ###
+def format_appointment(client: dict) -> str:
+    appointment = client["date"]
+    return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
+
+
+def format_phone_number(raw_number: str) -> str:
+    return f"({raw_number[:3]}) {raw_number[3:6]}-{raw_number[6:]}"
+
+
+def check_appointment_distance(appointment: date) -> int:
+    today = date.today()
+    delta = appointment - today
+    return delta.days
+
+
+### OPENPHONE ###
 def send_text(
     config: dict,
     services: dict,
@@ -608,36 +662,75 @@ def send_text(
     return response_data
 
 
-def mark_links_in_asana(
-    projects_api: asana.ProjectsApi, client: dict, services: dict, config: dict
-) -> None:
-    if client.get("asana") and client["asana"]:
-        for questionnaire in client["questionnaires"]:
-            if questionnaire["done"]:
-                mark_link_done(
-                    projects_api,
-                    services,
-                    config,
-                    client["asana"],
-                    questionnaire["link"],
-                )
-    else:
-        log.warning(
-            f"Client {client['firstname']} {client['lastname']} has no Asana link"
-        )
+### GMAIL ###
+
+# If modifying these scopes, delete the file token.json.
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/calendar.readonly",
+]
 
 
-def sent_reminder_asana(
-    config: dict, projects_api: asana.ProjectsApi, client: dict
-) -> None:
-    if client.get("asana") and client["asana"]:
-        add_note(
-            config,
-            projects_api,
-            client["asana"],
-            "Sent reminder",
+def google_authenticate():
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists("./config/token.json"):
+        creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "./config/credentials.json", SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open("./config/token.json", "w") as token:
+            token.write(creds.to_json())
+
+    return creds
+
+
+def send_gmail(
+    message_text: str,
+    subject: str,
+    to_addr: str,
+    from_addr: str,
+    cc_addr: str | None = None,
+    html: str | None = None,
+):
+    creds = google_authenticate()
+
+    try:
+        service = build("gmail", "v1", credentials=creds)
+
+        message = EmailMessage()
+        message.set_content(message_text)
+        message["Subject"] = subject
+        message["To"] = to_addr
+        message["From"] = from_addr
+        if cc_addr:
+            message["Cc"] = cc_addr
+
+        if html:
+            message.add_alternative(html, subtype="html")
+
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+        create_message = {"raw": encoded_message}
+
+        send_message = (
+            service.users().messages().send(userId="me", body=create_message).execute()
         )
-    else:
-        log.warning(
-            f"Client {client['firstname']} {client['lastname']} has no Asana link"
-        )
+
+        log.info(f"Sent email to {to_addr}: {subject}")
+
+    except HttpError as error:
+        log.error(error)
+        send_message = None
+    return send_message
+
+

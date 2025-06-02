@@ -54,12 +54,6 @@ def send_text_and_ensure(
         return False
 
 
-def check_appointment_distance(appointment: date) -> int:
-    today = date.today()
-    delta = appointment - today
-    return delta.days
-
-
 def build_message(config: dict, client: dict, distance: int) -> str:
     link_count = len(client.get("questionnaires", []))
     if distance < 0:
@@ -107,7 +101,7 @@ def main():
             elif client["date"] == "Reschedule" and done:
                 continue
 
-            distance = check_appointment_distance(
+            distance = utils.check_appointment_distance(
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
             )
             utils.log.info(
