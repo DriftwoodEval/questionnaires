@@ -200,61 +200,16 @@ def insert_basic_client(
     db_connection.close()
 
 
-def put_appointment_in_db(config, client_id, evaluator_email, date, appointment_type):
-    db_connection, cursor = get_db(config)
-
-    # Check if the client already has an appointment of the given type
-    check_sql = """
-        SELECT COUNT(*) FROM emr_appointment
-        WHERE clientId = %s AND type = %s
-    """
-    cursor.execute(check_sql, (int(client_id), appointment_type))
-    count = cursor.fetchone()
-
-    if count and count[0] > 0:  # type: ignore
-        log.info(
-            f"Client {client_id} already has an appointment of type {appointment_type}."
-        )
-        db_connection.close()
-        return None
-
-    # Insert the new appointment
-    sql = """
-        INSERT INTO emr_appointment (
-            clientId, evaluatorNpi, date, type
-        ) VALUES (%s, %s, %s, %s)
-    """
-
-    values = (
-        int(client_id),
-        get_evaluator_npi(config, evaluator_email),
-        date,
-        appointment_type,
-    )
-
-    try:
-        cursor.execute(sql, values)
-        appointment_id = cursor.lastrowid
-        cursor.nextset()
-        db_connection.commit()
-    except mysql.connector.errors.IntegrityError as e:
-        log.error(e)
-        appointment_id = None
-
-    db_connection.close()
-    return appointment_id
-
-
-def put_questionnaire_in_db(config, appointment_id, link, type, sent_date, completed):
+def put_questionnaire_in_db(config, client_id, link, type, sent_date, completed):
     db_connection, cursor = get_db(config)
 
     sql = """
         INSERT INTO emr_questionnaire (
-            appointmentId, link, questionnaireType, sent, completed
+            clientId, link, questionnaireType, sent, completed
         ) VALUES (%s, %s, %s, %s, %s)
     """
 
-    values = (int(appointment_id), link, type, sent_date, completed)
+    values = (int(client_id), link, type, sent_date, completed)
 
     try:
         cursor.execute(sql, values)
