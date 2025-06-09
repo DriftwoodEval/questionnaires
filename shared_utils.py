@@ -371,13 +371,14 @@ def add_note(
 def search_by_name(
     projects_api: asana.ProjectsApi, services: dict, name: str
 ) -> dict | None:
+    name = str(name)
     opts = {
         "limit": 100,
         "archived": False,
         "opt_fields": "name,color,permalink_url,notes",
     }
     try:
-        print(f"Searching projects for {name}...")
+        log.info(f"Searching projects for {name}...")
 
         api_response = list(
             projects_api.get_projects_for_workspace(
@@ -387,7 +388,7 @@ def search_by_name(
         )
 
     except ApiException as e:
-        print(
+        log.exception(
             "Exception when calling ProjectsApi->get_projects_for_workspace: %s\n" % e
         )
         return
@@ -448,10 +449,20 @@ def search_and_add_questionnaires(
         projects_api,
         services,
         config,
-        f"{client['firstname']} {client['lastname']}",
+        re.sub(r"C0+", "", client["account_number"]),
         questionnaire_links_str,
         True,
     )
+    if not asana_link:
+        name = f"{client['firstname']} {client['lastname']}"
+        asana_link = search_and_add_note(
+            projects_api,
+            services,
+            config,
+            name,
+            questionnaire_links_str,
+            True,
+        )
     if not asana_link and (client.get("cal_firstname") or client.get("cal_lastname")):
         name = f"{client.get('cal_firstname', client['firstname'])} {client.get('cal_lastname', client['lastname'])}"
         asana_link = search_and_add_note(

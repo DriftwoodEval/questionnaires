@@ -1933,7 +1933,6 @@ def main():
                 ].append({"done": False, "link": link, "type": questionnaire})
 
             if send:
-                del formatted_client[client_info["account_number"]]["account_number"]
                 formatted_client[client_info["account_number"]] = (
                     utils.search_and_add_questionnaires(
                         projects_api,
@@ -1942,6 +1941,7 @@ def main():
                         formatted_client[client_info["account_number"]],
                     )
                 )
+                del formatted_client[client_info["account_number"]]["account_number"]
                 formatted_client = add_sent_date(formatted_client)
                 utils.update_yaml(formatted_client, "./put/clients.yml")
                 message = format_ta_message(
