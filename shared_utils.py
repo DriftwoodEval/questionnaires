@@ -6,10 +6,12 @@ import re
 from datetime import date, datetime
 from email.message import EmailMessage
 from time import sleep
+from typing import Literal
 from urllib.parse import urlparse
 
 import asana
-import mysql.connector
+import pandas as pd
+import pymysql.cursors
 import requests
 import yaml
 from asana.rest import ApiException
@@ -111,9 +113,8 @@ def check_if_element_exists(
 
 
 ### DATABASE ###
-def get_previous_clients(failed: bool = False) -> dict | None:
+def get_previous_clients(config, failed: bool = False) -> dict | None:
     log.info("Loading previous clients")
-    clients_filepath = "./put/clients.yml"
     qfailure_filepath = "./put/qfailure.yml"
 
     prev_clients = {}
@@ -125,36 +126,54 @@ def get_previous_clients(failed: bool = False) -> dict | None:
         except FileNotFoundError:
             log.info(f"{qfailure_filepath} does not exist.")
 
-    try:
-        with open(clients_filepath, "r") as file:
-            clients_data = yaml.safe_load(file) or {}
-            prev_clients.update(clients_data)
-    except FileNotFoundError:
-        log.info(f"{clients_filepath} does not exist.")
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = "SELECT * FROM emr_client"
+            cursor.execute(sql)
+            clients = cursor.fetchall()
+
+            sql = "SELECT * FROM emr_questionnaire"
+            cursor.execute(sql)
+            questionnaires = cursor.fetchall()
+            print(questionnaires)
+            for client in clients:
+                client["questionnaires"] = [
+                    questionnaire
+                    for questionnaire in questionnaires
+                    if questionnaire["clientId"] == client["id"]
+                ]
+
+    if clients:
+        for client in clients:
+            prev_clients[client["id"]] = {
+                key: value for key, value in client.items() if key != "id"
+            }
 
     return prev_clients if prev_clients else None
 
 
 def get_db(config):
     db_url = urlparse(config["database_url"])
-    db_connection = mysql.connector.connect(
+    connection = pymysql.connect(
         host=db_url.hostname,
         port=db_url.port,
         user=db_url.username,
         password=db_url.password,
         database=db_url.path[1:],
+        cursorclass=pymysql.cursors.DictCursor,
     )
-    cursor = db_connection.cursor()
-    return db_connection, cursor
+    return connection
 
 
-def get_evaluator_npi(config, evaluator_email) -> str:
-    db_connection, cursor = get_db(config)
-    sql = "SELECT npi FROM emr_evaluator WHERE email = %s"
-    cursor.execute(sql, (evaluator_email,))
-    npi = cursor.fetchone()
-    db_connection.close()
-    return npi[0] if npi else None  # type: ignore
+def get_evaluator_npi(config, evaluator_email) -> str | None:
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = "SELECT npi FROM emr_evaluator WHERE email = %s"
+            cursor.execute(sql, (evaluator_email))
+            npi = cursor.fetchone()
+            return npi["npi"] if npi else None
 
 
 def insert_basic_client(
@@ -162,63 +181,61 @@ def insert_basic_client(
     client_id: str,
     asana_id: str,
     dob,
-    first_name,
-    last_name,
-    asd_adhd,
-    interpreter,
-    gender,
+    first_name: str,
+    last_name: str,
+    asd_adhd: str,
+    gender: str,
     phone_number,
 ):
-    db_connection, cursor = get_db(config)
-    sql = """
-        INSERT INTO `emr_client` (id, hash, asanaId, dob, firstName, lastName, fullName, asdAdhd, interpreter, gender, phoneNumber)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE id=id
-    """
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = """
+                INSERT INTO `emr_client` (id, hash, asanaId, dob, firstName, lastName, fullName, asdAdhd, gender, phoneNumber)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE id=id
+            """
 
-    values = (
-        int(client_id),
-        hashlib.sha256(str(client_id).encode("utf-8")).hexdigest(),
-        asana_id if asana_id else None,
-        dob,
-        first_name,
-        last_name,
-        f"{first_name} {last_name}",
-        asd_adhd,
-        interpreter,
-        gender,
-        phone_number,
-    )
+            values = (
+                int(client_id),
+                hashlib.sha256(str(client_id).encode("utf-8")).hexdigest(),
+                asana_id if asana_id else None,
+                dob,
+                first_name,
+                last_name,
+                f"{first_name} {last_name}",
+                "Both" if asd_adhd == "ASD+ADHD" else asd_adhd,
+                gender,
+                phone_number,
+            )
 
-    try:
-        cursor.execute(sql, values)
-        cursor.nextset()
+            cursor.execute(sql, values)
+
         db_connection.commit()
-    except mysql.connector.errors.IntegrityError as e:
-        log.error(e)
-
-    db_connection.close()
 
 
-def put_questionnaire_in_db(config, client_id, link, type, sent_date, completed):
-    db_connection, cursor = get_db(config)
+def put_questionnaire_in_db(
+    config,
+    client_id,
+    link,
+    type,
+    sent_date,
+    status: Literal["COMPLETED", "PENDING", "RESCHEDULED"],
+):
+    db_connection = get_db(config)
 
-    sql = """
-        INSERT INTO emr_questionnaire (
-            clientId, link, questionnaireType, sent, completed
-        ) VALUES (%s, %s, %s, %s, %s)
-    """
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = """
+                INSERT INTO emr_questionnaire (
+                    clientId, link, questionnaireType, sent, status
+                ) VALUES (%s, %s, %s, %s, %s)
+            """
 
-    values = (int(client_id), link, type, sent_date, completed)
+            values = (int(client_id), link, type, sent_date, status)
 
-    try:
-        cursor.execute(sql, values)
-        cursor.nextset()
+            cursor.execute(sql, values)
         db_connection.commit()
-    except mysql.connector.errors.IntegrityError as e:
-        log.error(e)
-
-    db_connection.close()
 
 
 def update_yaml(clients: dict, filepath: str) -> None:
@@ -389,27 +406,27 @@ def search_and_add_note(
 
 
 def search_and_add_questionnaires(
-    projects_api: asana.ProjectsApi, services, config, client: dict
-) -> dict:
+    projects_api: asana.ProjectsApi, services, config, client: pd.Series, questionnaires
+) -> pd.Series:
     questionnaire_links_format = [
-        f"{item['link']} - {item['type']}" for item in client["questionnaires"]
+        f"{item['link']} - {item['type']}" for item in questionnaires
     ]
     questionnaire_links_str = "\n".join(questionnaire_links_format)
     questionnaire_links_str = (
         datetime.now().strftime("%m/%d")
-        + f" Qs sent {config['initials']}\n"
+        + " Qs sent automatically\n"
         + questionnaire_links_str
     )
     asana_link = search_and_add_note(
         projects_api,
         services,
         config,
-        re.sub(r"C0+", "", client["account_number"]),
+        re.sub(r"C0+", "", client["Client ID"]),
         questionnaire_links_str,
         True,
     )
     if not asana_link:
-        name = f"{client['firstname']} {client['lastname']}"
+        name = client["Client Name"]
         asana_link = search_and_add_note(
             projects_api,
             services,
@@ -418,8 +435,8 @@ def search_and_add_questionnaires(
             questionnaire_links_str,
             True,
         )
-    if not asana_link and (client.get("cal_firstname") or client.get("cal_lastname")):
-        name = f"{client.get('cal_firstname', client['firstname'])} {client.get('cal_lastname', client['lastname'])}"
+    if not asana_link:
+        name = f"{client['TA First Name']} {client['TA Last Name']}"
         asana_link = search_and_add_note(
             projects_api,
             services,
@@ -428,7 +445,7 @@ def search_and_add_questionnaires(
             questionnaire_links_str,
             True,
         )
-    client["asana"] = asana_link
+    client["Asana"] = asana_link
     return client
 
 
@@ -533,10 +550,7 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 
 
 def check_questionnaires(
-    driver: WebDriver,
-    config: dict,
-    services: dict,
-    clients: dict | None = get_previous_clients(),
+    driver: WebDriver, config: dict, services: dict, clients: dict
 ) -> dict | None:
     if clients:
         completed_clients = {}
@@ -638,6 +652,7 @@ def send_text(
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
 ]
 
 

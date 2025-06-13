@@ -1,8 +1,11 @@
 import logging
+import re
 from datetime import datetime
 from time import sleep, strftime, strptime
 
+import pandas as pd
 from dateutil.relativedelta import relativedelta
+from googleapiclient.discovery import build
 from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
@@ -25,48 +28,78 @@ utils.log.basicConfig(
 services, config = utils.load_config()
 
 
-def get_clients() -> list[str]:
-    utils.log.info("Loading clients list file")
-    with open("./put/automation.txt", "r") as f:
-        automation = f.read()
-        clients = automation.split(",")
-        utils.log.info(f"Loaded {len(clients)} clients")
-    return clients
+def get_clients_to_send():
+    creds = utils.google_authenticate()
 
+    try:
+        service = build("sheets", "v4", credentials=creds)
 
-def parameterize(client: str) -> dict:
-    client_split = client.split()
-    evaluator_email = client_split[0]
-    first = client_split[1]
-    last = client_split[2]
-    check = client_split[3]
-    daeval = "DA"
-    if "ADHD" in check:
-        date = client_split[4]
-    else:
-        daeval = client_split[4]
-        date = client_split[5]
+        sheet = service.spreadsheets()
+        result = (
+            sheet.values()
+            .get(
+                spreadsheetId=config["punch_list_id"],
+                range=config["punch_list_range"],
+            )
+            .execute()
+        )
+        values = result.get("values", [])
 
-    english = True
-    if "INT" in daeval:
-        daeval = daeval.replace("INT", "").strip()
-        english = False
-    if "INT" in check:
-        check = check.replace("INT", "").strip()
-        english = False
+        if values:
+            df = pd.DataFrame(values[1:], columns=values[0])
+            df.to_csv("clients_to_send.csv", index=False)
 
-    utils.log.info(
-        f"Client: {first} {last}, {check}, {daeval}, with an appointment on {date} with {evaluator_email}"
-    )
-    return {
-        "firstname": first,
-        "lastname": last,
-        "check": check,
-        "daeval": daeval,
-        "date": date,
-        "evaluator_email": evaluator_email,
-        "english": english,
-    }
+            df = df.rename(columns={df.columns[0]: "Client Name"})
+
+            df = df[
+                [
+                    "Client Name",
+                    "Client ID",
+                    "For",
+                    "DA Qs Needed",
+                    "DA Qs Sent",
+                    "EVAL Qs Needed",
+                    "EVAL Qs Sent",
+                ]
+            ]
+
+            df = df[
+                (df["DA Qs Needed"] == "TRUE") & (df["DA Qs Sent"] != "TRUE")
+                | (df["EVAL Qs Needed"] == "TRUE") & (df["EVAL Qs Sent"] != "TRUE")
+            ]
+
+            df["Client ID"] = df["Client ID"].apply(
+                lambda client_id: re.sub(r"^C?0*", "", client_id)
+            )
+
+            df["Human Friendly ID"] = df["Client ID"].apply(
+                lambda client_id: f"C{client_id.zfill(9)}"
+            )
+
+            df["daeval"] = df.apply(
+                lambda client: (
+                    "DAEVAL"
+                    if (
+                        client["DA Qs Needed"] == "TRUE"
+                        and client["DA Qs Sent"] != "TRUE"
+                        and client["EVAL Qs Needed"] == "TRUE"
+                        and client["EVAL Qs Sent"] != "TRUE"
+                    )
+                    else "EVAL"
+                    if (
+                        client["EVAL Qs Needed"] == "TRUE"
+                        and client["EVAL Qs Sent"] != "TRUE"
+                    )
+                    else "DA"
+                ),
+                axis=1,
+            )
+
+            df = df[df.iloc[:, 0].str.contains("Testman Testson", na=False)]
+
+            return df
+    except Exception as e:
+        utils.log.error(e)
 
 
 def rearrangedob(dob: str) -> str:
@@ -167,8 +200,8 @@ def search_helper(driver: WebDriver, id: str) -> None:
         search_helper(driver, id)
 
 
-def search_qglobal(driver: WebDriver, actions: ActionChains, client: dict) -> None:
-    utils.log.info(f"Searching QGlobal for {client['account_number']}")
+def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) -> None:
+    utils.log.info(f"Searching QGlobal for {client['Client ID']}")
     id = client["account_number"]
     utils.click_element(driver, By.NAME, "searchForm:j_id347")
 
@@ -182,18 +215,32 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: dict) -> No
     actions.perform()
 
 
+def check_for_qglobal_account(
+    driver: WebDriver, actions: ActionChains, client: pd.Series
+) -> bool:
+    driver.get("https://qglobal.pearsonassessments.com/qg/searchExaminee.seam")
+    search_qglobal(driver, actions, client)
+
+    utils.log.info("Checking for QGlobal account")
+    try:
+        utils.find_element(driver, By.XPATH, "//tr[2]/td[5]")
+        return True
+    except NoSuchElementException:
+        return False
+
+
 def add_client_to_qglobal(
-    driver: WebDriver, actions: ActionChains, client: dict
+    driver: WebDriver, actions: ActionChains, client: pd.Series
 ) -> bool:
     # We deliberately do not use utils.click_element here, since the point of this function requires it to error out sometimes
     utils.log.info(
-        f"Attempting to add {client['firstname']} {client['lastname']} to QGlobal"
+        f"Attempting to add {client['TA First Name']} {client['TA Last Name']} to QGlobal"
     )
-    firstname = client["firstname"]
-    lastname = client["lastname"]
-    id = client["account_number"]
-    dob = client["birthdate"]
-    gender = client["gender"]
+    firstname = client["TA First Name"]
+    lastname = client["TA Last Name"]
+    id = client["Human Friendly ID"]
+    dob = client["Date of Birth"]
+    gender = client["Gender"]
 
     utils.log.info("Clicking new examinee button")
     utils.click_element(driver, By.ID, "searchForm:newExamineeButton", refresh=True)
@@ -256,12 +303,12 @@ def add_client_to_qglobal(
 def add_client_to_mhs(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     questionnaire: str,
     accounts_created: dict[str, bool],
 ) -> bool:
     def add_to_existing(
-        driver: WebDriver, actions: ActionChains, client: dict, questionnaire: str
+        driver: WebDriver, actions: ActionChains, client: pd.Series, questionnaire: str
     ) -> bool:
         utils.log.info("Client already exists, adding to existing")
         utils.click_element(
@@ -294,7 +341,7 @@ def add_client_to_mhs(
             )
 
         utils.log.info("Searching for client")
-        search.send_keys(client["account_number"])
+        search.send_keys(client["Human Friendly ID"])
         actions.send_keys(Keys.ENTER)
         actions.perform()
         sleep(1)
@@ -370,7 +417,7 @@ def add_client_to_mhs(
             )
             age_field.send_keys(Keys.CONTROL + "a")
             age_field.send_keys(Keys.BACKSPACE)
-            age_field.send_keys(client["age"])
+            age_field.send_keys(client["Age"])
             if questionnaire == "ASRS":
                 utils.log.info("Submitting")
                 utils.click_element(
@@ -399,13 +446,13 @@ def add_client_to_mhs(
         return add_to_existing(driver, actions, client, questionnaire)
 
     utils.log.info(
-        f"Atempting to add {client['firstname']} {client['lastname']} to MHS"
+        f"Atempting to add {client['TA First Name']} {client['TA Last Name']} to MHS"
     )
-    firstname = client["firstname"]
-    lastname = client["lastname"]
-    id = client["account_number"]
-    dob = client["birthdate"]
-    gender = client["gender"]
+    firstname = client["TA First Name"]
+    lastname = client["TA Last Name"]
+    id = client["Human Friendly ID"]
+    dob = client["Date of Birth"]
+    gender = client["Gender"]
     utils.click_element(
         driver, By.XPATH, "//div[@class='pull-right']//input[@type='submit']"
     )
@@ -486,7 +533,7 @@ def add_client_to_mhs(
 
 
 def get_questionnaires(
-    age: int, check: str, daeval: str, vineland: bool
+    age: int, check: str, daeval: str, qglobal_exists: bool
 ) -> list[str] | str:
     if daeval == "EVAL":
         if check == "ASD":
@@ -494,14 +541,14 @@ def get_questionnaires(
                 return "Too young"
             elif age < 6:
                 qs = ["DP4", "BASC Preschool", "Conners EC"]
-                if vineland:
+                if qglobal_exists:
                     qs.append("ASRS (2-5 Years)")
                 else:
                     qs.append("Vineland")
                 return qs
             elif age < 12:
                 qs = ["BASC Child", "Conners 4"]
-                if vineland:
+                if qglobal_exists:
                     qs.append("ASRS (6-18 Years)")
                 else:
                     qs.append("Vineland")
@@ -512,14 +559,14 @@ def get_questionnaires(
                     "Conners 4 Self",
                     "Conners 4",
                 ]
-                if vineland:
+                if qglobal_exists:
                     qs.append("ASRS (6-18 Years)")
                 else:
                     qs.append("Vineland")
                 return qs
             elif age < 19:
                 qs = ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2"]
-                if vineland:
+                if qglobal_exists:
                     qs.append("ASRS (6-18 Years)")
                 else:
                     qs.append("Vineland")
@@ -605,12 +652,12 @@ def get_questionnaires(
 def assign_questionnaire(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     questionnaire: str,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(
-        f"Assigning questionnaire '{questionnaire}' to client {client['firstname']} {client['lastname']}"
+        f"Assigning questionnaire '{questionnaire}' to client {client['TA First Name']} {client['TA Last Name']}"
     )
     mhs_url = "https://assess.mhs.com/MainPortal.aspx"
     qglobal_url = "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
@@ -680,13 +727,15 @@ def assign_questionnaire(
         raise ValueError("Unsupported questionnaire type")
 
 
-def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
-    utils.log.info(f"Generating DP4 for {client['firstname']} {client['lastname']}")
-    firstname = client["firstname"]
-    lastname = client["lastname"]
-    id = client["account_number"]
-    dob = client["birthdate"]
-    gender = client["gender"]
+def gen_dp4(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
+    utils.log.info(
+        f"Generating DP4 for {client['TA First Name']} {client['TA Last Name']}"
+    )
+    firstname = client["TA First Name"]
+    lastname = client["TA Last Name"]
+    id = client["Human Friendly ID"]
+    dob = client["Date of Birth"]
+    gender = client["Gender"]
     utils.click_element(driver, By.ID, "newCase")
 
     first = utils.find_element(driver, By.XPATH, "//td[@id='FirstName']/input")
@@ -835,11 +884,11 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: dict) -> str:
 def gen_conners_ec(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(
-        f"Generating Conners EC for {client['firstname']} {client['lastname']}"
+        f"Generating Conners EC for {client['TA First Name']} {client['TA Last Name']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -903,10 +952,10 @@ def gen_conners_ec(
 
 
 def gen_conners_4(
-    driver, actions, client, accounts_created
+    driver: WebDriver, actions: ActionChains, client: pd.Series, accounts_created: dict
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(
-        f"Generating Conners 4 for {client['firstname']} {client['lastname']}"
+        f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -965,11 +1014,11 @@ def gen_conners_4(
 def gen_conners_4_self(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(
-        f"Generating Conners 4 for {client['firstname']} {client['lastname']}"
+        f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1034,11 +1083,11 @@ def gen_conners_4_self(
 def gen_asrs_2_5(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(
-        f"Generating ASRS (2-5 Years) for {client['firstname']} {client['lastname']}"
+        f"Generating ASRS (2-5 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1109,11 +1158,11 @@ def gen_asrs_2_5(
 def gen_asrs_6_18(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     utils.log.info(
-        f"Generating ASRS (6-18 Years) for {client['firstname']} {client['lastname']}"
+        f"Generating ASRS (6-18 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1181,9 +1230,11 @@ def gen_asrs_6_18(
     return link, accounts_created
 
 
-def gen_basc_preschool(driver: WebDriver, actions: ActionChains, client: dict) -> str:
+def gen_basc_preschool(
+    driver: WebDriver, actions: ActionChains, client: pd.Series
+) -> str:
     utils.log.info(
-        f"Generating BASC Preschool for {client['firstname']} {client['lastname']}"
+        f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1236,9 +1287,9 @@ def gen_basc_preschool(driver: WebDriver, actions: ActionChains, client: dict) -
     return link
 
 
-def gen_basc_child(driver: WebDriver, actions: ActionChains, client: dict) -> str:
+def gen_basc_child(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
     utils.log.info(
-        f"Generating BASC Child for {client['firstname']} {client['lastname']}"
+        f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1291,9 +1342,11 @@ def gen_basc_child(driver: WebDriver, actions: ActionChains, client: dict) -> st
     return link
 
 
-def gen_basc_adolescent(driver: WebDriver, actions: ActionChains, client: dict) -> str:
+def gen_basc_adolescent(
+    driver: WebDriver, actions: ActionChains, client: pd.Series
+) -> str:
     utils.log.info(
-        f"Generating BASC Adolescent for {client['firstname']} {client['lastname']}"
+        f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1346,9 +1399,9 @@ def gen_basc_adolescent(driver: WebDriver, actions: ActionChains, client: dict) 
     return link
 
 
-def gen_vineland(driver: WebDriver, actions: ActionChains, client: dict) -> str:
+def gen_vineland(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
     utils.log.info(
-        f"Generating Vineland for {client['firstname']} {client['lastname']}"
+        f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
     )
     utils.log.info("Searching QGlobal")
     search_qglobal(driver, actions, client)
@@ -1416,10 +1469,12 @@ def gen_vineland(driver: WebDriver, actions: ActionChains, client: dict) -> str:
 def gen_caars_2(
     driver: WebDriver,
     actions: ActionChains,
-    client: dict,
+    client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
-    utils.log.info(f"Generating CAARS 2 for {client['firstname']} {client['lastname']}")
+    utils.log.info(
+        f"Generating CAARS 2 for {client['TA First Name']} {client['TA Last Name']}"
+    )
     utils.click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
     )
@@ -1477,40 +1532,32 @@ def gen_caars_2(
 
 
 def go_to_client(
-    driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+    driver: WebDriver, actions: ActionChains, client_id: str
 ) -> str | None:
     def _search_clients(
-        driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+        driver: WebDriver, actions: ActionChains, client_id: str
     ) -> None:
-        utils.log.info(f"Searching for {firstname} {lastname}")
+        utils.log.info(f"Searching for {client_id}")
         sleep(2)
 
         utils.log.info("Trying to escape random popups")
         actions.send_keys(Keys.ESCAPE)
         actions.perform()
-        utils.log.info("Entering first name")
-        firstname_label = utils.find_element(
-            driver, By.XPATH, "//label[text()='First Name']"
-        )
-        firstname_field = firstname_label.find_element(
-            By.XPATH, "./following-sibling::input"
-        )
-        firstname_field.send_keys(firstname)
 
-        utils.log.info("Entering last name")
-        lastname_label = utils.find_element(
-            driver, By.XPATH, "//label[text()='Last Name']"
+        utils.log.info("Entering client ID")
+        client_id_label = utils.find_element(
+            driver, By.XPATH, "//label[text()='Account Number']"
         )
-        lastname_field = lastname_label.find_element(
+        client_id_field = client_id_label.find_element(
             By.XPATH, "./following-sibling::input"
         )
-        lastname_field.send_keys(lastname)
+        client_id_field.send_keys(client_id)
 
         utils.log.info("Clicking search")
         utils.click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
 
     def _go_to_client_loop(
-        driver: WebDriver, actions: ActionChains, firstname: str, lastname: str
+        driver: WebDriver, actions: ActionChains, client_id: str
     ) -> str:
         driver.get("https://portal.therapyappointment.com")
         sleep(1)
@@ -1519,7 +1566,7 @@ def go_to_client(
 
         for attempt in range(3):
             try:
-                _search_clients(driver, actions, firstname, lastname)
+                _search_clients(driver, actions, client_id)
                 break
             except Exception as e:
                 if attempt == 2:
@@ -1546,7 +1593,7 @@ def go_to_client(
 
     for attempt in range(3):
         try:
-            return _go_to_client_loop(driver, actions, firstname, lastname)
+            return _go_to_client_loop(driver, actions, client_id)
         except Exception as e:
             if attempt == 2:
                 utils.log.error(f"Failed to go to client after 3 attempts: {e}")
@@ -1681,37 +1728,21 @@ def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
     utils.click_element(driver, By.CSS_SELECTOR, "button[type='submit']")
 
 
-def format_client(client) -> dict:
-    account_number = client["account_number"]
-    return {account_number: client}
-
-
-def add_key(client: dict, key: str, info) -> dict:
-    client[list(client.keys())[0]][key] = info
-    return client
-
-
-def add_sent_date(formatted_client: dict) -> dict:
-    return add_key(formatted_client, "sent_date", datetime.today().strftime("%Y/%m/%d"))
-
-
-def add_failed_date(client: dict) -> dict:
-    return add_key(client, "failed_date", datetime.today().strftime("%Y/%m/%d"))
-
-
-def add_questionnaires_needed(client: dict, questionnaires: list[str] | str) -> dict:
-    return add_key(client, "questionnaires_needed", questionnaires)
-
-
-def format_failed_client(client_params: dict, error: str) -> dict:
+def format_failed_client(
+    client: pd.Series, error: str, questionnaires_needed: list[str] | str = ""
+) -> dict:
+    key = client["Client ID"] if client["Client ID"] else client["Client Name"]
     client_info = {
-        "check": client_params["check"],
-        "daeval": client_params["daeval"],
-        "date": client_params["date"],
+        "firstname": client["Client Name"].split(" ")[0],
+        "lastname": client["Client Name"].split(" ")[-1],
+        "check": client.For,
+        "daeval": client.daeval,
         "failed_date": datetime.today().strftime("%Y/%m/%d"),
         "error": error,
     }
-    return {f"{client_params['firstname']} {client_params['lastname']}": client_info}
+    if questionnaires_needed != "":
+        client_info["questionnaires_needed"] = questionnaires_needed
+    return {key: client_info}
 
 
 def write_file(filepath: str, data: str) -> None:
@@ -1737,19 +1768,36 @@ def write_file(filepath: str, data: str) -> None:
             utils.log.info("Wrote data to new file")
 
 
-def check_client_in_yaml(prev_clients: dict, client_info: dict) -> bool:
+def check_client_previous(prev_clients: dict, client_info: pd.Series):
     if prev_clients is None:
         return False
-    account_number = client_info.get("account_number")
 
-    if account_number and isinstance(prev_clients, dict):
-        if account_number in prev_clients:
-            return client_info.get("daeval") in prev_clients[account_number]["daeval"]
-    return False
+    client_id = client_info["Client ID"]
+    human_friendly_id = client_info["Human Friendly ID"]
+
+    if client_id and isinstance(prev_clients, dict):
+        if int(client_id) in prev_clients:
+            client_id_to_use = int(client_id)
+        elif client_id in prev_clients:
+            client_id_to_use = client_id
+        elif human_friendly_id in prev_clients:
+            client_id_to_use = human_friendly_id
+        else:
+            return False
+
+        return prev_clients[client_id_to_use]["questionnaires"]
 
 
 def main():
     driver, actions = utils.initialize_selenium()
+
+    clients = get_clients_to_send()
+    prev_clients = utils.get_previous_clients(config, failed=True)
+
+    if clients is None:
+        utils.log.info("No clients marked to send, exiting")
+        return
+
     projects_api = utils.init_asana(services)
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
@@ -1760,198 +1808,175 @@ def main():
             except Exception as e:
                 utils.log.info(f"Login failed: {e}, trying again")
                 sleep(1)
-    clients = get_clients()
-    prev_clients = utils.get_previous_clients(failed=True)
 
-    for client in clients:
-        client_params = parameterize(client)
+    for index, client in clients.iterrows():
+        utils.log.info(f"Starting loop for {client['Client Name']}")
 
-        utils.log.info(
-            f"Starting loop for {client_params['firstname']} {client_params['lastname']}"
-        )
-
-        if client_params["english"] is False:
-            utils.log.warning(
-                f"Skipping Non-English client {client_params['firstname']} {client_params['lastname']}"
-            )
-            utils.add_failure(format_failed_client(client_params, "Non-English"))
+        if pd.isna(client["Client ID"]) or not client["Client ID"]:
+            utils.log.error(f"Client {client['Client Name']} is missing Client ID")
+            utils.add_failure(format_failed_client(client, "Missing Client ID"))
             continue
 
         try:
-            client_url = go_to_client(
-                driver, actions, client_params["firstname"], client_params["lastname"]
-            )
+            client_url = go_to_client(driver, actions, client["Client ID"])
+
             if not client_url:
                 utils.log.error("Client URL not found")
-                utils.add_failure(
-                    format_failed_client(client_params, "Unable to find client")
-                )
+                utils.add_failure(format_failed_client(client, "Unable to find client"))
                 continue
             if not check_if_opened_portal(driver):
-                utils.add_failure(
-                    format_failed_client(client_params, "Portal not opened")
-                )
+                utils.add_failure(format_failed_client(client, "Portal not opened"))
                 continue
             if not check_if_docs_signed(driver):
-                utils.add_failure(
-                    format_failed_client(client_params, "Docs not signed")
-                )
+                utils.add_failure(format_failed_client(client, "Docs not signed"))
                 continue
+
             client_info = extract_client_data(driver)
-
-            combined_client_info = client_params.copy()
-            for key, value in client_info.items():
-                if key in ["firstname", "lastname"] and isinstance(value, str):
-                    if value.lower() != client_params[key].lower():
-                        combined_client_info[f"cal_{key}"] = client_params[key]
-                        combined_client_info[key] = value
-                else:
-                    combined_client_info[key] = value
-
-            if prev_clients is not None:
-                client_already_ran = check_client_in_yaml(
-                    prev_clients, combined_client_info
-                )
-            else:
-                client_already_ran = False
+            client["Date of Birth"] = client_info["birthdate"]
+            client["Age"] = client_info["age"]
+            client["Gender"] = client_info["gender"]
+            client["Phone Number"] = client_info["phone_number"]
+            client["TA First Name"] = client_info["firstname"]
+            client["TA Last Name"] = client_info["lastname"]
 
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
-            utils.add_failure(
-                format_failed_client(client_params, "Unable to find client")
-            )
+            utils.add_failure(format_failed_client(client, "Unable to find client"))
             break
-
-        if client_already_ran:
-            utils.log.warning(
-                f"{client_params['firstname']} {client_params['lastname']} with {combined_client_info['daeval']} has been run before with an overlapping appointment type, skipping."
-            )
-            continue
 
         write_file(
             "./put/records.txt",
-            f"{client_params['firstname']} {client_params['lastname']} {client_params['date']}",
+            f"{client['Client Name']} {client['Client ID']} {datetime.today().strftime('%Y/%m/%d')}",
         )
 
         try:
             accounts_created = {}
-            if (
-                int(combined_client_info["age"]) < 19
-                and client_params["daeval"] != "DA"
-            ):
-                driver.get(
-                    "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
+            if int(client["Age"]) < 19 and client["daeval"] != "DA":
+                accounts_created["qglobal"] = check_for_qglobal_account(
+                    driver, actions, client
                 )
-                vineland = add_client_to_qglobal(driver, actions, combined_client_info)
-                accounts_created["qglobal"] = True
             else:
-                vineland = False
                 accounts_created["qglobal"] = False
 
-            questionnaires = get_questionnaires(
-                combined_client_info["age"],
-                combined_client_info["check"],
-                combined_client_info["daeval"],
-                vineland,
+            questionnaires_needed = get_questionnaires(
+                client["Age"],
+                client["For"],
+                client["daeval"],
+                accounts_created["qglobal"],
             )
-            client_add_q_field = {"questionnaires": []}
-            combined_client_info: dict = combined_client_info | client_add_q_field
-            formatted_client = format_client(combined_client_info)
 
-            if str(questionnaires) == "Too young":
-                utils.log.warning(
-                    f"{formatted_client[client_info['account_number']]['firstname']} "
-                    f"{formatted_client[client_info['account_number']]['lastname']} is too young at age "
-                    f"{formatted_client[client_info['account_number']]['age']}"
-                )
-                formatted_client[client_info["account_number"]][
-                    "questionnaires"
-                ].append({"error": "Too young"})
-                formatted_client = add_failed_date(formatted_client)
-                formatted_client = add_questionnaires_needed(
-                    formatted_client, questionnaires
-                )
-                utils.add_failure(formatted_client)
+            if str(questionnaires_needed) == "Too young":
+                utils.log.warning(f"Client {client['Client Name']} is too young")
+                utils.add_failure(format_failed_client(client, "Too young"))
                 break
 
-            if str(questionnaires) == "Unknown":
+            if str(questionnaires_needed) == "Unknown":
                 utils.log.warning(
-                    f"{formatted_client[client_info['account_number']]['firstname']} "
-                    f"{formatted_client[client_info['account_number']]['lastname']} has unknown questionnaire needs"
+                    f"Client {client['Client Name']} has unknown questionnaire needs"
                 )
-                formatted_client[client_info["account_number"]][
-                    "questionnaires"
-                ].append({"error": "Unknown questionnaire needs"})
-                formatted_client = add_failed_date(formatted_client)
-                utils.add_failure(formatted_client)
+                utils.add_failure(
+                    format_failed_client(client, "Unknown questionnaire needs")
+                )
                 break
+
+            if prev_clients is not None:
+                previous_questionnaires = check_client_previous(prev_clients, client)
+
+                if previous_questionnaires:
+                    previous_questionnaire_types = [
+                        q["questionnaireType"] for q in previous_questionnaires
+                    ]
+                    overlapping_questionnaires = list(
+                        set(previous_questionnaire_types) & set(questionnaires_needed)
+                    )
+                    if overlapping_questionnaires:
+                        utils.log.warning(
+                            f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
+                        )
+                        utils.add_failure(
+                            format_failed_client(
+                                client,
+                                f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
+                                questionnaires_needed,
+                            )
+                        )
+                        break
 
             utils.log.info(
-                f"Questionnaires needed for {formatted_client[client_info['account_number']]['firstname']} "
-                f"{formatted_client[client_info['account_number']]['lastname']} for "
-                f"a {formatted_client[client_info['account_number']]['check']} "
-                f"{formatted_client[client_info['account_number']]['daeval']}: "
-                f"{questionnaires}"
+                f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
             )
+
+            questionnaires = []
             send = True
-            for questionnaire in questionnaires:
+            for questionnaire in questionnaires_needed:
                 try:
                     link, accounts_created = assign_questionnaire(
                         driver,
                         actions,
-                        combined_client_info,
+                        client,
                         questionnaire,
                         accounts_created,
                     )
                 except Exception as e:  # noqa: E722
                     utils.log.error(f"Error assigning {questionnaire}: {e}")
-                    formatted_client = add_key(
-                        formatted_client, "error", "Error assigning questionnaires"
+
+                    utils.add_failure(
+                        format_failed_client(
+                            client,
+                            "Error assigning questionnaires",
+                            questionnaires_needed,
+                        )
                     )
-                    formatted_client = add_failed_date(formatted_client)
-                    formatted_client = add_questionnaires_needed(
-                        formatted_client, questionnaires
-                    )
-                    utils.add_failure(formatted_client)
                     send = False
                     break
 
                 if link is None or link == "":
-                    formatted_client = add_key(
-                        formatted_client, "error", "Gap in elif statement"
+                    utils.log.error(f"Gap in elif statement for {questionnaire}")
+                    utils.add_failure(
+                        format_failed_client(
+                            client,
+                            "Gap in elif statement",
+                            questionnaires_needed,
+                        )
                     )
-                    formatted_client = add_failed_date(formatted_client)
-                    formatted_client = add_questionnaires_needed(
-                        formatted_client, questionnaires
-                    )
-                    utils.add_failure(formatted_client)
                     send = False
                     break
 
-                formatted_client[client_info["account_number"]][
-                    "questionnaires"
-                ].append({"done": False, "link": link, "type": questionnaire})
+                questionnaires.append(
+                    {"done": False, "link": link, "type": questionnaire}
+                )
 
             if send:
-                formatted_client[client_info["account_number"]] = (
-                    utils.search_and_add_questionnaires(
-                        projects_api,
-                        services,
+                client = utils.search_and_add_questionnaires(
+                    projects_api, services, config, client, questionnaires
+                )
+                utils.insert_basic_client(
+                    config,
+                    client["Client ID"],
+                    client["Asana"],
+                    client["Date of Birth"],
+                    client["TA First Name"],
+                    client["TA Last Name"],
+                    client["For"],
+                    client["Gender"],
+                    client["Phone Number"],
+                )
+                for questionnaire in questionnaires:
+                    utils.put_questionnaire_in_db(
                         config,
-                        formatted_client[client_info["account_number"]],
+                        client["Client ID"],
+                        questionnaire["link"],
+                        questionnaire["type"],
+                        datetime.today().strftime("%Y-%m-%d"),
+                        "PENDING",
                     )
-                )
-                del formatted_client[client_info["account_number"]]["account_number"]
-                formatted_client = add_sent_date(formatted_client)
-                utils.update_yaml(formatted_client, "./put/clients.yml")
-                message = format_ta_message(
-                    formatted_client[client_info["account_number"]]["questionnaires"]
-                )
-                send_message_ta(driver, client_url, message)
+
+                    message = format_ta_message(questionnaires)
+                    send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             utils.log.error(f"Element not found: {e}")
             utils.add_failure(
-                format_failed_client(client_params, "Error on questionnaire website")
+                format_failed_client(client, "Error on questionnaire website")
             )
 
 
