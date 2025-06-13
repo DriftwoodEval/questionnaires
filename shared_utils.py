@@ -1,6 +1,5 @@
 import base64
 import hashlib
-import logging
 import os
 import re
 from datetime import date, datetime
@@ -20,6 +19,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from loguru import logger
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -31,12 +31,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
-log = logging
-
 
 def load_config() -> tuple[dict, dict]:
     with open("./config/info.yml", "r") as file:
-        log.info("Loading info file")
+        logger.debug("Loading config info file")
         info = yaml.safe_load(file)
         services = info["services"]
         config = info["config"]
@@ -45,7 +43,7 @@ def load_config() -> tuple[dict, dict]:
 
 ### SELENIUM ###
 def initialize_selenium() -> tuple[WebDriver, ActionChains]:
-    log.info("Initializing Selenium")
+    logger.info("Initializing Selenium")
     chrome_options: Options = Options()
     chrome_options.add_argument("--no-sandbox")
     if os.getenv("HEADLESS") == "true":
@@ -72,10 +70,10 @@ def click_element(
             element.click()
             return
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            log.warning(f"Attempt {attempt + 1} failed: {type(e).__name__}.")
+            logger.warning(f"Attempt {attempt + 1} failed: {type(e).__name__}.")
             sleep(delay)
             if refresh:
-                log.info("Refreshing page")
+                logger.info("Refreshing page")
                 driver.refresh()
             sleep(delay)
     raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
@@ -89,7 +87,7 @@ def find_element(
             element = driver.find_element(by, locator)
             return element
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            log.warning(
+            logger.warning(
                 f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
             )
             sleep(delay)
@@ -104,17 +102,17 @@ def check_if_element_exists(
             driver.find_element(by, locator)
             return True
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            log.warning(
+            logger.warning(
                 f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
             )
             sleep(delay)
-    log.error(f"Failed to find element after {max_attempts} attempts")
+    logger.error(f"Failed to find element after {max_attempts} attempts")
     return False
 
 
 ### DATABASE ###
 def get_previous_clients(config, failed: bool = False) -> dict | None:
-    log.info("Loading previous clients")
+    logger.info("Loading previous clients")
     qfailure_filepath = "./put/qfailure.yml"
 
     prev_clients = {}
@@ -124,7 +122,7 @@ def get_previous_clients(config, failed: bool = False) -> dict | None:
             with open(qfailure_filepath, "r") as file:
                 prev_clients = yaml.safe_load(file) or {}
         except FileNotFoundError:
-            log.info(f"{qfailure_filepath} does not exist.")
+            logger.info(f"{qfailure_filepath} does not exist.")
 
     db_connection = get_db(config)
     with db_connection:
@@ -243,18 +241,17 @@ def update_yaml(clients: dict, filepath: str) -> None:
         with open(filepath, "r") as file:
             current_yaml = yaml.safe_load(file)
     except FileNotFoundError:
-        log.info(f"{filepath} does not exist, creating new file")
+        logger.info(f"{filepath} does not exist, creating new file")
         current_yaml = None
 
     if current_yaml is None:
-        log.info(f"Dumping to {filepath}")
+        logger.info(f"Dumping to {filepath}")
         with open(filepath, "w") as file:
             yaml.dump(clients, file, default_flow_style=False)
     else:
-        log.info(f"Updating {filepath}")
         current_yaml.update(clients)
         with open(filepath, "w") as file:
-            log.info(f"Dumping to {filepath}")
+            logger.info(f"Dumping to {filepath}")
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
@@ -267,7 +264,7 @@ def add_failure(client: dict) -> None:
 
 ### ASANA ###
 def init_asana(services: dict) -> asana.ProjectsApi:
-    log.info("Initializing Asana")
+    logger.info("Initializing Asana")
     configuration = asana.Configuration()
     configuration.access_token = services["asana"]["token"]
     projects_api = asana.ProjectsApi(asana.ApiClient(configuration))
@@ -280,14 +277,14 @@ def fetch_project(
     opt_fields: str = "name,color,permalink_url,notes,created_at",
 ) -> dict | None:
     """Fetch the latest version of a single project by its GID"""
-    log.info(f"Fetching project {project_gid}")
+    logger.info(f"Fetching project {project_gid}")
     try:
         return projects_api.get_project(
             project_gid,
             opts={"opt_fields": opt_fields},  # type: ignore
         )
     except ApiException as e:
-        log.exception(f"Exception when calling ProjectsApi->get_project: {e}")
+        logger.exception(f"Exception when calling ProjectsApi->get_project: {e}")
         return None
 
 
@@ -295,7 +292,7 @@ def replace_notes(
     projects_api: asana.ProjectsApi, new_note: str, project_gid: str
 ) -> bool:
     """Update the notes field in a project."""
-    log.info(f"Updating project {project_gid} with note '{new_note}'")
+    logger.info(f"Updating project {project_gid} with note '{new_note}'")
     body = {"data": {"notes": new_note}}
     try:
         projects_api.update_project(
@@ -303,7 +300,7 @@ def replace_notes(
         )
         return True
     except ApiException as e:
-        log.exception(f"Exception when calling ProjectsApi->update_project: {e}")
+        logger.exception(f"Exception when calling ProjectsApi->update_project: {e}")
         return False
 
 
@@ -350,7 +347,7 @@ def search_by_name(
         "opt_fields": "name,color,permalink_url,notes",
     }
     try:
-        log.info(f"Searching projects for {name}...")
+        logger.info(f"Searching projects for {name}...")
 
         api_response = list(
             projects_api.get_projects_for_workspace(
@@ -360,7 +357,7 @@ def search_by_name(
         )
 
     except ApiException as e:
-        log.exception(
+        logger.exception(
             "Exception when calling ProjectsApi->get_projects_for_workspace: %s\n" % e
         )
         return
@@ -377,12 +374,12 @@ def search_by_name(
         correct_project = None
 
         if project_count == 0:
-            log.warning(f"No projects found for {name}.")
+            logger.error(f"No projects found for {name}.")
         elif project_count == 1:
-            log.info(f"Found 1 project for {name}.")
+            logger.success(f"Found 1 project for {name}.")
             correct_project = filtered_projects[0]
         else:
-            log.warning(f"Found {project_count} projects for {name}.")
+            logger.error(f"Found {project_count} projects for {name}.")
         if correct_project:
             return correct_project
         else:
@@ -406,7 +403,11 @@ def search_and_add_note(
 
 
 def search_and_add_questionnaires(
-    projects_api: asana.ProjectsApi, services, config, client: pd.Series, questionnaires
+    projects_api: asana.ProjectsApi,
+    services,
+    config,
+    client: pd.Series,
+    questionnaires: list[dict],
 ) -> pd.Series:
     questionnaire_links_format = [
         f"{item['link']} - {item['type']}" for item in questionnaires
@@ -457,17 +458,17 @@ def mark_link_done(
         notes = project["notes"]
         link_start = notes.find(link)
         if link_start == -1:
-            log.warning(f"Link {link} not found in project notes")
+            logger.error(f"Link {link} not found in project notes")
             return
-        log.info(f"Found link {link} in project notes")
+        logger.debug(f"Found link {link} in project notes")
         link_end = notes.find("\n", link_start)
         if link_end == -1:
             link_end = len(notes)
         link_done = notes[link_start:link_end].strip()
         if " - Ready to Download" in link_done:
-            log.info(f"Link {link} is already marked as Ready to Download")
+            logger.debug(f"Link {link} is already marked as Ready to Download")
             return
-        log.info(f"Marking link {link} as Ready to Download")
+        logger.debug(f"Marking link {link} as Ready to Download")
         link_done = f"{link_done} - Ready to Download"
         new_note = notes[:link_start] + link_done + notes[link_end:]
         replace_notes(projects_api, new_note, project_gid)
@@ -487,7 +488,7 @@ def mark_links_in_asana(
                     questionnaire["link"],
                 )
     else:
-        log.warning(
+        logger.error(
             f"Client {client['firstname']} {client['lastname']} has no Asana link"
         )
 
@@ -503,7 +504,7 @@ def sent_reminder_asana(
             "Sent reminder",
         )
     else:
-        log.warning(
+        logger.error(
             f"Client {client['firstname']} {client['lastname']} has no Asana link"
         )
 
@@ -512,7 +513,7 @@ def sent_reminder_asana(
 def all_questionnaires_done(client) -> bool:
     for q in client["questionnaires"]:
         if not isinstance(q, dict):
-            log.error(
+            logger.error(
                 f"{q} in {client['firstname']} {client['lastname']} is not a dictionary."
             )
             return False
@@ -527,19 +528,19 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
     complete = False
 
     if "mhs.com" in url:
-        log.info(f"Checking MHS completion for {url}")
+        logger.info(f"Checking MHS completion for {url}")
         complete = check_if_element_exists(
             driver,
             By.XPATH,
             "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
         )
     elif "pearsonassessments.com" in url:
-        log.info(f"Checking Pearson completion for {url}")
+        logger.info(f"Checking Pearson completion for {url}")
         complete = check_if_element_exists(
             driver, By.XPATH, "//*[contains(text(), 'Test Completed!')]"
         )
     elif "wpspublish" in url:
-        log.info(f"Checking WPS completion for {url}")
+        logger.info(f"Checking WPS completion for {url}")
         complete = check_if_element_exists(
             driver,
             By.XPATH,
@@ -558,29 +559,29 @@ def check_questionnaires(
             client = clients[id]
             if all_questionnaires_done(client):
                 if client["date"] == "Reschedule":
-                    log.info(
+                    logger.info(
                         f"Client {client['firstname']} {client['lastname']} has rescheduled, but already completed their questionnaires for an appointment"
                     )
                     continue
-                log.info(
+                logger.info(
                     f"{client['firstname']} {client['lastname']} has already completed their questionnaires for an appointment on {format_appointment(client)}"
                 )
                 continue
             for questionnaire in client["questionnaires"]:
                 if questionnaire["done"]:
-                    log.info(
+                    logger.info(
                         f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is already done"
                     )
                     continue
-                log.info(
+                logger.info(
                     f"Checking {client['firstname']} {client['lastname']}'s {questionnaire['type']}"
                 )
                 questionnaire["done"] = check_q_done(driver, questionnaire["link"])
-                log.info(
+                logger.info(
                     f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
                 )
                 if not questionnaire["done"]:
-                    log.info(
+                    logger.info(
                         f"At least one questionnaire is not done for {client['firstname']} {client['lastname']}"
                     )
                     break
@@ -640,7 +641,7 @@ def send_text(
         "to": [to_number],
         "userId": user_blame,
     }
-    log.info(f"Attempting to send message '{message}' to {to_number}")
+    logger.info(f"Attempting to send message '{message}' to {to_number}")
     response = requests.post(url, headers=headers, json=data)
     response_data = response.json().get("data")
     return response_data
@@ -711,10 +712,10 @@ def send_gmail(
             service.users().messages().send(userId="me", body=create_message).execute()
         )
 
-        log.info(f"Sent email to {to_addr}: {subject}")
+        logger.info(f"Sent email to {to_addr}: {subject}")
 
     except HttpError as error:
-        log.error(error)
+        logger.exception(error)
         send_message = None
     return send_message
 

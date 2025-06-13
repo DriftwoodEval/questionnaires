@@ -1,5 +1,4 @@
 import base64
-import logging
 import os.path
 import re
 from datetime import datetime, timezone
@@ -12,18 +11,11 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from loguru import logger
 
 import shared_utils as utils
 
-utils.log.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("qmail.log"),
-    ],
-    force=True,
-)
+logger.add("logs/qmail.log", rotation="500 MB")
 
 services, config = utils.load_config()
 
@@ -48,7 +40,7 @@ def get_calendar_list() -> list[str]:
                 break
 
     except HttpError as error:
-        utils.log.error(error)
+        logger.exception(error)
     return calendar_list
 
 
@@ -256,10 +248,10 @@ def get_events_for_tomorrow() -> list:
                     }
                 )
             if not events:
-                utils.log.info("No events found tomorrow for calendar: " + calendar_id)
+                logger.warning("No events found tomorrow for calendar: " + calendar_id)
 
     except HttpError as error:
-        utils.log.error(error)
+        logger.exception(error)
 
     return events_tomorrow
 

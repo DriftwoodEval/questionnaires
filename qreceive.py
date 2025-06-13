@@ -1,17 +1,12 @@
-import logging
 from datetime import date, datetime
 from time import sleep
 
 import requests
+from loguru import logger
 
 import shared_utils as utils
 
-utils.log.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("qreceive.log"), logging.StreamHandler()],
-    force=True,
-)
+logger.add("logs/qreceive.log", rotation="500 MB")
 
 services, config = utils.load_config()
 
@@ -38,7 +33,7 @@ def send_text_and_ensure(
         config, services, message, to_number, from_number, user_blame
     )
     if not attempt_text:
-        utils.log.warning(f"Possibly failed to send message {message} to {to_number}")
+        logger.error(f"Possibly failed to send message {message} to {to_number}")
         return False
     message_id = attempt_text["id"]
     for i in range(3):
@@ -46,11 +41,12 @@ def send_text_and_ensure(
         sleep(sleep_time)
         message_info = get_text_info(message_id)
         message_status = message_info["status"]
-        utils.log.info(f"Message status on attempt {i + 1}: {message_status}")
+        logger.debug(f"Message status on attempt {i + 1}: {message_status}")
         if message_status == "delivered":
+            logger.success(f"Successfully sent message {message} to {to_number}")
             return True
     else:
-        utils.log.warning(f"Failed to send message {message} to {to_number}")
+        logger.error(f"Failed to send message {message} to {to_number}")
         return False
 
 
@@ -94,7 +90,7 @@ def main():
             done = utils.all_questionnaires_done(client)
 
             if client["date"] == "Reschedule" and not done:
-                utils.log.warning(
+                logger.warning(
                     f"Client {client['firstname']} {client['lastname']} wants to/has rescheduled"
                 )
                 email_info["reschedule"].append(
@@ -106,7 +102,7 @@ def main():
             distance = utils.check_appointment_distance(
                 datetime.strptime(client["date"], "%Y/%m/%d").date()
             )
-            utils.log.info(
+            logger.info(
                 f"{client['firstname']} {client['lastname']} is {distance} days away and {'done' if done else 'not done'}"
             )
             if not done:
@@ -118,11 +114,11 @@ def main():
                     services["openphone"]["users"][config["name"].lower()]["phone"]
                 )
                 if already_messaged_today:
-                    utils.log.info(
+                    logger.info(
                         f"Already messaged {client['firstname']} {client['lastname']} at {client['phone_number']} today"
                     )
                 if distance >= 5 and distance % 3 == 2 and not already_messaged_today:
-                    utils.log.info(
+                    logger.info(
                         f"Sending reminder TO {client['firstname']} {client['lastname']}"
                     )
                     message = build_message(config, client, distance)
@@ -136,7 +132,7 @@ def main():
                             f"{client['firstname']} {client['lastname']}"
                         )
                 elif 0 <= distance < 5:
-                    utils.log.info(
+                    logger.info(
                         f"Sending reminder ABOUT {client['firstname']} {client['lastname']}"
                     )
                     if str(distance) not in email_info["call"]:
@@ -145,7 +141,7 @@ def main():
                         f"{client['firstname']} {client['lastname']}"
                     )
                 elif distance < 0 and distance % 3 == 2 and not already_messaged_today:
-                    utils.log.info(
+                    logger.info(
                         f"Sending reminder TO overdue {client['firstname']} {client['lastname']}"
                     )
                     message = build_message(config, client, distance)
