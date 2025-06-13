@@ -271,28 +271,7 @@ def add_client_to_qglobal(
 
     logger.debug("Saving new examinee")
     utils.click_element(driver, By.ID, "save")
-    error = None
-    try:
-        logger.debug("Checking if client already exists")
-        error = utils.find_element(driver, By.NAME, "j_id201")
-        exists = True
-    except NoSuchElementException:
-        logger.debug("Client is new to QGlobal")
-        exists = False
-    if error is not None:
-        sleep(3)
-        # TODO: log this, I'm not sure what conditions cause this
-        try:
-            utils.click_element(driver, By.NAME, "j_id201")
-            utils.click_element(driver, By.ID, "j_id182")
-            utils.click_element(driver, By.ID, "unSavedChangeForm:YesUnSavedChanges")
-        except:  # noqa: E722
-            try:
-                utils.click_element(driver, By.NAME, "j_id209")
-            except:  # noqa: E722
-                exists = False
-    sleep(2)
-    return exists
+    return True
 
 
 def add_client_to_mhs(
