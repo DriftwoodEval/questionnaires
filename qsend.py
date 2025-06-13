@@ -183,24 +183,25 @@ def login_mhs(driver: WebDriver, actions: ActionChains) -> None:
     actions.perform()
 
 
-def search_helper(driver: WebDriver, id: str) -> None:
-    logger.info(f"Attempting to search QGlobal for {id}")
-    try:
-        sleep(1)
-        utils.find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(id)
-    except:  # noqa: E722
-        logger.warning("Failed to search, attempting to retry")
-        driver.get("https://qglobal.pearsonassessments.com")
-        utils.click_element(driver, By.NAME, "searchForm:j_id347")
-        search_helper(driver, id)
-
-
 def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) -> None:
+    def _search_helper(driver: WebDriver, id: str) -> None:
+        logger.info(f"Attempting to search QGlobal for {id}")
+        try:
+            sleep(1)
+            utils.find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(
+                id
+            )
+        except:  # noqa: E722
+            logger.warning("Failed to search, attempting to retry")
+            driver.get("https://qglobal.pearsonassessments.com")
+            utils.click_element(driver, By.NAME, "searchForm:j_id347")
+            _search_helper(driver, id)
+
     logger.info(f"Searching QGlobal for {client['Client ID']}")
     id = client["account_number"]
     utils.click_element(driver, By.NAME, "searchForm:j_id347")
 
-    search_helper(driver, id)
+    _search_helper(driver, id)
 
     logger.debug("Waiting for page to load")
     sleep(1)
@@ -301,7 +302,7 @@ def add_client_to_mhs(
     questionnaire: str,
     accounts_created: dict[str, bool],
 ) -> bool:
-    def add_to_existing(
+    def _add_to_existing(
         driver: WebDriver, actions: ActionChains, client: pd.Series, questionnaire: str
     ) -> bool:
         logger.debug("Client already exists, adding to existing")
@@ -437,7 +438,7 @@ def add_client_to_mhs(
         return True
 
     if "mhs" in accounts_created and accounts_created["mhs"]:
-        return add_to_existing(driver, actions, client, questionnaire)
+        return _add_to_existing(driver, actions, client, questionnaire)
 
     logger.info(
         f"Attempting to add {client['TA First Name']} {client['TA Last Name']} to MHS"
@@ -523,7 +524,7 @@ def add_client_to_mhs(
     except NoSuchElementException:
         logger.success("Added to MHS")
         return True
-    return add_to_existing(driver, actions, client, questionnaire)
+    return _add_to_existing(driver, actions, client, questionnaire)
 
 
 def get_questionnaires(
