@@ -1,8 +1,9 @@
 from datetime import date, datetime
-from time import sleep
 
 import requests
+from backoff import expo, on_exception, on_predicate
 from loguru import logger
+from ratelimit import RateLimitException, limits
 
 import shared_utils as utils
 
@@ -11,43 +12,150 @@ logger.add("logs/qreceive.log", rotation="500 MB")
 services, config = utils.load_config()
 
 
-def get_text_info(message_id: str):
-    sleep(0.2)
-    url = f"https://api.openphone.com/v1/messages/{message_id}"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": services["openphone"]["key"],
-    }
-    response = requests.get(url, headers=headers)
-    response_data = response.json().get("data")
-    return response_data
-
-
-def send_text_and_ensure(
-    message: str,
-    to_number: str,
-    from_number: str = services["openphone"]["main_number"],
-    user_blame: str = services["openphone"]["users"][config["name"].lower()]["id"],
-) -> bool:
-    attempt_text = utils.send_text(
-        config, services, message, to_number, from_number, user_blame
+def log_backoff(details):
+    logger.debug(
+        "Backing off {wait:0.1f} seconds after {tries} tries "
+        "calling function {target} with args {args} and kwargs "
+        "{kwargs}".format(**details)
     )
-    if not attempt_text:
-        logger.error(f"Possibly failed to send message {message} to {to_number}")
-        return False
-    message_id = attempt_text["id"]
-    for i in range(3):
-        sleep_time = 2**i
-        sleep(sleep_time)
-        message_info = get_text_info(message_id)
+
+
+def log_giveup(details):
+    logger.error(
+        "Gave up after {tries} tries "
+        "calling function {target} with args {args} and kwargs "
+        "{kwargs}".format(**details)
+    )
+
+
+class LimitedRequest:
+    @on_exception(
+        expo,
+        RateLimitException,
+        max_tries=8,
+        on_backoff=log_backoff,
+        on_giveup=log_giveup,
+    )
+    @limits(calls=10, period=1)
+    def get(self, url: str, params=None, headers=None, **kwargs) -> requests.Response:
+        return requests.get(url, params, headers=headers, **kwargs)
+
+    @on_exception(
+        expo,
+        RateLimitException,
+        max_tries=8,
+        on_backoff=log_backoff,
+        on_giveup=log_giveup,
+    )
+    @limits(calls=10, period=1)
+    def post(self, url: str, data=None, headers=None, **kwargs) -> requests.Response:
+        return requests.post(url, data, headers=headers, **kwargs)
+
+
+class OpenPhone:
+    def __init__(self, config, services):
+        self.config = config
+        self.services = services
+        self.main_number = services["openphone"]["main_number"]
+        self.default_user = services["openphone"]["users"][config["name"].lower()]["id"]
+        self.limited_request = LimitedRequest()
+
+    @on_exception(
+        expo,
+        (ConnectionError, requests.HTTPError),
+        max_tries=8,
+        on_backoff=log_backoff,
+        on_giveup=log_giveup,
+    )
+    def get_text_info(self, message_id: str) -> dict:
+        url = f"https://api.openphone.com/v1/messages/{message_id}"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": services["openphone"]["key"],
+        }
+        response = self.limited_request.get(url, headers=headers)
+
+        if response is None:
+            raise ConnectionError("Failed to retrieve response from OpenPhone API")
+
+        if response.status_code != 200:
+            raise requests.HTTPError("API response: {}".format(response.status_code))
+
+        response_data = response.json().get("data")
+        return response_data
+
+    @on_predicate(
+        expo,
+        max_tries=3,
+        on_backoff=log_backoff,
+        on_giveup=log_giveup,
+    )
+    def check_text_delivered(self, message_id: str) -> bool:
+        message_info = self.get_text_info(message_id)
         message_status = message_info["status"]
-        logger.debug(f"Message status on attempt {i + 1}: {message_status}")
-        if message_status == "delivered":
+        return message_status == "delivered"
+
+    def send_text(
+        self,
+        message: str,
+        to_number: str,
+        from_number: str | None = None,
+        user_blame: str | None = None,
+    ) -> dict | None:
+        if from_number is None:
+            from_number = self.main_number
+        if user_blame is None:
+            user_blame = self.default_user
+
+        to_number = "+1" + "".join(filter(str.isdigit, to_number))
+        url = "https://api.openphone.com/v1/messages"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": services["openphone"]["key"],
+        }
+        data = {
+            "content": message,
+            "from": from_number,
+            "to": [to_number],
+            "userId": user_blame,
+        }
+        try:
+            logger.info(f"Attempting to send message '{message}' to {to_number}")
+            response = self.limited_request.post(url, headers=headers, json=data)
+
+            if response is None:
+                raise ConnectionError("Failed to retrieve response from OpenPhone API")
+
+            if response.status_code != 200:
+                raise requests.HTTPError(
+                    "API response: {}".format(response.status_code)
+                )
+
+            response_data = response.json().get("data")
+            return response_data
+        except Exception as e:
+            logger.exception(f"Failed to get message info: {e}")
+            return None
+
+    def send_text_and_ensure(
+        self,
+        message: str,
+        to_number: str,
+        from_number: str | None = None,
+        user_blame: str | None = None,
+    ) -> bool:
+        attempt_text = self.send_text(message, to_number, from_number, user_blame)
+        if not attempt_text:
+            logger.error(f"Possibly failed to send message {message} to {to_number}")
+            return False
+        message_id = attempt_text["id"]
+        delivered = self.check_text_delivered(message_id)
+        if delivered is True:
             logger.success(f"Successfully sent message {message} to {to_number}")
             return True
-    else:
-        logger.error(f"Failed to send message {message} to {to_number}")
-        return False
+        else:
+            logger.error(f"Failed to send message {message} to {to_number}")
+            return False
 
 
 def build_message(config: dict, client: dict, distance: int) -> str:
@@ -72,6 +180,7 @@ def build_message(config: dict, client: dict, distance: int) -> str:
 
 def main():
     projects_api = utils.init_asana(services)
+    openphone = OpenPhone(config, services)
     driver, actions = utils.initialize_selenium()
     email_info = {
         "reschedule": [],
@@ -122,7 +231,9 @@ def main():
                         f"Sending reminder TO {client['firstname']} {client['lastname']}"
                     )
                     message = build_message(config, client, distance)
-                    message_sent = send_text_and_ensure(message, client["phone_number"])
+                    message_sent = openphone.send_text_and_ensure(
+                        message, client["phone_number"]
+                    )
                     if message_sent:
                         client["reminded"] = client.get("reminded", 0) + 1
                         numbers_sent.append(client["phone_number"])
@@ -145,7 +256,9 @@ def main():
                         f"Sending reminder TO overdue {client['firstname']} {client['lastname']}"
                     )
                     message = build_message(config, client, distance)
-                    message_sent = send_text_and_ensure(message, client["phone_number"])
+                    message_sent = openphone.send_text_and_ensure(
+                        message, client["phone_number"]
+                    )
                     if message_sent:
                         client["reminded"] = client.get("reminded", 0) + 1
                         numbers_sent.append(client["phone_number"])

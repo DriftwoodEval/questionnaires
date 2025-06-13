@@ -614,39 +614,6 @@ def check_appointment_distance(appointment: date) -> int:
     return delta.days
 
 
-### OPENPHONE ###
-def send_text(
-    config: dict,
-    services: dict,
-    message: str,
-    to_number: str,
-    from_number: str | None = None,
-    user_blame: str | None = None,
-):
-    sleep(0.2)
-    if not from_number:
-        from_number = services["openphone"]["main_number"]
-    if not user_blame:
-        user_blame = services["openphone"]["users"][config["name"].lower()]["id"]
-
-    to_number = "+1" + "".join(filter(str.isdigit, to_number))
-    url = "https://api.openphone.com/v1/messages"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": services["openphone"]["key"],
-    }
-    data = {
-        "content": message,
-        "from": from_number,
-        "to": [to_number],
-        "userId": user_blame,
-    }
-    logger.info(f"Attempting to send message '{message}' to {to_number}")
-    response = requests.post(url, headers=headers, json=data)
-    response_data = response.json().get("data")
-    return response_data
-
-
 ### GMAIL ###
 
 # If modifying these scopes, delete the file token.json.

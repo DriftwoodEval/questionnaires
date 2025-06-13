@@ -14,4 +14,6 @@ dependencies = [
     "pymysql>=1.1.1",
     "pandas>=2.3.0",
     "loguru>=0.7.3",
+    "ratelimit>=2.2.1",
+    "backoff>=2.2.1",
 ]
