@@ -5,13 +5,12 @@ import re
 from datetime import date, datetime
 from email.message import EmailMessage
 from time import sleep
-from typing import Literal
+from typing import Literal, TypedDict
 from urllib.parse import urlparse
 
 import asana
 import pandas as pd
 import pymysql.cursors
-import requests
 import yaml
 from asana.rest import ApiException
 from google.auth.transport.requests import Request
@@ -39,6 +38,27 @@ def load_config() -> tuple[dict, dict]:
         services = info["services"]
         config = info["config"]
         return services, config
+
+
+### TYPES ###
+class Questionnaire(TypedDict):
+    questionnaireType: str
+    link: str
+    sent: date
+    status: Literal["COMPLETED", "PENDING", "RESCHEDULED"]
+    reminded: int
+
+
+class ClientFromDB(TypedDict):
+    id: int
+    asanaId: str | None
+    dob: date | None
+    firstName: str
+    lastName: str
+    preferredName: str | None
+    fullName: str
+    phoneNumber: str | None
+    questionnaires: list[Questionnaire] | None
 
 
 ### SELENIUM ###
@@ -111,7 +131,22 @@ def check_if_element_exists(
 
 
 ### DATABASE ###
-def get_previous_clients(config, failed: bool = False) -> dict | None:
+def get_db(config):
+    db_url = urlparse(config["database_url"])
+    connection = pymysql.connect(
+        host=db_url.hostname,
+        port=db_url.port,
+        user=db_url.username,
+        password=db_url.password,
+        database=db_url.path[1:],
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    return connection
+
+
+def get_previous_clients(
+    config, failed: bool = False
+) -> dict[int | str, ClientFromDB] | None:
     logger.info("Loading previous clients")
     qfailure_filepath = "./put/qfailure.yml"
 
@@ -134,7 +169,6 @@ def get_previous_clients(config, failed: bool = False) -> dict | None:
             sql = "SELECT * FROM emr_questionnaire"
             cursor.execute(sql)
             questionnaires = cursor.fetchall()
-            print(questionnaires)
             for client in clients:
                 client["questionnaires"] = [
                     questionnaire
@@ -144,24 +178,9 @@ def get_previous_clients(config, failed: bool = False) -> dict | None:
 
     if clients:
         for client in clients:
-            prev_clients[client["id"]] = {
-                key: value for key, value in client.items() if key != "id"
-            }
+            prev_clients[client["id"]] = {key: value for key, value in client.items()}
 
     return prev_clients if prev_clients else None
-
-
-def get_db(config):
-    db_url = urlparse(config["database_url"])
-    connection = pymysql.connect(
-        host=db_url.hostname,
-        port=db_url.port,
-        user=db_url.username,
-        password=db_url.password,
-        database=db_url.path[1:],
-        cursorclass=pymysql.cursors.DictCursor,
-    )
-    return connection
 
 
 def get_evaluator_npi(config, evaluator_email) -> str | None:
@@ -233,6 +252,34 @@ def put_questionnaire_in_db(
             values = (int(client_id), link, type, sent_date, status)
 
             cursor.execute(sql, values)
+        db_connection.commit()
+
+
+def update_questionnaires_in_db(config, clients: list[ClientFromDB]):
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            for client in clients:
+                if not client["questionnaires"]:
+                    logger.error(f"Client {client['fullName']} has no questionnaires")
+                    continue
+
+                for questionnaire in client["questionnaires"]:
+                    sql = """
+                        UPDATE `emr_questionnaire`
+                        SET status=%s
+                        WHERE clientId=%s AND sent=%s AND questionnaireType=%s
+                    """
+
+                    values = (
+                        questionnaire["status"],
+                        client["id"],
+                        questionnaire["sent"],
+                        questionnaire["questionnaireType"],
+                    )
+
+                    cursor.execute(sql, values)
+
         db_connection.commit()
 
 
@@ -475,49 +522,73 @@ def mark_link_done(
 
 
 def mark_links_in_asana(
-    projects_api: asana.ProjectsApi, client: dict, services: dict, config: dict
+    projects_api: asana.ProjectsApi,
+    client: ClientFromDB,
+    services: dict,
+    config: dict,
 ) -> None:
-    if client.get("asana") and client["asana"]:
+    if client.get("asanaId") and client["asanaId"]:
+        if not client["questionnaires"]:
+            logger.error(f"Client {client['fullName']} has no questionnaires")
+            return
         for questionnaire in client["questionnaires"]:
-            if questionnaire["done"]:
+            if questionnaire["status"] == "COMPLETED":
                 mark_link_done(
                     projects_api,
                     services,
                     config,
-                    client["asana"],
+                    client["asanaId"],
                     questionnaire["link"],
                 )
     else:
-        logger.error(
-            f"Client {client['firstname']} {client['lastname']} has no Asana link"
-        )
+        logger.error(f"Client {client['fullName']} has no Asana link")
 
 
 def sent_reminder_asana(
-    config: dict, projects_api: asana.ProjectsApi, client: dict
+    config: dict, projects_api: asana.ProjectsApi, client: ClientFromDB
 ) -> None:
-    if client.get("asana") and client["asana"]:
+    if client.get("asanaId") and client["asanaId"]:
         add_note(
             config,
             projects_api,
-            client["asana"],
+            client["asanaId"],
             "Sent reminder",
         )
     else:
-        logger.error(
-            f"Client {client['firstname']} {client['lastname']} has no Asana link"
-        )
+        logger.error(f"Client {client['fullName']} has no Asana link")
 
 
 ### QUESTIONNAIRES ###
-def all_questionnaires_done(client) -> bool:
+def all_questionnaires_done(client: ClientFromDB) -> bool:
+    if not client["questionnaires"]:
+        return False
     for q in client["questionnaires"]:
         if not isinstance(q, dict):
             logger.error(
-                f"{q} in {client['firstname']} {client['lastname']} is not a dictionary."
+                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
             )
             return False
-    return all(q["done"] for q in client["questionnaires"] if isinstance(q, dict))
+    return all(
+        q["status"] == "COMPLETED"
+        for q in client["questionnaires"]
+        if isinstance(q, dict)
+    )
+
+
+def check_if_rescheduled(client: ClientFromDB) -> bool:
+    if not client["questionnaires"]:
+        return False
+    for q in client["questionnaires"]:
+        if not isinstance(q, dict):
+            logger.error(
+                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
+            )
+            return False
+    return any(
+        q["status"] == "RESCHEDULED"
+        for q in client["questionnaires"]
+        if isinstance(q, dict)
+    )
 
 
 def check_q_done(driver: WebDriver, q_link: str) -> bool:
@@ -551,76 +622,99 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 
 
 def check_questionnaires(
-    driver: WebDriver, config: dict, services: dict, clients: dict
-) -> dict | None:
+    driver: WebDriver,
+    config: dict,
+    services: dict,
+    clients: dict[int | str, ClientFromDB],
+) -> list[ClientFromDB] | None:
     if clients:
-        completed_clients = {}
+        clients = {
+            id: client for id, client in clients.items() if client.get("questionnaires")
+        }
+        completed_clients = []
         for id in clients:
             client = clients[id]
+            if not client["questionnaires"]:
+                logger.info(f"{client['fullName']} has no questionnaires")
+                continue
             if all_questionnaires_done(client):
-                if client["date"] == "Reschedule":
-                    logger.info(
-                        f"Client {client['firstname']} {client['lastname']} has rescheduled, but already completed their questionnaires for an appointment"
-                    )
-                    continue
                 logger.info(
-                    f"{client['firstname']} {client['lastname']} has already completed their questionnaires for an appointment on {format_appointment(client)}"
+                    f"{client['fullName']} has already completed their questionnaires"
                 )
                 continue
             for questionnaire in client["questionnaires"]:
-                if questionnaire["done"]:
+                if questionnaire["status"] == "COMPLETED":
                     logger.info(
-                        f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is already done"
+                        f"{client['fullName']}'s {questionnaire['questionnaireType']} is already done"
                     )
                     continue
                 logger.info(
-                    f"Checking {client['firstname']} {client['lastname']}'s {questionnaire['type']}"
+                    f"Checking {client['fullName']}'s {questionnaire['questionnaireType']}"
                 )
-                questionnaire["done"] = check_q_done(driver, questionnaire["link"])
-                logger.info(
-                    f"{client['firstname']} {client['lastname']}'s {questionnaire['type']} is {'' if questionnaire['done'] else 'not '}done"
-                )
-                if not questionnaire["done"]:
+                if check_q_done(driver, questionnaire["link"]):
+                    questionnaire["status"] = "COMPLETED"
                     logger.info(
-                        f"At least one questionnaire is not done for {client['firstname']} {client['lastname']}"
+                        f"{client['fullName']}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                    )
+                else:
+                    questionnaire["status"] = "PENDING"
+                    logger.warning(
+                        f"{client['fullName']}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                    )
+                    logger.warning(
+                        f"At least one questionnaire is not done for {client['fullName']}"
                     )
                     break
             if all_questionnaires_done(client):
-                distance = check_appointment_distance(
-                    datetime.strptime(client["date"], "%Y/%m/%d").date()
-                )
-                if str(distance) not in completed_clients:
-                    completed_clients[str(distance)] = []
-                completed_clients[str(distance)].append(
-                    f"{client['firstname']} {client['lastname']}"
-                )
-        update_yaml(clients, "./put/clients.yml")
+                completed_clients.append(client)
+        update_questionnaires_in_db(config, completed_clients)
         return completed_clients
 
 
 ### FORMATTING ###
-def format_appointment(client: dict) -> str:
-    appointment = client["date"]
-    return datetime.strptime(appointment, "%Y/%m/%d").strftime("%A, %B %-d")
-
-
 def format_phone_number(raw_number: str) -> str:
     return f"({raw_number[:3]}) {raw_number[3:6]}-{raw_number[6:]}"
 
 
-def check_appointment_distance(appointment: date) -> int:
+def check_distance(x: date) -> int:
     today = date.today()
-    delta = appointment - today
+    delta = today - x
     return delta.days
 
 
-### GMAIL ###
+def get_most_recent_not_done(client: ClientFromDB) -> date | None:
+    if not client["questionnaires"]:
+        return None
+    for q in client["questionnaires"]:
+        if not isinstance(q, dict):
+            logger.error(
+                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
+            )
+            return None
+    return max(q["sent"] for q in client["questionnaires"] if q["status"] == "PENDING")
+
+
+def get_reminded_ever(client: ClientFromDB) -> bool:
+    if not client["questionnaires"]:
+        return False
+    for q in client["questionnaires"]:
+        if not isinstance(q, dict):
+            logger.error(
+                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
+            )
+            return False
+    return any(
+        q["reminded"] != 0 for q in client["questionnaires"] if isinstance(q, dict)
+    )
+
+
+### GOOGLE ###
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",
 ]
 
 
