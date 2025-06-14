@@ -1,10 +1,8 @@
-import re
 from datetime import datetime
 from time import sleep, strftime, strptime
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
-from googleapiclient.discovery import build
 from loguru import logger
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -24,77 +22,39 @@ services, config = utils.load_config()
 
 
 def get_clients_to_send():
-    creds = utils.google_authenticate()
+    punch_list = utils.get_punch_list(config)
 
-    try:
-        service = build("sheets", "v4", credentials=creds)
+    if punch_list is None:
+        logger.critical("Punch list is empty")
+        return None
 
-        sheet = service.spreadsheets()
-        result = (
-            sheet.values()
-            .get(
-                spreadsheetId=config["punch_list_id"],
-                range=config["punch_list_range"],
+    punch_list = punch_list[
+        (punch_list["DA Qs Needed"] == "TRUE") & (punch_list["DA Qs Sent"] != "TRUE")
+        | (punch_list["EVAL Qs Needed"] == "TRUE")
+        & (punch_list["EVAL Qs Sent"] != "TRUE")
+    ]
+
+    punch_list["daeval"] = punch_list.apply(
+        lambda client: (
+            "DAEVAL"
+            if (
+                client["DA Qs Needed"] == "TRUE"
+                and client["DA Qs Sent"] != "TRUE"
+                and client["EVAL Qs Needed"] == "TRUE"
+                and client["EVAL Qs Sent"] != "TRUE"
             )
-            .execute()
-        )
-        values = result.get("values", [])
+            else "EVAL"
+            if (client["EVAL Qs Needed"] == "TRUE" and client["EVAL Qs Sent"] != "TRUE")
+            else "DA"
+        ),
+        axis=1,
+    )
 
-        if values:
-            df = pd.DataFrame(values[1:], columns=values[0])
-            df.to_csv("clients_to_send.csv", index=False)
+    punch_list = punch_list[
+        punch_list.iloc[:, 0].str.contains("Testman Testson", na=False)
+    ]
 
-            df = df.rename(columns={df.columns[0]: "Client Name"})
-
-            df = df[
-                [
-                    "Client Name",
-                    "Client ID",
-                    "For",
-                    "DA Qs Needed",
-                    "DA Qs Sent",
-                    "EVAL Qs Needed",
-                    "EVAL Qs Sent",
-                ]
-            ]
-
-            df = df[
-                (df["DA Qs Needed"] == "TRUE") & (df["DA Qs Sent"] != "TRUE")
-                | (df["EVAL Qs Needed"] == "TRUE") & (df["EVAL Qs Sent"] != "TRUE")
-            ]
-
-            df["Client ID"] = df["Client ID"].apply(
-                lambda client_id: re.sub(r"^C?0*", "", client_id)
-            )
-
-            df["Human Friendly ID"] = df["Client ID"].apply(
-                lambda client_id: f"C{client_id.zfill(9)}"
-            )
-
-            df["daeval"] = df.apply(
-                lambda client: (
-                    "DAEVAL"
-                    if (
-                        client["DA Qs Needed"] == "TRUE"
-                        and client["DA Qs Sent"] != "TRUE"
-                        and client["EVAL Qs Needed"] == "TRUE"
-                        and client["EVAL Qs Sent"] != "TRUE"
-                    )
-                    else "EVAL"
-                    if (
-                        client["EVAL Qs Needed"] == "TRUE"
-                        and client["EVAL Qs Sent"] != "TRUE"
-                    )
-                    else "DA"
-                ),
-                axis=1,
-            )
-
-            df = df[df.iloc[:, 0].str.contains("Testman Testson", na=False)]
-
-            return df
-    except Exception as e:
-        logger.exception(e)
+    return punch_list
 
 
 def rearrangedob(dob: str) -> str:
@@ -1698,11 +1658,16 @@ def format_failed_client(
 ) -> dict:
     key = client["Client ID"] if client["Client ID"] else client["Client Name"]
     client_info = {
-        "firstname": client["Client Name"].split(" ")[0],
-        "lastname": client["Client Name"].split(" ")[-1],
-        "check": client.For,
-        "daeval": client.daeval,
-        "failed_date": datetime.today().strftime("%Y/%m/%d"),
+        "firstName": client["TA First Name"]
+        if client["TA First Name"]
+        else client["Client Name"].split(" ")[0],
+        "lastName": client["TA Last Name"]
+        if client["TA Last Name"]
+        else client["Client Name"].split(" ")[-1],
+        "fullName": client["Client Name"],
+        "asdAdhd": client.For,
+        "daEval": client.daeval,
+        "failedDate": datetime.today().strftime("%Y/%m/%d"),
         "error": error,
     }
     if questionnaires_needed != "":
@@ -1774,7 +1739,7 @@ def main():
                 logger.warning(f"Login failed: {e}, trying again")
                 sleep(1)
 
-    for index, client in clients.iterrows():
+    for _, client in clients.iterrows():
         logger.info(f"Starting loop for {client['Client Name']}")
 
         if pd.isna(client["Client ID"]) or not client["Client ID"]:
@@ -1926,6 +1891,9 @@ def main():
                     client["Gender"],
                     client["Phone Number"],
                 )
+                utils.update_punch_by_daeval(
+                    config, client["Client Name"], client["daeval"]
+                )
                 for questionnaire in questionnaires:
                     utils.put_questionnaire_in_db(
                         config,
@@ -1945,4 +1913,5 @@ def main():
             )
 
 
-main()
+if __name__ == "__main__":
+    main()

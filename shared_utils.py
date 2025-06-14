@@ -749,3 +749,112 @@ def build_admin_email(email_info: dict) -> tuple[str, str]:
         email_text += "Call:\n" + "\n".join(call_text)
         email_html += "<h2>Call</h2>" + "".join(call_html)
     return email_text, email_html
+
+
+def get_punch_list(config):
+    creds = google_authenticate()
+
+    try:
+        service = build("sheets", "v4", credentials=creds)
+
+        sheet = service.spreadsheets()
+        result = (
+            sheet.values()
+            .get(
+                spreadsheetId=config["punch_list_id"],
+                range=config["punch_list_range"],
+            )
+            .execute()
+        )
+        values = result.get("values", [])
+
+        if values:
+            df = pd.DataFrame(values[1:], columns=values[0])
+            df.to_csv("clients_to_send.csv", index=False)
+
+            df = df.rename(columns={df.columns[0]: "Client Name"})
+
+            df = df[
+                [
+                    "Client Name",
+                    "Client ID",
+                    "For",
+                    "DA Qs Needed",
+                    "DA Qs Sent",
+                    "EVAL Qs Needed",
+                    "EVAL Qs Sent",
+                ]
+            ]
+
+            df["Client ID"] = df["Client ID"].apply(
+                lambda client_id: re.sub(r"^C?0*", "", client_id)
+            )
+
+            df["Human Friendly ID"] = df["Client ID"].apply(
+                lambda client_id: f"C{client_id.zfill(9)}"
+            )
+
+            return df
+    except Exception as e:
+        logger.exception(e)
+
+
+def update_punch_list(config, name_for_search: str, update_header: str, new_value: str):
+    creds = google_authenticate()
+
+    try:
+        service = build("sheets", "v4", credentials=creds)
+        sheet = service.spreadsheets()
+        result = (
+            sheet.values()
+            .get(
+                spreadsheetId=config["punch_list_id"],
+                range=config["punch_list_range"],
+            )
+            .execute()
+        )
+        values = result.get("values", [])
+
+        row_number = None
+        for i, row in enumerate(values):
+            if row and row[0] == name_for_search:
+                row_number = i + 1  # Spreadsheets are 1-indexed
+                break
+
+        update_column = None
+        for i, header in enumerate(values[0]):
+            if header == update_header:
+                update_column = chr(ord("A") + i)
+                break
+
+        if row_number is not None and update_column is not None:
+            sheet_name = config["punch_list_range"].split("!")[0]
+            update_range = f"{sheet_name}!{update_column}{row_number}"
+            body = {"values": [[new_value]]}
+            result = (
+                sheet.values()
+                .update(
+                    spreadsheetId=config["punch_list_id"],
+                    range=update_range,
+                    valueInputOption="USER_ENTERED",
+                    body=body,
+                )
+                .execute()
+            )
+            logger.success(
+                f"Updated {update_column} for {name_for_search} in Punch List"
+            )
+        else:
+            logger.error(f"Client {name_for_search} not found in Punch List")
+    except Exception as e:
+        logger.exception(e)
+
+
+def update_punch_by_daeval(config, client_name, daeval):
+    if daeval == "DA":
+        update_punch_list(config, client_name, "DA Qs Sent", "TRUE")
+    elif daeval == "EVAL":
+        update_punch_list(config, client_name, "EVAL Qs Sent", "TRUE")
+    elif daeval == "DAEVAL":
+        update_punch_list(config, client_name, "DA Qs Sent", "TRUE")
+        update_punch_list(config, client_name, "EVAL Qs Sent", "TRUE")
