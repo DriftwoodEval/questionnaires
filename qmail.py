@@ -333,7 +333,7 @@ def generate_evaluator_email(evaluator_address):
         f"Questionnaires for {(datetime.now() + relativedelta(days=1)).strftime('%m/%d')}",
         evaluator_address[0]["evaluator_email"],
         config["automated_email"],
-        config["cc_emails"],
+        ",".join(config["cc_emails"]),
     )
 
 

@@ -16,12 +16,8 @@ from selenium.webdriver.support.ui import Select
 
 import shared_utils as utils
 
-logger.add("logs/qsend.log", rotation="500 MB")
 
-services, config = utils.load_config()
-
-
-def get_clients_to_send():
+def get_clients_to_send(config):
     punch_list = utils.get_punch_list(config)
 
     if punch_list is None:
@@ -64,7 +60,9 @@ def rearrangedob(dob: str) -> str:
     return f"{month}/{day}/{year}"
 
 
-def login_ta(driver: WebDriver, actions: ActionChains) -> None:
+def login_ta(
+    driver: WebDriver, actions: ActionChains, services: utils.Services
+) -> None:
     logger.info("Logging in to TherapyAppointment")
 
     logger.debug("Going to login page")
@@ -83,7 +81,9 @@ def login_ta(driver: WebDriver, actions: ActionChains) -> None:
     actions.perform()
 
 
-def login_wps(driver: WebDriver, actions: ActionChains) -> None:
+def login_wps(
+    driver: WebDriver, actions: ActionChains, services: utils.Services
+) -> None:
     logger.info("Logging in to WPS")
     driver.get("https://platform.wpspublish.com")
 
@@ -101,7 +101,9 @@ def login_wps(driver: WebDriver, actions: ActionChains) -> None:
     actions.perform()
 
 
-def login_qglobal(driver: WebDriver, actions: ActionChains) -> None:
+def login_qglobal(
+    driver: WebDriver, actions: ActionChains, services: utils.Services
+) -> None:
     logger.info("Logging in to QGlobal")
     driver.get("https://qglobal.pearsonassessments.com/")
 
@@ -126,7 +128,9 @@ def login_qglobal(driver: WebDriver, actions: ActionChains) -> None:
     password.send_keys(Keys.ENTER)
 
 
-def login_mhs(driver: WebDriver, actions: ActionChains) -> None:
+def login_mhs(
+    driver: WebDriver, actions: ActionChains, services: utils.Services
+) -> None:
     logger.info("Logging in to MHS")
     driver.get("https://assess.mhs.com/Account/Login.aspx")
 
@@ -586,6 +590,7 @@ def get_questionnaires(
 def assign_questionnaire(
     driver: WebDriver,
     actions: ActionChains,
+    config: utils.Config,
     client: pd.Series,
     questionnaire: str,
     accounts_created: dict[str, bool],
@@ -616,7 +621,7 @@ def assign_questionnaire(
             accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         else:
             logger.debug("Client already added to QGlobal")
-        return gen_basc_preschool(driver, actions, client), accounts_created
+        return gen_basc_preschool(driver, actions, config, client), accounts_created
     elif questionnaire == "BASC Child":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
@@ -624,7 +629,7 @@ def assign_questionnaire(
             accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         else:
             logger.debug("Client already added to QGlobal")
-        return gen_basc_child(driver, actions, client), accounts_created
+        return gen_basc_child(driver, actions, config, client), accounts_created
     elif questionnaire == "BASC Adolescent":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
@@ -632,7 +637,7 @@ def assign_questionnaire(
             accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         else:
             logger.debug("Client already added to QGlobal")
-        return gen_basc_adolescent(driver, actions, client), accounts_created
+        return gen_basc_adolescent(driver, actions, config, client), accounts_created
     elif questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
@@ -644,7 +649,7 @@ def assign_questionnaire(
     elif questionnaire == "Vineland":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        return gen_vineland(driver, actions, client), accounts_created
+        return gen_vineland(driver, actions, config, client), accounts_created
     elif questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         driver.get(mhs_url)
@@ -652,13 +657,15 @@ def assign_questionnaire(
     elif questionnaire == "DP4":
         logger.debug(f"Navigating to WPS for {questionnaire}")
         driver.get(wps_url)
-        return gen_dp4(driver, actions, client), accounts_created
+        return gen_dp4(driver, actions, config, client), accounts_created
     else:
         logger.critical("Unexpected questionnaire type encountered")
         raise ValueError("Unsupported questionnaire type")
 
 
-def gen_dp4(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
+def gen_dp4(
+    driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
+) -> str:
     logger.info(
         f"Generating DP4 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -780,7 +787,7 @@ def gen_dp4(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
 
     logger.debug("Entering email")
     utils.find_element(driver, By.ID, "RemoteAdminEmail_ToEmail").send_keys(
-        config["email"]
+        config.email
     )
 
     logger.debug("Selecting copy me")
@@ -1158,7 +1165,7 @@ def gen_asrs_6_18(
 
 
 def gen_basc_preschool(
-    driver: WebDriver, actions: ActionChains, client: pd.Series
+    driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
     logger.info(
         f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
@@ -1185,12 +1192,12 @@ def gen_basc_preschool(
 
     logger.debug("Entering respondent first name")
     utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
-        config["initials"][0]
+        config.initials[0]
     )
 
     logger.debug("Entering respondent last name")
     utils.find_element(driver, By.ID, "respondentLastName").send_keys(
-        config["initials"][-1]
+        config.initials[-1]
     )
 
     logger.debug("Clicking continue to email")
@@ -1214,7 +1221,9 @@ def gen_basc_preschool(
     return link
 
 
-def gen_basc_child(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
+def gen_basc_child(
+    driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
+) -> str:
     logger.info(
         f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1240,12 +1249,12 @@ def gen_basc_child(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 
     logger.debug("Entering respondent first name")
     utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
-        config["initials"][0]
+        config.initials[0]
     )
 
     logger.debug("Entering respondent last name")
     utils.find_element(driver, By.ID, "respondentLastName").send_keys(
-        config["initials"][-1]
+        config.initials[-1]
     )
 
     logger.debug("Clicking continue to email")
@@ -1270,7 +1279,7 @@ def gen_basc_child(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 
 
 def gen_basc_adolescent(
-    driver: WebDriver, actions: ActionChains, client: pd.Series
+    driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
     logger.info(
         f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
@@ -1297,12 +1306,12 @@ def gen_basc_adolescent(
 
     logger.debug("Entering respondent first name")
     utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
-        config["initials"][0]
+        config.initials[0]
     )
 
     logger.debug("Entering respondent last name")
     utils.find_element(driver, By.ID, "respondentLastName").send_keys(
-        config["initials"][-1]
+        config.initials[-1]
     )
 
     logger.debug("Clicking continue to email")
@@ -1326,7 +1335,9 @@ def gen_basc_adolescent(
     return link
 
 
-def gen_vineland(driver: WebDriver, actions: ActionChains, client: pd.Series) -> str:
+def gen_vineland(
+    driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
+) -> str:
     logger.info(
         f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1352,12 +1363,12 @@ def gen_vineland(driver: WebDriver, actions: ActionChains, client: pd.Series) ->
 
     logger.debug("Entering respondent first name")
     utils.find_element(driver, By.ID, "respondentFirstName").send_keys(
-        config["initials"][0]
+        config.initials[0]
     )
 
     logger.debug("Entering respondent last name")
     utils.find_element(driver, By.ID, "respondentLastName").send_keys(
-        config["initials"][-1]
+        config.initials[-1]
     )
 
     logger.debug("Continuing to email step")
@@ -1719,9 +1730,10 @@ def check_client_previous(prev_clients: dict, client_info: pd.Series):
 
 
 def main():
+    services, config = utils.load_config()
     driver, actions = utils.initialize_selenium()
 
-    clients = get_clients_to_send()
+    clients = get_clients_to_send(config)
     prev_clients = utils.get_previous_clients(config, failed=True)
 
     if clients is None:
@@ -1732,7 +1744,7 @@ def main():
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
             try:
-                login(driver, actions)
+                login(driver, actions, services)
                 sleep(1)
                 break
             except Exception as e:
@@ -1843,6 +1855,7 @@ def main():
                     link, accounts_created = assign_questionnaire(
                         driver,
                         actions,
+                        config,
                         client,
                         questionnaire,
                         accounts_created,
@@ -1914,4 +1927,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.add("logs/qsend.log", rotation="500 MB")
     main()

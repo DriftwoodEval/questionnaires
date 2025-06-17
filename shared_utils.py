@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime
 from email.message import EmailMessage
 from time import sleep
-from typing import Literal, TypedDict
+from typing import Annotated, Literal, TypedDict
 from urllib.parse import urlparse
 
 import asana
@@ -19,6 +19,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
+from pydantic import BaseModel, EmailStr, MySQLDsn, StringConstraints, constr
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -31,16 +32,55 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
 
-def load_config() -> tuple[dict, dict]:
-    with open("./config/info.yml", "r") as file:
-        logger.debug("Loading config info file")
-        info = yaml.safe_load(file)
-        services = info["services"]
-        config = info["config"]
-        return services, config
-
-
 ### TYPES ###
+class Service(TypedDict):
+    username: str
+    password: str
+
+
+class OpenPhoneUser(TypedDict):
+    id: str
+    phone: str
+
+
+class OpenPhoneService(TypedDict):
+    key: str
+    main_number: str
+    users: dict[str, OpenPhoneUser]
+
+
+class AsanaService(TypedDict):
+    token: str
+    workspace: str
+
+
+class Services(TypedDict):
+    asana: AsanaService
+    mhs: Service
+    openphone: OpenPhoneService
+    qglobal: Service
+    therapyappointment: Service
+    wps: Service
+
+
+class Config(BaseModel):
+    initials: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, to_upper=True, max_length=4),
+    ]
+    name: str
+    email: EmailStr
+    automated_email: EmailStr
+    cc_emails: list[EmailStr]
+    excluded_calendars: list[EmailStr]
+    punch_list_id: str
+    punch_list_range: Annotated[
+        str,
+        StringConstraints(pattern=r"^.+![A-z]+\d*(:[A-z]+\d*)?$"),
+    ]
+    database_url: MySQLDsn
+
+
 class Questionnaire(TypedDict):
     questionnaireType: str
     link: str
@@ -59,6 +99,21 @@ class ClientFromDB(TypedDict):
     fullName: str
     phoneNumber: str | None
     questionnaires: list[Questionnaire] | None
+
+
+def load_config() -> tuple[Services, Config]:
+    with open("./config/info.yml", "r") as file:
+        logger.debug("Loading config info file")
+        info = yaml.safe_load(file)
+        services = info["services"]
+        config = info["config"]
+        try:
+            services = Services(**services)
+            config = Config(**config)
+        except Exception as e:
+            logger.exception(e)
+            exit(1)
+        return services, config
 
 
 ### SELENIUM ###
@@ -310,7 +365,7 @@ def add_failure(client: dict) -> None:
 
 
 ### ASANA ###
-def init_asana(services: dict) -> asana.ProjectsApi:
+def init_asana(services: Services) -> asana.ProjectsApi:
     logger.info("Initializing Asana")
     configuration = asana.Configuration()
     configuration.access_token = services["asana"]["token"]
