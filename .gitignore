@@ -12,3 +12,4 @@ wheels/
 config/*
 put/*
 *.log
+previous_clients.yml

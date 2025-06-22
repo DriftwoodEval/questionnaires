@@ -203,6 +203,7 @@ def main():
     )
 
     clients = utils.get_previous_clients(config)
+
     if clients:
         clients = utils.validate_questionnaires(clients)
         numbers_sent = []
@@ -227,9 +228,15 @@ def main():
                 logger.info(
                     f"{client.fullName} had questionnaire sent on {most_recent_q['sent']} and isn't done"
                 )
+
+                if not client.phoneNumber:
+                    logger.warning(f"Client {client.fullName} has no phone number")
+                    email_info["failed"].append(client)
+                    continue
+
                 already_messaged_today = (
                     client.phoneNumber in numbers_sent
-                    and client.phoneNumber
+                    and utils.format_phone_number(client.phoneNumber)
                     != utils.format_phone_number(
                         services["openphone"]["users"][config.name.lower()]["phone"]
                     )

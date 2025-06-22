@@ -104,6 +104,8 @@ class _ClientBase(BaseModel):
     preferredName: Optional[str] = None
     fullName: str
     phoneNumber: Optional[str] = None
+    gender: Optional[str] = None
+    asdAdhd: Optional[str] = None
 
 
 class ClientFromDB(_ClientBase):
@@ -737,8 +739,9 @@ def check_questionnaires(
 
 
 ### FORMATTING ###
-def format_phone_number(raw_number: str) -> str:
-    return f"({raw_number[:3]}) {raw_number[3:6]}-{raw_number[6:]}"
+def format_phone_number(phone_number: str) -> str:
+    phone_number = re.sub(r"\D", "", phone_number)
+    return f"({phone_number[:3]}) {phone_number[3:6]}-{phone_number[6:]}"
 
 
 def check_distance(x: date) -> int:

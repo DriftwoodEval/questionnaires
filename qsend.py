@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from time import sleep, strftime, strptime
 
@@ -1569,6 +1570,7 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     )
     sleep(0.5)
     phone_number = phone_number_element.text
+    phone_number = re.sub(r"\D", "", phone_number)
     gender_title_element = utils.find_element(
         driver,
         By.XPATH,
