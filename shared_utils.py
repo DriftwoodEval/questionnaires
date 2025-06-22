@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime
 from email.message import EmailMessage
 from time import sleep
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, Optional, TypedDict
 from urllib.parse import urlparse
 
 import asana
@@ -19,7 +19,12 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
-from pydantic import BaseModel, EmailStr, MySQLDsn, StringConstraints, constr
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    StringConstraints,
+    field_validator,
+)
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -71,6 +76,7 @@ class Config(BaseModel):
     name: str
     email: EmailStr
     automated_email: EmailStr
+    qreceive_emails: list[EmailStr]
     cc_emails: list[EmailStr]
     excluded_calendars: list[EmailStr]
     punch_list_id: str
@@ -78,7 +84,7 @@ class Config(BaseModel):
         str,
         StringConstraints(pattern=r"^.+![A-z]+\d*(:[A-z]+\d*)?$"),
     ]
-    database_url: MySQLDsn
+    database_url: str
 
 
 class Questionnaire(TypedDict):
@@ -89,16 +95,36 @@ class Questionnaire(TypedDict):
     reminded: int
 
 
-class ClientFromDB(TypedDict):
+class _ClientBase(BaseModel):
     id: int
-    asanaId: str | None
-    dob: date | None
+    asanaId: Optional[str] = None
+    dob: Optional[date] = None
     firstName: str
     lastName: str
-    preferredName: str | None
+    preferredName: Optional[str] = None
     fullName: str
-    phoneNumber: str | None
-    questionnaires: list[Questionnaire] | None
+    phoneNumber: Optional[str] = None
+
+
+class ClientFromDB(_ClientBase):
+    questionnaires: Optional[list[Questionnaire]]
+
+
+class ClientWithQuestionnaires(_ClientBase):
+    questionnaires: list[Questionnaire]
+
+    @field_validator("questionnaires")
+    def validate_questionnaires(cls, v: list[Questionnaire]) -> list[Questionnaire]:
+        if not v:
+            raise ValueError("Client has no questionnaires")
+        return v
+
+
+class AdminEmailInfo(TypedDict):
+    reschedule: list[ClientWithQuestionnaires]
+    failed: list[ClientWithQuestionnaires]
+    call: list[ClientWithQuestionnaires]
+    completed: list[ClientWithQuestionnaires]
 
 
 def load_config() -> tuple[Services, Config]:
@@ -186,13 +212,13 @@ def check_if_element_exists(
 
 
 ### DATABASE ###
-def get_db(config):
-    db_url = urlparse(config["database_url"])
+def get_db(config: Config):
+    db_url = urlparse(config.database_url)
     connection = pymysql.connect(
         host=db_url.hostname,
-        port=db_url.port,
+        port=db_url.port or 3306,
         user=db_url.username,
-        password=db_url.password,
+        password=db_url.password or "",
         database=db_url.path[1:],
         cursorclass=pymysql.cursors.DictCursor,
     )
@@ -200,7 +226,7 @@ def get_db(config):
 
 
 def get_previous_clients(
-    config, failed: bool = False
+    config: Config, failed: bool = False
 ) -> dict[int | str, ClientFromDB] | None:
     logger.info("Loading previous clients")
     qfailure_filepath = "./put/qfailure.yml"
@@ -238,7 +264,19 @@ def get_previous_clients(
     return prev_clients if prev_clients else None
 
 
-def get_evaluator_npi(config, evaluator_email) -> str | None:
+def validate_questionnaires(
+    clients: dict[int | str, ClientFromDB],
+) -> dict[int | str, ClientWithQuestionnaires]:
+    validated = {}
+    for client_id, client in clients.items():
+        try:
+            validated[client_id] = ClientWithQuestionnaires.model_validate(client)
+        except ValueError:
+            continue  # Skip invalid clients
+    return validated
+
+
+def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -249,7 +287,7 @@ def get_evaluator_npi(config, evaluator_email) -> str | None:
 
 
 def insert_basic_client(
-    config,
+    config: Config,
     client_id: str,
     asana_id: str,
     dob,
@@ -287,10 +325,10 @@ def insert_basic_client(
 
 
 def put_questionnaire_in_db(
-    config,
-    client_id,
-    link,
-    type,
+    config: Config,
+    client_id: str,
+    link: str,
+    type: str,
     sent_date,
     status: Literal["COMPLETED", "PENDING", "RESCHEDULED"],
 ):
@@ -310,25 +348,24 @@ def put_questionnaire_in_db(
         db_connection.commit()
 
 
-def update_questionnaires_in_db(config, clients: list[ClientFromDB]):
+def update_questionnaires_in_db(
+    config: Config, clients: list[ClientWithQuestionnaires]
+):
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
             for client in clients:
-                if not client["questionnaires"]:
-                    logger.error(f"Client {client['fullName']} has no questionnaires")
-                    continue
-
-                for questionnaire in client["questionnaires"]:
+                for questionnaire in client.questionnaires:
                     sql = """
                         UPDATE `emr_questionnaire`
-                        SET status=%s
+                        SET status=%s, reminded=%s
                         WHERE clientId=%s AND sent=%s AND questionnaireType=%s
                     """
 
                     values = (
                         questionnaire["status"],
-                        client["id"],
+                        questionnaire["reminded"],
+                        client.id,
                         questionnaire["sent"],
                         questionnaire["questionnaireType"],
                     )
@@ -407,7 +444,7 @@ def replace_notes(
 
 
 def add_note(
-    config: dict,
+    config: Config,
     projects_api: asana.ProjectsApi,
     project_gid: str,
     new_note: str,
@@ -416,7 +453,7 @@ def add_note(
     today_str = datetime.now().strftime("%m/%d")
     if not raw_note:
         new_note = today_str + " " + new_note
-        initials = config["initials"]
+        initials = config.initials
         if initials:
             new_note += " ///" + initials
 
@@ -578,70 +615,49 @@ def mark_link_done(
 
 def mark_links_in_asana(
     projects_api: asana.ProjectsApi,
-    client: ClientFromDB,
-    services: dict,
-    config: dict,
+    client: ClientWithQuestionnaires,
+    services: Services,
+    config: Config,
 ) -> None:
-    if client.get("asanaId") and client["asanaId"]:
-        if not client["questionnaires"]:
-            logger.error(f"Client {client['fullName']} has no questionnaires")
-            return
-        for questionnaire in client["questionnaires"]:
+    if client.asanaId:
+        for questionnaire in client.questionnaires:
             if questionnaire["status"] == "COMPLETED":
                 mark_link_done(
                     projects_api,
                     services,
                     config,
-                    client["asanaId"],
+                    client.asanaId,
                     questionnaire["link"],
                 )
     else:
-        logger.error(f"Client {client['fullName']} has no Asana link")
+        logger.error(f"Client {client.fullName} has no Asana link")
 
 
 def sent_reminder_asana(
-    config: dict, projects_api: asana.ProjectsApi, client: ClientFromDB
+    config: Config, projects_api: asana.ProjectsApi, client: ClientFromDB
 ) -> None:
-    if client.get("asanaId") and client["asanaId"]:
+    if client.asanaId:
         add_note(
             config,
             projects_api,
-            client["asanaId"],
+            client.asanaId,
             "Sent reminder",
         )
     else:
-        logger.error(f"Client {client['fullName']} has no Asana link")
+        logger.error(f"Client {client.fullName} has no Asana link")
 
 
 ### QUESTIONNAIRES ###
-def all_questionnaires_done(client: ClientFromDB) -> bool:
-    if not client["questionnaires"]:
-        return False
-    for q in client["questionnaires"]:
-        if not isinstance(q, dict):
-            logger.error(
-                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
-            )
-            return False
+def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
     return all(
-        q["status"] == "COMPLETED"
-        for q in client["questionnaires"]
-        if isinstance(q, dict)
+        q["status"] == "COMPLETED" for q in client.questionnaires if isinstance(q, dict)
     )
 
 
-def check_if_rescheduled(client: ClientFromDB) -> bool:
-    if not client["questionnaires"]:
-        return False
-    for q in client["questionnaires"]:
-        if not isinstance(q, dict):
-            logger.error(
-                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
-            )
-            return False
+def check_if_rescheduled(client: ClientWithQuestionnaires) -> bool:
     return any(
         q["status"] == "RESCHEDULED"
-        for q in client["questionnaires"]
+        for q in client.questionnaires
         if isinstance(q, dict)
     )
 
@@ -678,46 +694,40 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 
 def check_questionnaires(
     driver: WebDriver,
-    config: dict,
-    services: dict,
-    clients: dict[int | str, ClientFromDB],
-) -> list[ClientFromDB] | None:
+    config: Config,
+    services: Services,
+    clients: dict[int | str, ClientWithQuestionnaires],
+) -> list[ClientWithQuestionnaires] | None:
     if clients:
-        clients = {
-            id: client for id, client in clients.items() if client.get("questionnaires")
-        }
         completed_clients = []
         for id in clients:
             client = clients[id]
-            if not client["questionnaires"]:
-                logger.info(f"{client['fullName']} has no questionnaires")
-                continue
             if all_questionnaires_done(client):
                 logger.info(
-                    f"{client['fullName']} has already completed their questionnaires"
+                    f"{client.fullName} has already completed their questionnaires"
                 )
                 continue
-            for questionnaire in client["questionnaires"]:
+            for questionnaire in client.questionnaires:
                 if questionnaire["status"] == "COMPLETED":
                     logger.info(
-                        f"{client['fullName']}'s {questionnaire['questionnaireType']} is already done"
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
                     )
                     continue
                 logger.info(
-                    f"Checking {client['fullName']}'s {questionnaire['questionnaireType']}"
+                    f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
                 )
                 if check_q_done(driver, questionnaire["link"]):
                     questionnaire["status"] = "COMPLETED"
                     logger.info(
-                        f"{client['fullName']}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
                 else:
                     questionnaire["status"] = "PENDING"
                     logger.warning(
-                        f"{client['fullName']}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
                     logger.warning(
-                        f"At least one questionnaire is not done for {client['fullName']}"
+                        f"At least one questionnaire is not done for {client.fullName}"
                     )
                     break
             if all_questionnaires_done(client):
@@ -737,29 +747,19 @@ def check_distance(x: date) -> int:
     return delta.days
 
 
-def get_most_recent_not_done(client: ClientFromDB) -> date | None:
-    if not client["questionnaires"]:
-        return None
-    for q in client["questionnaires"]:
-        if not isinstance(q, dict):
-            logger.error(
-                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
-            )
-            return None
-    return max(q["sent"] for q in client["questionnaires"] if q["status"] == "PENDING")
+def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire | None:
+    return max(
+        (q for q in client.questionnaires if q["status"] == "PENDING"),
+        key=lambda q: q["sent"],
+        default=None,
+    )
 
 
-def get_reminded_ever(client: ClientFromDB) -> bool:
-    if not client["questionnaires"]:
-        return False
-    for q in client["questionnaires"]:
-        if not isinstance(q, dict):
-            logger.error(
-                f"{q} in {client['firstName']} {client['lastName']} is not a dictionary."
-            )
-            return False
+def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
     return any(
-        q["reminded"] != 0 for q in client["questionnaires"] if isinstance(q, dict)
+        q["reminded"] != 0 and q["status"] == "PENDING"
+        for q in client.questionnaires
+        if isinstance(q, dict)
     )
 
 
@@ -836,71 +836,106 @@ def send_gmail(
     return send_message
 
 
-def build_admin_email(email_info: dict) -> tuple[str, str]:
+def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
     email_text = ""
     email_html = ""
     if email_info["completed"]:
-        completed_text = []
-        completed_html = []
-        for days, client_list in email_info["completed"].items():
-            if days == "-1":
-                completed_text.append("  Appointment yesterday:")
-                completed_html.append("<h3>Appointment yesterday:</h3><ul>")
-            elif days == "0":
-                completed_text.append("  Appointment today:")
-                completed_html.append("<h3>Appointment today:</h3><ul>")
-            elif days == "1":
-                completed_text.append("  Appointment tomorrow:")
-                completed_html.append("<h3>Appointment tomorrow:</h3><ul>")
-            elif int(days) < 0:
-                completed_text.append(f"  Appointment {abs(int(days))} days ago:")
-                completed_html.append(
-                    f"<h3>Appointment {abs(int(days))} days ago:</h3><ul>"
-                )
-            else:
-                completed_text.append(f"  Appointment in {days} days:")
-                completed_html.append(f"<h3>Appointment in {days} days:</h3><ul>")
-            for client in client_list:
-                completed_text.append(f"    - {client}")
-                completed_html.append(f"<li>{client}</li>")
-            completed_html.append("</ul>")
-        email_text += "Download:\n" + "\n".join(completed_text) + "\n"
-        email_html += "<h2>Download</h2>" + "".join(completed_html)
+        email_text += (
+            "Download:\n"
+            + "\n".join([f"- {client.fullName}" for client in email_info["completed"]])
+            + "\n"
+        )
+        email_html += (
+            "<h2>Download</h2><ul><li>"
+            + "</li><li>".join(client.fullName for client in email_info["completed"])
+            + "</li></ul>"
+        )
     if email_info["reschedule"]:
-        email_text += f"Check on rescheduled: {', '.join(email_info['reschedule'])}\n"
-        email_html += f"<h2>Check on rescheduled</h2><ul><li>{'</li><li>'.join(email_info['reschedule'])}</li></ul>"
+        email_text += "Check on rescheduled:\n"
+        for client in email_info["reschedule"]:
+            most_recent_q = get_most_recent_not_done(client)
+            sent_date = (
+                most_recent_q["sent"].strftime("%m/%d")
+                if most_recent_q
+                else "unknown date"
+            )
+            email_text += f"- {client.fullName} (sent on {sent_date})\n"
+            email_html += (
+                "<h2>Check on rescheduled</h2><ul><li>"
+                + "</li><li>".join(
+                    f"{client.fullName} (sent on {sent_date})"
+                    for client, sent_date in (
+                        (client, most_recent_q["sent"].strftime("%m/%d"))
+                        if most_recent_q
+                        else (client, "unknown date")
+                        for client in email_info["reschedule"]
+                    )
+                )
+                + "</li></ul>"
+            )
     if email_info["failed"]:
-        email_text += f"Failed to message: {', '.join(email_info['failed'])}\n"
-        email_html += f"<h2>Failed to message</h2><ul><li>{'</li><li>'.join(email_info['failed'])}</li></ul>"
+        email_text += "Failed to message:\n"
+        for client in email_info["failed"]:
+            most_recent_q = get_most_recent_not_done(client)
+            sent_date = (
+                most_recent_q["sent"].strftime("%m/%d")
+                if most_recent_q
+                else "unknown date"
+            )
+            email_text += f"- {client.fullName} (sent on {sent_date})\n"
+            email_html += (
+                "<h2>Failed to message</h2><ul><li>"
+                + "</li><li>".join(
+                    f"{client.fullName} (sent on {sent_date})"
+                    for client, sent_date in (
+                        (client, most_recent_q["sent"].strftime("%m/%d"))
+                        if most_recent_q
+                        else (client, "unknown date")
+                        for client in email_info["failed"]
+                    )
+                )
+                + "</li></ul>"
+            )
     if email_info["call"]:
-        call_text = []
-        call_html = []
-        for days, client_list in email_info["call"].items():
-            if days == "-1":
-                call_text.append("  Appointment yesterday:")
-                call_html.append("<h3>Appointment yesterday:</h3><ul>")
-            elif days == "0":
-                call_text.append("  Appointment today:")
-                call_html.append("<h3>Appointment today:</h3><ul>")
-            elif days == "1":
-                call_text.append("  Appointment tomorrow:")
-                call_html.append("<h3>Appointment tomorrow:</h3><ul>")
-            elif int(days) < 0:
-                call_text.append(f"  Appointment {abs(int(days))} days ago:")
-                call_html.append(f"<h3>Appointment {abs(int(days))} days ago:</h3><ul>")
-            else:
-                call_text.append(f"  Appointment in {days} days:")
-                call_html.append(f"<h3>Appointment in {days} days:</h3><ul>")
-            for client in client_list:
-                call_text.append(f"    - {client}")
-                call_html.append(f"<li>{client}</li>")
-            call_html.append("</ul>")
-        email_text += "Call:\n" + "\n".join(call_text)
-        email_html += "<h2>Call</h2>" + "".join(call_html)
+        email_text += "Call:\n"
+        for client in email_info["call"]:
+            most_recent_q = get_most_recent_not_done(client)
+            sent_date = (
+                most_recent_q["sent"].strftime("%m/%d")
+                if most_recent_q
+                else "unknown date"
+            )
+            reminded = (
+                f"reminded {most_recent_q['reminded']} times"
+                if most_recent_q
+                else "reminded unknown number of times"
+            )
+            email_text += f"- {client.fullName} (sent on {sent_date}, {reminded})\n"
+            email_html += (
+                "<h2>Call</h2><ul><li>"
+                + "</li><li>".join(
+                    f"{client.fullName} (sent on {sent_date}, {reminded})"
+                    for client, sent_date, reminded in (
+                        (
+                            client,
+                            most_recent_q["sent"].strftime("%m/%d"),
+                            f"reminded {most_recent_q['reminded']} times",
+                        )
+                        if most_recent_q
+                        else (
+                            client,
+                            "unknown date",
+                            "reminded unknown number of times",
+                        )
+                        for client in email_info["call"]
+                    )
+                )
+                + "</li></ul>"
+            )
     return email_text, email_html
 
 
-def get_punch_list(config):
+def get_punch_list(config: Config):
     creds = google_authenticate()
 
     try:
@@ -910,8 +945,8 @@ def get_punch_list(config):
         result = (
             sheet.values()
             .get(
-                spreadsheetId=config["punch_list_id"],
-                range=config["punch_list_range"],
+                spreadsheetId=config.punch_list_id,
+                range=config.punch_list_range,
             )
             .execute()
         )
@@ -919,7 +954,6 @@ def get_punch_list(config):
 
         if values:
             df = pd.DataFrame(values[1:], columns=values[0])
-            df.to_csv("clients_to_send.csv", index=False)
 
             df = df.rename(columns={df.columns[0]: "Client Name"})
 
@@ -935,6 +969,8 @@ def get_punch_list(config):
                 ]
             ]
 
+            df = df[df["Client ID"].notna() & df["Client ID"].str.len().astype(bool)]
+
             df["Client ID"] = df["Client ID"].apply(
                 lambda client_id: re.sub(r"^C?0*", "", client_id)
             )
@@ -943,12 +979,16 @@ def get_punch_list(config):
                 lambda client_id: f"C{client_id.zfill(9)}"
             )
 
+            print(df)
+
             return df
     except Exception as e:
         logger.exception(e)
 
 
-def update_punch_list(config, name_for_search: str, update_header: str, new_value: str):
+def update_punch_list(
+    config: Config, name_for_search: str, update_header: str, new_value: str
+):
     creds = google_authenticate()
 
     try:
@@ -957,8 +997,8 @@ def update_punch_list(config, name_for_search: str, update_header: str, new_valu
         result = (
             sheet.values()
             .get(
-                spreadsheetId=config["punch_list_id"],
-                range=config["punch_list_range"],
+                spreadsheetId=config.punch_list_id,
+                range=config.punch_list_range,
             )
             .execute()
         )
@@ -977,13 +1017,13 @@ def update_punch_list(config, name_for_search: str, update_header: str, new_valu
                 break
 
         if row_number is not None and update_column is not None:
-            sheet_name = config["punch_list_range"].split("!")[0]
+            sheet_name = config.punch_list_range.split("!")[0]
             update_range = f"{sheet_name}!{update_column}{row_number}"
             body = {"values": [[new_value]]}
             result = (
                 sheet.values()
                 .update(
-                    spreadsheetId=config["punch_list_id"],
+                    spreadsheetId=config.punch_list_id,
                     range=update_range,
                     valueInputOption="USER_ENTERED",
                     body=body,
@@ -999,7 +1039,7 @@ def update_punch_list(config, name_for_search: str, update_header: str, new_valu
         logger.exception(e)
 
 
-def update_punch_by_daeval(config, client_name, daeval):
+def update_punch_by_daeval(config: Config, client_name: str, daeval: str):
     if daeval == "DA":
         update_punch_list(config, client_name, "DA Qs Sent", "TRUE")
     elif daeval == "EVAL":

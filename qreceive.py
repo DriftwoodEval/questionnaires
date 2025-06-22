@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 
 import requests
 from backoff import expo, on_exception, on_predicate
@@ -53,11 +53,11 @@ class LimitedRequest:
 
 
 class OpenPhone:
-    def __init__(self, config, services):
+    def __init__(self, config: utils.Config, services: utils.Services):
         self.config = config
         self.services = services
         self.main_number = services["openphone"]["main_number"]
-        self.default_user = services["openphone"]["users"][config["name"].lower()]["id"]
+        self.default_user = services["openphone"]["users"][config.name.lower()]["id"]
         self.limited_request = LimitedRequest()
 
     @on_exception(
@@ -78,7 +78,7 @@ class OpenPhone:
         if response is None:
             raise ConnectionError("Failed to retrieve response from OpenPhone API")
 
-        if response.status_code != 200:
+        if response.status_code >= 400:
             raise requests.HTTPError("API response: {}".format(response.status_code))
 
         response_data = response.json().get("data")
@@ -126,7 +126,7 @@ class OpenPhone:
             if response is None:
                 raise ConnectionError("Failed to retrieve response from OpenPhone API")
 
-            if response.status_code != 200:
+            if response.status_code >= 400:
                 raise requests.HTTPError(
                     "API response: {}".format(response.status_code)
                 )
@@ -159,25 +159,26 @@ class OpenPhone:
 
 
 def build_message(
-    config: dict,
-    client: utils.ClientFromDB,
-    most_recent_q: date,
+    config: utils.Config,
+    client: utils.ClientWithQuestionnaires,
+    most_recent_q: utils.Questionnaire,
     distance: int,
     reminded_ever: bool,
 ) -> str | None:
-    if not client["questionnaires"]:
-        logger.error(f"Client {client['fullName']} has no questionnaires")
-        return
-    link_count = len(client["questionnaires"])
-    if distance == -1:
-        distance_sentence = "(yesterday)"
+    link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
+    if distance == 0:
+        distance_phrase = "today"
+    elif distance == -1:
+        distance_phrase = f"on {most_recent_q['sent'].strftime('%m/%d')} (yesterday)"
     else:
-        distance_sentence = f"({abs(distance)} days ago)"
+        distance_phrase = (
+            f"on {most_recent_q['sent'].strftime('%m/%d')} ({abs(distance)} days ago)"
+        )
 
     if not reminded_ever:
-        message = f"Hello, this is {config['name']} from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} in your messages, sent on {most_recent_q.strftime('%m/%d')} {distance_sentence}. Please let me know if you have any questions. Thank you for your time."
+        message = f"Hello, this is {config.name} from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} in your messages, sent {distance_phrase}. Please let me know if you have any questions. Thank you for your time."
     else:
-        message = f"Hello, this is {config['name']} with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} sent on {most_recent_q.strftime('%m/%d')} {distance_sentence} {'is' if link_count == 1 else 'are'} still incomplete. You can find {'it' if link_count == 1 else 'them'} in your messages in the patient portal at https://portal.therapyappointment.com. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
+        message = f"Hello, this is {config.name} with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} sent {distance_phrase} {'is' if link_count == 1 else 'are'} still incomplete. You can find {'it' if link_count == 1 else 'them'} in your messages in the patient portal at https://portal.therapyappointment.com. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
     return message
 
 
@@ -185,21 +186,25 @@ def main():
     projects_api = utils.init_asana(services)
     openphone = OpenPhone(config, services)
     driver, actions = utils.initialize_selenium()
-    email_info = {
+    email_info: utils.AdminEmailInfo = {
         "reschedule": [],
         "failed": [],
-        "call": {},
-        "completed": {},
+        "call": [],
+        "completed": [],
     }
     clients = utils.get_previous_clients(config)
     if clients is None:
         logger.critical("Failed to get previous clients")
         return
-    email_info["completed"] = utils.check_questionnaires(
-        driver, config, services, clients
+
+    clients = utils.validate_questionnaires(clients)
+    email_info["completed"] = (
+        utils.check_questionnaires(driver, config, services, clients) or []
     )
+
     clients = utils.get_previous_clients(config)
     if clients:
+        clients = utils.validate_questionnaires(clients)
         numbers_sent = []
         for _, client in clients.items():
             utils.mark_links_in_asana(projects_api, client, services, config)
@@ -207,75 +212,75 @@ def main():
             done = utils.all_questionnaires_done(client)
 
             if utils.check_if_rescheduled(client):
-                logger.warning(f"Client {client['fullName']} wants to/has rescheduled")
-                email_info["reschedule"].append(f"{client['fullName']}")
+                logger.warning(f"Client {client.fullName} wants to/has rescheduled")
+                email_info["reschedule"].append(client)
 
             if not done:
                 most_recent_q = utils.get_most_recent_not_done(client)
                 if not most_recent_q:
-                    logger.error(f"Client {client['fullName']} has no questionnaires")
+                    logger.trace(
+                        f"Client {client.fullName} has no unfinished questionnaires"
+                    )
                     continue
-                distance = utils.check_distance(most_recent_q)
+                distance = utils.check_distance(most_recent_q["sent"])
 
                 logger.info(
-                    f"{client['fullName']} had questionnaire sent on {most_recent_q} and isn't done"
+                    f"{client.fullName} had questionnaire sent on {most_recent_q['sent']} and isn't done"
                 )
-                already_messaged_today = client[
-                    "phoneNumber"
-                ] in numbers_sent and client[
-                    "phoneNumber"
-                ] != utils.format_phone_number(
-                    services["openphone"]["users"][config["name"].lower()]["phone"]
+                already_messaged_today = (
+                    client.phoneNumber in numbers_sent
+                    and client.phoneNumber
+                    != utils.format_phone_number(
+                        services["openphone"]["users"][config.name.lower()]["phone"]
+                    )
                 )
 
                 if already_messaged_today:
                     logger.warning(
-                        f"Already messaged {client['fullName']} at {client['phoneNumber']} today"
+                        f"Already messaged {client.fullName} at {client.phoneNumber} today"
                     )
 
-                    if (
-                        distance % 3 == 2
-                        and not already_messaged_today
-                        and client["phoneNumber"]
-                    ):
-                        logger.info(f"Sending reminder TO {client['fullName']}")
-                        reminded_ever = utils.get_reminded_ever(client)
-                        message = build_message(
-                            config, client, most_recent_q, distance, reminded_ever
-                        )
-                        if not message:
-                            logger.error(
-                                f"Failed to build message for {client['fullName']}"
-                            )
-                            continue
-                        message_sent = openphone.send_text_and_ensure(
-                            message, client["phoneNumber"]
-                        )
-                        if message_sent:
-                            numbers_sent.append(client["phoneNumber"])
+                if distance % 7 == 0 and most_recent_q["reminded"] >= 3:
+                    email_info["call"].append(client)
+                    for q in client.questionnaires:
+                        if q["status"] == "PENDING":
+                            q["reminded"] += 1
 
-                            if not client["questionnaires"]:
-                                logger.error(
-                                    f"Client {client['fullName']} has no questionnaires"
-                                )
-                                continue
-                            for q in client["questionnaires"]:
-                                if q["status"] == "PENDING":
-                                    q["reminded"] += 1
-                        else:
-                            logger.error(
-                                f"Failed to send message to {client['fullName']}"
-                            )
-                            email_info["failed"].append(f"{client['fullName']}")
+                elif (
+                    distance % 7 == 0
+                    and not already_messaged_today
+                    and client.phoneNumber
+                ):
+                    logger.info(f"Sending reminder TO {client.fullName}")
+                    reminded_ever = utils.get_reminded_ever(client)
+                    message = build_message(
+                        config, client, most_recent_q, distance, reminded_ever
+                    )
+                    if not message:
+                        logger.error(f"Failed to build message for {client.fullName}")
+                        continue
+                    message_sent = openphone.send_text_and_ensure(
+                        message, client.phoneNumber
+                    )
+                    if message_sent:
+                        numbers_sent.append(client.phoneNumber)
+
+                        for q in client.questionnaires:
+                            if q["status"] == "PENDING":
+                                q["reminded"] += 1
+                    else:
+                        logger.error(f"Failed to send message to {client.fullName}")
+                        email_info["failed"].append(client)
 
             utils.update_questionnaires_in_db(config, [client])
+
         admin_email_text, admin_email_html = utils.build_admin_email(email_info)
         if admin_email_text != "":
             utils.send_gmail(
                 admin_email_text,
                 f"Receive Run for {datetime.today().strftime('%a, %b %-d')}",
-                config["qreceive_emails"],
-                config["automated_email"],
+                ",".join(config.qreceive_emails),
+                config.automated_email,
                 html=admin_email_html,
             )
 

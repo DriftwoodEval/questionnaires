@@ -17,7 +17,7 @@ from selenium.webdriver.support.ui import Select
 import shared_utils as utils
 
 
-def get_clients_to_send(config):
+def get_clients_to_send(config: utils.Config):
     punch_list = utils.get_punch_list(config)
 
     if punch_list is None:
@@ -45,10 +45,6 @@ def get_clients_to_send(config):
         ),
         axis=1,
     )
-
-    punch_list = punch_list[
-        punch_list.iloc[:, 0].str.contains("Testman Testson", na=False)
-    ]
 
     return punch_list
 
@@ -1736,9 +1732,12 @@ def main():
     clients = get_clients_to_send(config)
     prev_clients = utils.get_previous_clients(config, failed=True)
 
-    if clients is None:
+    if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
         return
+
+    # TODO: Remove test filter
+    clients = clients[clients.iloc[:, 0].str.contains("Testman Testson", na=False)]
 
     projects_api = utils.init_asana(services)
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
