@@ -85,6 +85,7 @@ class Config(BaseModel):
         StringConstraints(pattern=r"^.+![A-z]+\d*(:[A-z]+\d*)?$"),
     ]
     database_url: str
+    excluded_ta: list[str]
 
 
 class Questionnaire(TypedDict):
@@ -145,13 +146,15 @@ def load_config() -> tuple[Services, Config]:
 
 
 ### SELENIUM ###
-def initialize_selenium() -> tuple[WebDriver, ActionChains]:
+def initialize_selenium(save_profile: bool = False) -> tuple[WebDriver, ActionChains]:
     logger.info("Initializing Selenium")
     chrome_options: Options = Options()
     chrome_options.add_argument("--no-sandbox")
     if os.getenv("HEADLESS") == "true":
         chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    if save_profile:
+        chrome_options.add_argument("--user-data-dir=./config/chrome_profile")
     driver = webdriver.Chrome(options=chrome_options)
     actions = ActionChains(driver)
     driver.implicitly_wait(5)
@@ -178,12 +181,16 @@ def click_element(
             if refresh:
                 logger.info("Refreshing page")
                 driver.refresh()
-            sleep(delay)
+                sleep(delay)
     raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
 
 
 def find_element(
-    driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
+    driver: WebDriver,
+    by: str,
+    locator: str,
+    max_attempts: int = 3,
+    delay: int = 1,
 ) -> WebElement:
     for attempt in range(max_attempts):
         try:
