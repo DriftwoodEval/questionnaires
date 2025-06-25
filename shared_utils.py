@@ -43,6 +43,11 @@ class Service(TypedDict):
     password: str
 
 
+class ServiceWithAdmin(Service):
+    admin_username: str
+    admin_password: str
+
+
 class OpenPhoneUser(TypedDict):
     id: str
     phone: str
@@ -64,7 +69,7 @@ class Services(TypedDict):
     mhs: Service
     openphone: OpenPhoneService
     qglobal: Service
-    therapyappointment: Service
+    therapyappointment: ServiceWithAdmin
     wps: Service
 
 
@@ -988,8 +993,6 @@ def get_punch_list(config: Config):
             df["Human Friendly ID"] = df["Client ID"].apply(
                 lambda client_id: f"C{client_id.zfill(9)}"
             )
-
-            print(df)
 
             return df
     except Exception as e:

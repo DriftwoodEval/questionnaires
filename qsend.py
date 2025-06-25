@@ -58,7 +58,10 @@ def rearrangedob(dob: str) -> str:
 
 
 def login_ta(
-    driver: WebDriver, actions: ActionChains, services: utils.Services
+    driver: WebDriver,
+    actions: ActionChains,
+    services: utils.Services,
+    admin: bool = False,
 ) -> None:
     logger.info("Logging in to TherapyAppointment")
 
@@ -67,11 +70,15 @@ def login_ta(
 
     logger.debug("Entering username")
     username_field = utils.find_element(driver, By.NAME, "user_username")
-    username_field.send_keys(services["therapyappointment"]["username"])
+    username_field.send_keys(
+        services["therapyappointment"]["admin_username" if admin else "username"]
+    )
 
     logger.debug("Entering password")
     password_field = utils.find_element(driver, By.NAME, "user_password")
-    password_field.send_keys(services["therapyappointment"]["password"])
+    password_field.send_keys(
+        services["therapyappointment"]["admin_password" if admin else "password"]
+    )
 
     logger.debug("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -1737,9 +1744,6 @@ def main():
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
         return
-
-    # TODO: Remove test filter
-    clients = clients[clients.iloc[:, 0].str.contains("Testman Testson", na=False)]
 
     projects_api = utils.init_asana(services)
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:

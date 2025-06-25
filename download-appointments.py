@@ -94,7 +94,7 @@ def loop_therapists(driver: WebDriver):
 
 
 def main():
-    login_ta(driver, actions, services)
+    login_ta(driver, actions, services, admin=True)
     open_profile(driver)
     loop_therapists(driver)
     time.sleep(60)
