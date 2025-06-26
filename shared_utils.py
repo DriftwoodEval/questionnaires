@@ -385,8 +385,7 @@ def update_questionnaires_in_db(
                     )
 
                     cursor.execute(sql, values)
-
-        db_connection.commit()
+                    db_connection.commit()
 
 
 def update_yaml(clients: dict, filepath: str) -> None:
