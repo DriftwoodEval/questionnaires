@@ -86,6 +86,7 @@ class OpenPhone:
 
     @on_predicate(
         expo,
+        interval=2,
         max_tries=3,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
