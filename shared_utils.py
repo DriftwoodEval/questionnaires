@@ -865,87 +865,48 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             + "</li></ul>"
         )
     if email_info["reschedule"]:
-        email_text += "Check on rescheduled:\n"
-        for client in email_info["reschedule"]:
-            most_recent_q = get_most_recent_not_done(client)
-            sent_date = (
-                most_recent_q["sent"].strftime("%m/%d")
-                if most_recent_q
-                else "unknown date"
-            )
-            email_text += f"- {client.fullName} (sent on {sent_date})\n"
-            email_html += (
-                "<h2>Check on rescheduled</h2><ul><li>"
-                + "</li><li>".join(
-                    f"{client.fullName} (sent on {sent_date})"
-                    for client, sent_date in (
-                        (client, most_recent_q["sent"].strftime("%m/%d"))
-                        if most_recent_q
-                        else (client, "unknown date")
-                        for client in email_info["reschedule"]
-                    )
-                )
-                + "</li></ul>"
-            )
+        email_text += (
+            "Check on rescheduled:\n"
+            + "\n".join([f"- {client.fullName}" for client in email_info["reschedule"]])
+            + "\n"
+        )
+        email_html += (
+            "<h2>Check on rescheduled</h2><ul><li>"
+            + "</li><li>".join(client.fullName for client in email_info["reschedule"])
+            + "</li></ul>"
+        )
     if email_info["failed"]:
-        email_text += "Failed to message:\n"
-        for client in email_info["failed"]:
-            most_recent_q = get_most_recent_not_done(client)
-            sent_date = (
-                most_recent_q["sent"].strftime("%m/%d")
-                if most_recent_q
-                else "unknown date"
-            )
-            email_text += f"- {client.fullName} (sent on {sent_date})\n"
-            email_html += (
-                "<h2>Failed to message</h2><ul><li>"
-                + "</li><li>".join(
-                    f"{client.fullName} (sent on {sent_date})"
-                    for client, sent_date in (
-                        (client, most_recent_q["sent"].strftime("%m/%d"))
-                        if most_recent_q
-                        else (client, "unknown date")
-                        for client in email_info["failed"]
-                    )
-                )
-                + "</li></ul>"
-            )
+        email_text += (
+            "Failed to message:\n"
+            + "\n".join([f"- {client.fullName}" for client in email_info["failed"]])
+            + "\n"
+        )
+        email_html += (
+            "<h2>Failed to message</h2><ul><li>"
+            + "</li><li>".join(client.fullName for client in email_info["failed"])
+            + "</li></ul>"
+        )
     if email_info["call"]:
-        email_text += "Call:\n"
-        for client in email_info["call"]:
-            most_recent_q = get_most_recent_not_done(client)
-            sent_date = (
-                most_recent_q["sent"].strftime("%m/%d")
-                if most_recent_q
-                else "unknown date"
+        email_text += (
+            "Call:\n"
+            + "\n".join(
+                [
+                    f"- {client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {most_recent_q['reminded'] if most_recent_q else 'unknown number of times'})"
+                    for client in email_info["call"]
+                    if (most_recent_q := get_most_recent_not_done(client))
+                ]
             )
-            reminded = (
-                f"reminded {most_recent_q['reminded']} times"
-                if most_recent_q
-                else "reminded unknown number of times"
+            + "\n"
+        )
+        email_html += (
+            "<h2>Call</h2><ul><li>"
+            + "</li><li>".join(
+                f"{client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {most_recent_q['reminded'] if most_recent_q else 'unknown number of times'})"
+                for client in email_info["call"]
+                if (most_recent_q := get_most_recent_not_done(client))
             )
-            email_text += f"- {client.fullName} (sent on {sent_date}, {reminded})\n"
-            email_html += (
-                "<h2>Call</h2><ul><li>"
-                + "</li><li>".join(
-                    f"{client.fullName} (sent on {sent_date}, {reminded})"
-                    for client, sent_date, reminded in (
-                        (
-                            client,
-                            most_recent_q["sent"].strftime("%m/%d"),
-                            f"reminded {most_recent_q['reminded']} times",
-                        )
-                        if most_recent_q
-                        else (
-                            client,
-                            "unknown date",
-                            "reminded unknown number of times",
-                        )
-                        for client in email_info["call"]
-                    )
-                )
-                + "</li></ul>"
-            )
+            + "</li></ul>"
+        )
     return email_text, email_html
 
 
