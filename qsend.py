@@ -1675,10 +1675,10 @@ def format_failed_client(
     key = client["Client ID"] if client["Client ID"] else client["Client Name"]
     client_info = {
         "firstName": client["TA First Name"]
-        if client["TA First Name"]
+        if "TA First Name" in client
         else client["Client Name"].split(" ")[0],
         "lastName": client["TA Last Name"]
-        if client["TA Last Name"]
+        if "TA Last Name" in client
         else client["Client Name"].split(" ")[-1],
         "fullName": client["Client Name"],
         "asdAdhd": client.For,
