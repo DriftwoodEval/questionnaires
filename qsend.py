@@ -1733,8 +1733,10 @@ def check_client_previous(prev_clients: dict, client_info: pd.Series):
             client_id_to_use = human_friendly_id
         else:
             return False
-
-        return prev_clients[client_id_to_use]["questionnaires"]
+        questionnaires = prev_clients.get(client_id_to_use, {}).get(
+            "questionnaires", []
+        )
+        return questionnaires if questionnaires else None
 
 
 def main():
