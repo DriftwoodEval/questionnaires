@@ -1673,7 +1673,10 @@ def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
 
 
 def format_failed_client(
-    client: pd.Series, error: str, questionnaires_needed: list[str] | str = ""
+    client: pd.Series,
+    error: str,
+    questionnaires_needed: list[str] | str = "",
+    questionnaire_links_generated: list[str] = [],
 ) -> dict:
     key = client["Client ID"] if client["Client ID"] else client["Client Name"]
     client_info = {
@@ -1691,6 +1694,8 @@ def format_failed_client(
     }
     if questionnaires_needed != "":
         client_info["questionnaires_needed"] = questionnaires_needed
+    if questionnaire_links_generated != []:
+        client_info["questionnaire_links_generated"] = questionnaire_links_generated
     return {key: client_info}
 
 
@@ -1878,6 +1883,7 @@ def main():
                             client,
                             "Error assigning questionnaires",
                             questionnaires_needed,
+                            questionnaire_links_generated=questionnaires,
                         )
                     )
                     send = False
@@ -1890,6 +1896,7 @@ def main():
                             client,
                             "Gap in elif statement",
                             questionnaires_needed,
+                            questionnaire_links_generated=questionnaires,
                         )
                     )
                     send = False
@@ -1931,9 +1938,7 @@ def main():
                 send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             logger.exception(f"Element not found: {e}")
-            utils.add_failure(
-                format_failed_client(client, "Error on questionnaire website")
-            )
+            utils.add_failure(format_failed_client(client, "Unknown error"))
 
 
 if __name__ == "__main__":
