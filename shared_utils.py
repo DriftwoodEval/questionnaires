@@ -160,6 +160,15 @@ def initialize_selenium(save_profile: bool = False) -> tuple[WebDriver, ActionCh
     chrome_options.add_argument("--disable-dev-shm-usage")
     if save_profile:
         chrome_options.add_argument("--user-data-dir=./config/chrome_profile")
+    chrome_options.add_experimental_option(
+        "prefs",
+        {
+            "download.default_directory": f"{os.getcwd()}/put/downloads",
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "safebrowsing.enabled": True,
+        },
+    )
     driver = webdriver.Chrome(options=chrome_options)
     actions = ActionChains(driver)
     driver.implicitly_wait(5)
