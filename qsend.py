@@ -165,11 +165,10 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
             utils.click_element(driver, By.NAME, "searchForm:j_id347")
             _search_helper(driver, id)
 
-    logger.info(f"Searching QGlobal for {client['Client ID']}")
-    id = client["account_number"]
+    logger.info(f"Searching QGlobal for {client['Human Friendly ID']}")
     utils.click_element(driver, By.NAME, "searchForm:j_id347")
 
-    _search_helper(driver, id)
+    _search_helper(driver, client["Human Friendly ID"])
 
     logger.debug("Waiting for page to load")
     sleep(1)
