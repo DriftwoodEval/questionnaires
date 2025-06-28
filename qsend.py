@@ -1921,8 +1921,8 @@ def main():
                         "PENDING",
                     )
 
-                    message = format_ta_message(questionnaires)
-                    send_message_ta(driver, client_url, message)
+                message = format_ta_message(questionnaires)
+                send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             logger.exception(f"Element not found: {e}")
             utils.add_failure(
