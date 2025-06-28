@@ -186,7 +186,11 @@ def check_for_qglobal_account(
 
     logger.info("Checking for QGlobal account")
     try:
-        utils.find_element(driver, By.XPATH, "//tr[2]/td[5]")
+        utils.find_element(
+            driver,
+            By.CSS_SELECTOR,
+            f"//td[contains(text(), '{client['Human Friendly ID']}')] [aria-describedby='list_examineeid']",
+        )
         return True
     except NoSuchElementException:
         return False
