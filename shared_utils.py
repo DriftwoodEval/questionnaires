@@ -1,9 +1,11 @@
 import base64
 import hashlib
+import json
 import os
 import re
 from datetime import date, datetime
 from email.message import EmailMessage
+from pathlib import Path
 from time import sleep
 from typing import Annotated, Literal, Optional, TypedDict
 from urllib.parse import urlparse
@@ -514,7 +516,7 @@ def search_by_name(
         api_response = list(
             projects_api.get_projects_for_workspace(
                 services["asana"]["workspace"],
-                opts,  # pyright: ignore (asana api is strange)
+                opts,  # pyright: ignore (asana api is untyped)
             )
         )
 
@@ -668,6 +670,35 @@ def sent_reminder_asana(
         )
     else:
         logger.error(f"Client {client.fullName} has no Asana link")
+
+
+def log_asana(services: Services, projects_api: asana.ProjectsApi):
+    opts = {
+        "limit": 100,
+        "archived": False,
+        "opt_fields": "name,color,permalink_url,notes",
+    }
+    try:
+        api_response = list(
+            projects_api.get_projects_for_workspace(
+                services["asana"]["workspace"],
+                opts,  # pyright: ignore (asana api is untyped)
+            )
+        )
+
+    except ApiException as e:
+        logger.exception(
+            "Exception when calling ProjectsApi->get_projects_for_workspace: %s\n" % e
+        )
+        return
+
+    if api_response:
+        Path("logs/asana").mkdir(parents=True, exist_ok=True)
+        with open(
+            f"logs/asana/{datetime.now().strftime('%y-%m-%d')}-asana-projects.json",
+            "w",
+        ) as f:
+            json.dump(api_response, f, indent=4)
 
 
 ### QUESTIONNAIRES ###

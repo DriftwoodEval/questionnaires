@@ -205,6 +205,8 @@ def main():
 
     clients = utils.get_previous_clients(config)
 
+    utils.log_asana(services, projects_api)
+
     if clients:
         clients = utils.validate_questionnaires(clients)
         numbers_sent = []
