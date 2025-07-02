@@ -1723,6 +1723,7 @@ def write_file(filepath: str, data: str) -> None:
 
 
 def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bool:
+    logger.debug("Checking if client failed previously")
     if prev_failed_clients == {}:
         return False
 
@@ -1741,6 +1742,10 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
         previously_failed = str(client_id_to_use) != ""
 
         prev_daeval = prev_failed_clients.get(client_id_to_use, {}).get("daEval", None)
+        if prev_daeval is None:
+            prev_daeval = prev_failed_clients.get(client_id_to_use, {}).get(
+                "check", None
+            )
         daeval = client_info["daEval"]
 
         if previously_failed:
@@ -1808,6 +1813,13 @@ def main():
             utils.add_failure(format_failed_client(client, "Missing Client ID"))
             continue
 
+        if prev_failed_clients != {}:
+            if check_client_failed(prev_failed_clients, client):
+                logger.error(
+                    f"Client {client['Client Name']} has already failed to send"
+                )
+                continue
+
         try:
             client_url = go_to_client(driver, actions, client["Client ID"])
 
@@ -1869,13 +1881,6 @@ def main():
                     format_failed_client(client, "Unknown questionnaire needs")
                 )
                 break
-
-            if prev_failed_clients != {}:
-                if check_client_failed(prev_failed_clients, client):
-                    logger.error(
-                        f"Client {client['Client Name']} has already failed to send"
-                    )
-                    break
 
             if prev_clients != {}:
                 previous_questionnaires = check_client_previous(prev_clients, client)
