@@ -1722,6 +1722,40 @@ def write_file(filepath: str, data: str) -> None:
             logger.success("Wrote data to new file")
 
 
+def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bool:
+    if prev_failed_clients == {}:
+        return False
+
+    client_id = client_info["Client ID"]
+    human_friendly_id = client_info["Human Friendly ID"]
+    if client_id and isinstance(prev_failed_clients, dict):
+        if int(client_id) in prev_failed_clients:
+            client_id_to_use = int(client_id)
+        elif client_id in prev_failed_clients:
+            client_id_to_use = client_id
+        elif human_friendly_id in prev_failed_clients:
+            client_id_to_use = human_friendly_id
+        else:
+            return False
+
+        previously_failed = str(client_id_to_use) != ""
+
+        prev_daeval = prev_failed_clients.get(client_id_to_use, {}).get("daEval", None)
+        daeval = client_info["daEval"]
+
+        if previously_failed:
+            if daeval == "DA":
+                return True
+            elif daeval == "EVAL" and prev_daeval == "DA":
+                return False
+            elif daeval == "EVAL" and prev_daeval != "DA":
+                return True
+            elif daeval == "DAEVAL":
+                return True
+
+    return False
+
+
 def check_client_previous(prev_clients: dict, client_info: pd.Series):
     if prev_clients is None:
         return False
@@ -1749,7 +1783,7 @@ def main():
     driver, actions = utils.initialize_selenium()
 
     clients = get_clients_to_send(config)
-    prev_clients = utils.get_previous_clients(config, failed=True)
+    prev_clients, prev_failed_clients = utils.get_previous_clients(config, failed=True)
 
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
@@ -1836,7 +1870,14 @@ def main():
                 )
                 break
 
-            if prev_clients is not None:
+            if prev_failed_clients != {}:
+                if check_client_failed(prev_failed_clients, client):
+                    logger.error(
+                        f"Client {client['Client Name']} has already failed to send"
+                    )
+                    break
+
+            if prev_clients != {}:
                 previous_questionnaires = check_client_previous(prev_clients, client)
 
                 if previous_questionnaires:

@@ -252,16 +252,17 @@ def get_db(config: Config):
 
 def get_previous_clients(
     config: Config, failed: bool = False
-) -> dict[int | str, ClientFromDB] | None:
+) -> tuple[dict[int | str, ClientFromDB], dict[int | str, ClientFromDB]]:
     logger.info("Loading previous clients")
     qfailure_filepath = "./put/qfailure.yml"
 
     prev_clients = {}
+    failed_prev_clients = {}
 
     if failed:
         try:
             with open(qfailure_filepath, "r") as file:
-                prev_clients = yaml.safe_load(file) or {}
+                failed_prev_clients = yaml.safe_load(file) or {}
         except FileNotFoundError:
             logger.info(f"{qfailure_filepath} does not exist.")
 
@@ -286,7 +287,7 @@ def get_previous_clients(
         for client in clients:
             prev_clients[client["id"]] = {key: value for key, value in client.items()}
 
-    return prev_clients if prev_clients else None
+    return prev_clients, failed_prev_clients
 
 
 def validate_questionnaires(
