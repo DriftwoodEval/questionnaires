@@ -1746,7 +1746,7 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
             prev_daeval = prev_failed_clients.get(client_id_to_use, {}).get(
                 "check", None
             )
-        daeval = client_info["daEval"]
+        daeval = client_info["daeval"]
 
         if previously_failed:
             if daeval == "DA":
