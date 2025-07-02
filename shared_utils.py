@@ -420,7 +420,6 @@ def update_yaml(clients: dict, filepath: str) -> None:
 
 
 def add_failure(client: dict) -> None:
-    # TODO: Include Questionnaires in failure
     qfailure_filepath = "./put/qfailure.yml"
     qfailsend_filepath = "./put/qfailsend.yml"
     update_yaml(client, qfailure_filepath)

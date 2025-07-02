@@ -1845,7 +1845,7 @@ def main():
         except NoSuchElementException as e:
             logger.exception(f"Element not found: {e}")
             utils.add_failure(format_failed_client(client, "Unable to find client"))
-            break
+            continue
 
         write_file(
             "./put/records.txt",
@@ -1871,7 +1871,7 @@ def main():
             if str(questionnaires_needed) == "Too young":
                 logger.error(f"Client {client['Client Name']} is too young")
                 utils.add_failure(format_failed_client(client, "Too young"))
-                break
+                continue
 
             if str(questionnaires_needed) == "Unknown":
                 logger.error(
@@ -1880,7 +1880,7 @@ def main():
                 utils.add_failure(
                     format_failed_client(client, "Unknown questionnaire needs")
                 )
-                break
+                continue
 
             if prev_clients != {}:
                 previous_questionnaires = check_client_previous(prev_clients, client)
@@ -1903,7 +1903,7 @@ def main():
                                 questionnaires_needed,
                             )
                         )
-                        break
+                        continue
 
             logger.info(
                 f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
@@ -1933,7 +1933,7 @@ def main():
                         )
                     )
                     send = False
-                    break
+                    continue
 
                 if link is None or link == "":
                     logger.error(f"Gap in elif statement for {questionnaire}")
@@ -1946,7 +1946,7 @@ def main():
                         )
                     )
                     send = False
-                    break
+                    continue
 
                 questionnaires.append(
                     {"done": False, "link": link, "type": questionnaire}
