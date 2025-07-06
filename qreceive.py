@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import requests
-from backoff import expo, on_exception, on_predicate
+from backoff import constant, expo, on_exception, on_predicate
 from loguru import logger
 from ratelimit import RateLimitException, limits
 
@@ -85,9 +85,10 @@ class OpenPhone:
         return response_data
 
     @on_predicate(
-        expo,
-        interval=2,
-        max_tries=3,
+        constant,
+        jitter=None,
+        interval=1,
+        max_tries=5,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
@@ -164,7 +165,6 @@ def build_message(
     client: utils.ClientWithQuestionnaires,
     most_recent_q: utils.Questionnaire,
     distance: int,
-    reminded_ever: bool,
 ) -> str | None:
     link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
     if distance == 0:
@@ -176,11 +176,36 @@ def build_message(
             f"on {most_recent_q['sent'].strftime('%m/%d')} ({abs(distance)} days ago)"
         )
 
-    if not reminded_ever:
-        message = f"Hello, this is {config.name} from Driftwood Evaluation Center. Please be on the lookout for an email from the patient portal Therapy Appointment as there {'is a questionnaire' if link_count == 1 else 'are questionnaires'} in your messages, sent {distance_phrase}. Please let me know if you have any questions. Thank you for your time."
-    else:
-        message = f"Hello, this is {config.name} with Driftwood Evaluation Center. It appears your questionnaire{'' if link_count == 1 else 's'} sent {distance_phrase} {'is' if link_count == 1 else 'are'} still incomplete. You can find {'it' if link_count == 1 else 'them'} in your messages in the patient portal at https://portal.therapyappointment.com. Please complete {'it' if link_count == 1 else 'them'} as soon as possible as we will be unable to effectively evaluate if {'it is' if link_count == 1 else 'they are'} incomplete."
+    message = None
+    if most_recent_q["reminded"] == 0:
+        message = f"Hello, this is {config.name} from Driftwood Evaluation Center. We are ready to schedule your appointment! In order for us to schedule your appointment, we need you to complete your {'questionnaire' if link_count == 1 else 'questionnaires'}. You can find {'it' if link_count == 1 else 'them'} in the messages tab in our patient portal: https://portal.therapyappointment.com Please reply to this text with any questions. Thank you for your help."
+    elif most_recent_q["reminded"] == 1:
+        message = f"Hello, this is {config.name} with Driftwood Evaluation Center. We are waiting for you to complete the questionnaire{'' if link_count == 1 else 's'} sent to you {distance_phrase}. We are unable to schedule your appointment until {'it is' if link_count == 1 else 'they are'} completed in {'its' if link_count == 1 else 'their'} entirety. You can find {'it' if link_count == 1 else 'them'} in the messages tab in our patient portal: https://portal.therapyappointment.com Please reply to this text with any questions. Thank you for your help."
+    elif most_recent_q["reminded"] == 2:
+        message = f"This is Driftwood Evaluation Center. We haven't heard from you. If your questionnaire{' is' if link_count == 1 else 's are'} not completed by {(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), we will close out your referral. Reply to this text with any concerns. You can find the questionnaire{'' if link_count == 1 else 's'} in the messages tab in our patient portal: https://portal.therapyappointment.com"
+
     return message
+
+
+def should_send_reminder(
+    most_recent_q: utils.Questionnaire, last_reminded_distance: int
+) -> bool:
+    reminded_count = most_recent_q["reminded"]
+
+    reminder_schedule = {
+        0: 0,  # Initial message (same day)
+        1: 7,  # First follow-up (1 week later)
+        2: 5,  # Second follow-up (5 days after first follow-up)
+    }
+
+    expected_day = reminder_schedule.get(reminded_count)
+    if expected_day is not None and last_reminded_distance >= expected_day:
+        logger.debug(
+            f"Reminder should be sent because client has been reminded {reminded_count} times, and it has been {last_reminded_distance} days since the last reminder"
+        )
+        return True
+    else:
+        return False
 
 
 def main():
@@ -193,7 +218,7 @@ def main():
         "call": [],
         "completed": [],
     }
-    clients = utils.get_previous_clients(config)
+    clients, _ = utils.get_previous_clients(config)
     if clients is None:
         logger.critical("Failed to get previous clients")
         return
@@ -203,7 +228,7 @@ def main():
         utils.check_questionnaires(driver, config, services, clients) or []
     )
 
-    clients = utils.get_previous_clients(config)
+    clients, _ = utils.get_previous_clients(config)
 
     utils.log_asana(services, projects_api)
 
@@ -227,6 +252,11 @@ def main():
                     )
                     continue
                 distance = utils.check_distance(most_recent_q["sent"])
+                last_reminded = most_recent_q.get("lastReminded")
+                if last_reminded is not None:
+                    last_reminded_distance = (date.today() - last_reminded).days
+                else:
+                    last_reminded_distance = 0
 
                 logger.info(
                     f"{client.fullName} had questionnaire sent on {most_recent_q['sent']} and isn't done"
@@ -250,37 +280,39 @@ def main():
                         f"Already messaged {client.fullName} at {client.phoneNumber} today"
                     )
 
-                if distance % 7 == 0 and most_recent_q["reminded"] >= 3:
+                if most_recent_q["reminded"] == 3 and last_reminded_distance >= 3:
                     email_info["call"].append(client)
                     for q in client.questionnaires:
                         if q["status"] == "PENDING":
                             q["reminded"] += 1
+                            q["lastReminded"] = date.today()
 
                 elif (
-                    distance % 7 == 0
+                    most_recent_q["reminded"] < 3
                     and not already_messaged_today
                     and client.phoneNumber
                 ):
-                    logger.info(f"Sending reminder TO {client.fullName}")
-                    reminded_ever = utils.get_reminded_ever(client)
-                    message = build_message(
-                        config, client, most_recent_q, distance, reminded_ever
-                    )
-                    if not message:
-                        logger.error(f"Failed to build message for {client.fullName}")
-                        continue
-                    message_sent = openphone.send_text_and_ensure(
-                        message, client.phoneNumber
-                    )
-                    if message_sent:
-                        numbers_sent.append(client.phoneNumber)
+                    if should_send_reminder(most_recent_q, last_reminded_distance):
+                        logger.info(f"Sending reminder TO {client.fullName}")
+                        message = build_message(config, client, most_recent_q, distance)
+                        if not message:
+                            logger.error(
+                                f"Failed to build message for {client.fullName}"
+                            )
+                            continue
+                        message_sent = openphone.send_text_and_ensure(
+                            message, client.phoneNumber
+                        )
+                        if message_sent:
+                            numbers_sent.append(client.phoneNumber)
 
-                        for q in client.questionnaires:
-                            if q["status"] == "PENDING":
-                                q["reminded"] += 1
-                    else:
-                        logger.error(f"Failed to send message to {client.fullName}")
-                        email_info["failed"].append(client)
+                            for q in client.questionnaires:
+                                if q["status"] == "PENDING":
+                                    q["reminded"] += 1
+                                    q["lastReminded"] = date.today()
+                        else:
+                            logger.error(f"Failed to send message to {client.fullName}")
+                            email_info["failed"].append(client)
 
             utils.update_questionnaires_in_db(config, [client])
 

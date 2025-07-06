@@ -101,6 +101,7 @@ class Questionnaire(TypedDict):
     sent: date
     status: Literal["COMPLETED", "PENDING", "RESCHEDULED"]
     reminded: int
+    lastReminded: Optional[date]
 
 
 class _ClientBase(BaseModel):
@@ -384,13 +385,14 @@ def update_questionnaires_in_db(
                 for questionnaire in client.questionnaires:
                     sql = """
                         UPDATE `emr_questionnaire`
-                        SET status=%s, reminded=%s
+                        SET status=%s, reminded=%s, lastReminded=%s
                         WHERE clientId=%s AND sent=%s AND questionnaireType=%s
                     """
 
                     values = (
                         questionnaire["status"],
                         questionnaire["reminded"],
+                        questionnaire["lastReminded"],
                         client.id,
                         questionnaire["sent"],
                         questionnaire["questionnaireType"],
@@ -932,7 +934,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             "Call:\n"
             + "\n".join(
                 [
-                    f"- {client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {most_recent_q['reminded'] if most_recent_q else 'unknown number of times'})"
+                    f"- {client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
                     for client in email_info["call"]
                     if (most_recent_q := get_most_recent_not_done(client))
                 ]
@@ -942,7 +944,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_html += (
             "<h2>Call</h2><ul><li>"
             + "</li><li>".join(
-                f"{client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {most_recent_q['reminded'] if most_recent_q else 'unknown number of times'})"
+                f"{client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
                 for client in email_info["call"]
                 if (most_recent_q := get_most_recent_not_done(client))
             )
