@@ -440,7 +440,7 @@ def init_asana(services: Services) -> asana.ProjectsApi:
 def fetch_project(
     projects_api: asana.ProjectsApi,
     project_gid: str,
-    opt_fields: str = "name,color,permalink_url,notes,created_at",
+    opt_fields: str = "name,color,permalink_url,notes,html_notes,created_at",
 ) -> dict | None:
     """Fetch the latest version of a single project by its GID"""
     logger.info(f"Fetching project {project_gid}")
@@ -459,10 +459,10 @@ def replace_notes(
 ) -> bool:
     """Update the notes field in a project."""
     logger.info(f"Updating project {project_gid} with note '{new_note}'")
-    body = {"data": {"notes": new_note}}
+    body = {"data": {"html_notes": new_note}}
     try:
         projects_api.update_project(
-            body, project_gid, opts={"opt_fields": "name, notes"}
+            body, project_gid, opts={"opt_fields": "name, html_notes"}
         )
         return True
     except ApiException as e:
@@ -486,7 +486,10 @@ def add_note(
 
     current_project: dict[str, str] | None = fetch_project(projects_api, project_gid)
     if current_project:
-        current_notes = current_project.get("notes", "")
+        current_notes = current_project.get("html_notes", "")
+        current_notes = re.sub(
+            r"^<body.*?>|</body>$", "", current_notes, flags=re.DOTALL
+        ).strip()
         notes_by_line = current_notes.split("\n")
         # Check if there is a blank line in the first 5 lines
         blank_line_index = next(
@@ -494,12 +497,13 @@ def add_note(
             None,
         )
         if blank_line_index is not None:
-            # If there is a blank line in the first 5 line, insert the new note after it
+            # If there is a blank line in the first 5 lines, insert the new note after it
             notes_by_line.insert(blank_line_index + 1, new_note)
         else:
-            # Otherwise, add the note to the top as normal
+            # Otherwise, add the note to the top
             notes_by_line.insert(0, new_note)
         new_notes = "\n".join(notes_by_line)
+        new_notes = "<body>" + new_notes + "</body>"
         replace_notes(projects_api, new_notes, project_gid)
 
 
@@ -510,7 +514,7 @@ def search_by_name(
     opts = {
         "limit": 100,
         "archived": False,
-        "opt_fields": "name,color,permalink_url,notes",
+        "opt_fields": "name",
     }
     try:
         logger.info(f"Searching projects for {name}...")
@@ -617,11 +621,12 @@ def search_and_add_questionnaires(
 
 
 def mark_link_done(
-    projects_api: asana.ProjectsApi, services, config, project_gid: str, link: str
+    projects_api: asana.ProjectsApi, project_gid: str, link: str
 ) -> None:
     project = fetch_project(projects_api, project_gid)
     if project:
-        notes = project["notes"]
+        notes = project["html_notes"]
+        notes = re.sub(r"^<body.*?>|</body>$", "", notes, flags=re.DOTALL).strip()
         link_start = notes.find(link)
         if link_start == -1:
             logger.error(f"Link {link} not found in project notes")
@@ -631,28 +636,25 @@ def mark_link_done(
         if link_end == -1:
             link_end = len(notes)
         link_done = notes[link_start:link_end].strip()
-        if " - Ready to Download" in link_done:
+        if "Ready to Download" in link_done:
             logger.debug(f"Link {link} is already marked as Ready to Download")
             return
         logger.debug(f"Marking link {link} as Ready to Download")
         link_done = f"{link_done} - Ready to Download"
         new_note = notes[:link_start] + link_done + notes[link_end:]
+        new_note = "<body>" + new_note + "</body>"
         replace_notes(projects_api, new_note, project_gid)
 
 
 def mark_links_in_asana(
     projects_api: asana.ProjectsApi,
     client: ClientWithQuestionnaires,
-    services: Services,
-    config: Config,
 ) -> None:
     if client.asanaId:
         for questionnaire in client.questionnaires:
             if questionnaire["status"] == "COMPLETED":
                 mark_link_done(
                     projects_api,
-                    services,
-                    config,
                     client.asanaId,
                     questionnaire["link"],
                 )

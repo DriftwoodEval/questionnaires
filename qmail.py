@@ -369,7 +369,7 @@ def main():
     if tomorrow_clients:
         for id in tomorrow_clients:
             client = tomorrow_clients[id]
-            utils.mark_links_in_asana(projects_api, client, services, config)
+            utils.mark_links_in_asana(projects_api, client)
 
     tomorrow_clients = get_tomorrow_clients()
     clients_by_evaluator = {}

@@ -236,7 +236,7 @@ def main():
         clients = utils.validate_questionnaires(clients)
         numbers_sent = []
         for _, client in clients.items():
-            utils.mark_links_in_asana(projects_api, client, services, config)
+            utils.mark_links_in_asana(projects_api, client)
 
             done = utils.all_questionnaires_done(client)
 
