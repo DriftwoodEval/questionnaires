@@ -37,6 +37,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from tqdm import tqdm
 
 
 ### TYPES ###
@@ -674,6 +675,63 @@ def sent_reminder_asana(
         )
     else:
         logger.error(f"Client {client.fullName} has no Asana link")
+
+
+def update_all_projects_permissions(
+    services: Services, projects_api: asana.ProjectsApi, members_list: list[str]
+) -> str:
+    """Add new members to all projects and update permissions."""
+
+    options = {
+        "limit": 100,
+        "archived": False,
+        "opt_fields": "name,color,permalink_url,notes",
+    }
+
+    try:
+        projects_response = list(
+            projects_api.get_projects_for_workspace(
+                services["asana"]["workspace"],
+                options,  # pyright: ignore (asana api is strange)
+            )
+        )
+    except ApiException as e:
+        logger.exception(
+            f"Exception when calling ProjectsApi->get_projects_for_workspace: {e}"
+        )
+        return "Failed to retrieve projects"
+
+    projects = projects_response or []
+
+    if not projects:
+        return "No projects found"
+
+    total = len(projects)
+    progress_bar = tqdm(total=total, desc="Updating projects")
+
+    for project in projects:
+        if project.get("default_access_level") != "admin":
+            update_body = {"data": {"default_access_level": "admin"}}
+            try:
+                projects_api.update_project(
+                    update_body, project["gid"], opts={"opt_fields": "name"}
+                )
+            except ApiException as e:
+                logger.error(f"Exception when updating project {project['name']}: {e}")
+
+        try:
+            members_body = {"data": {"members": ",".join(members_list)}}
+            projects_api.add_members_for_project(
+                members_body, project["gid"], opts={"opt_fields": "name"}
+            )
+        except ApiException as e:
+            logger.error(f"Error adding members to {project['name']}: {e}")
+
+        progress_bar.update(1)
+
+    progress_bar.close()
+
+    return f"Updated {total} projects"
 
 
 def log_asana(services: Services, projects_api: asana.ProjectsApi):

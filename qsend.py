@@ -485,14 +485,14 @@ def get_questionnaires(
             if age < 2:  # 1.5
                 return "Too young"
             elif age < 6:
-                qs = ["DP4", "BASC Preschool", "Conners EC"]
+                qs = ["Conners EC", "DP4", "BASC Preschool"]
                 if qglobal_exists:
                     qs.append("ASRS (2-5 Years)")
                 else:
                     qs.append("Vineland")
                 return qs
             elif age < 12:
-                qs = ["BASC Child", "Conners 4"]
+                qs = ["Conners 4, BASC Child"]
                 if qglobal_exists:
                     qs.append("ASRS (6-18 Years)")
                 else:
@@ -500,9 +500,9 @@ def get_questionnaires(
                 return qs
             elif age < 18:
                 qs = [
-                    "BASC Adolescent",
                     "Conners 4 Self",
                     "Conners 4",
+                    "BASC Adolescent",
                 ]
                 if qglobal_exists:
                     qs.append("ASRS (6-18 Years)")
@@ -555,28 +555,28 @@ def get_questionnaires(
             return "Too young"
         elif age < 6:
             return [
+                "Conners EC",
                 "ASRS (2-5 Years)",
                 "DP4",
                 "BASC Preschool",
                 "Vineland",
-                "Conners EC",
             ]
         elif age < 7:
-            return ["ASRS (6-18 Years)", "BASC Child", "Vineland", "Conners 4"]
+            return ["Conners 4", "ASRS (6-18 Years)", "BASC Child", "Vineland"]
         elif age < 12:
             return [
+                "Conners 4",
                 "ASRS (6-18 Years)",
                 "BASC Child",
                 "Vineland",
-                "Conners 4",
             ]
         elif age < 18:
             return [
+                "Conners 4 Self",
+                "Conners 4",
                 "ASRS (6-18 Years)",
                 "BASC Adolescent",
                 "Vineland",
-                "Conners 4 Self",
-                "Conners 4",
             ]
         elif age < 19:
             return [
