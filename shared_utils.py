@@ -325,17 +325,13 @@ def insert_basic_client(
     gender: str,
     phone_number,
 ):
-    if asd_adhd == "ADHD+LD":
-        asd_adhd = "ADHD"
-    if asd_adhd == "ASD+LD":
-        asd_adhd = "ASD"
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
             sql = """
                 INSERT INTO `emr_client` (id, hash, asanaId, dob, firstName, lastName, fullName, asdAdhd, gender, phoneNumber)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE id=id
+                ON DUPLICATE KEY UPDATE id=id, asdAdhd=VALUES(asdAdhd)
             """
 
             values = (
