@@ -480,7 +480,6 @@ def add_client_to_mhs(
 def get_questionnaires(
     age: int, check: str, daeval: str, qglobal_exists: bool
 ) -> list[str] | str:
-    print(check)
     if check == "ADHD+LD":
         check = "ADHD"
     if check == "ASD+LD":
