@@ -481,9 +481,9 @@ def get_questionnaires(
     age: int, check: str, daeval: str, qglobal_exists: bool
 ) -> list[str] | str:
     print(check)
-    if check == "ADHD + LD":
+    if check == "ADHD+LD":
         check = "ADHD"
-    if check == "ASD + LD":
+    if check == "ASD+LD":
         check = "ASD"
     if daeval == "EVAL":
         if check == "ASD":
