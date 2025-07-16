@@ -492,7 +492,7 @@ def get_questionnaires(
                     qs.append("Vineland")
                 return qs
             elif age < 12:
-                qs = ["Conners 4, BASC Child"]
+                qs = ["Conners 4", "BASC Child"]
                 if qglobal_exists:
                     qs.append("ASRS (6-18 Years)")
                 else:
