@@ -325,6 +325,10 @@ def insert_basic_client(
     gender: str,
     phone_number,
 ):
+    if asd_adhd == "ADHD+LD":
+        asd_adhd = "ADHD"
+    if asd_adhd == "ASD+LD":
+        asd_adhd = "ASD"
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
