@@ -1753,6 +1753,14 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
         daeval = client_info["daeval"]
 
         if previously_failed:
+            error = prev_failed_clients.get(client_id_to_use, {}).get("error", None)
+            error = str(error).lower()
+            if (
+                error == "too young"
+                or error == "portal not opened"
+                or error == "docs not signed"
+            ):
+                return False
             if daeval == "DA":
                 return True
             elif daeval == "EVAL" and prev_daeval == "DA":
