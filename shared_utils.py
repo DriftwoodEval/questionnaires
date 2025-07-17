@@ -597,7 +597,8 @@ def search_and_add_questionnaires(
     questionnaires: list[dict],
 ) -> pd.Series:
     questionnaire_links_format = [
-        f"{item['link']} - {item['type']}" for item in questionnaires
+        f"<a href='{item['link']}'>{item['link']}</a> - {item['type']}"
+        for item in questionnaires
     ]
     questionnaire_links_str = "\n".join(questionnaire_links_format)
     questionnaire_links_str = (
