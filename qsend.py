@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from time import sleep, strftime, strptime
+from typing import TypedDict
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -1680,10 +1681,10 @@ def format_failed_client(
     client: pd.Series,
     error: str,
     questionnaires_needed: list[str] | str = "",
-    questionnaire_links_generated: list[str] = [],
-) -> dict:
+    questionnaire_links_generated: list[dict[str, bool | str]] = [],
+) -> dict[str, utils.FailedClient]:
     key = client["Client ID"] if client["Client ID"] else client["Client Name"]
-    client_info = {
+    failed_client: utils.FailedClient = {
         "firstName": client["TA First Name"]
         if "TA First Name" in client
         else client["Client Name"].split(" ")[0],
@@ -1695,12 +1696,14 @@ def format_failed_client(
         "daEval": client.daeval,
         "failedDate": datetime.today().strftime("%Y/%m/%d"),
         "error": error,
+        "questionnaires_needed": None,
+        "questionnaire_links_generated": None,
     }
     if questionnaires_needed != "":
-        client_info["questionnaires_needed"] = questionnaires_needed
+        failed_client["questionnaires_needed"] = questionnaires_needed
     if questionnaire_links_generated != []:
-        client_info["questionnaire_links_generated"] = questionnaire_links_generated
-    return {key: client_info}
+        failed_client["questionnaire_links_generated"] = questionnaire_links_generated
+    return {key: failed_client}
 
 
 def write_file(filepath: str, data: str) -> None:
@@ -1822,7 +1825,7 @@ def main():
 
         if pd.isna(client["Client ID"]) or not client["Client ID"]:
             logger.error(f"Client {client['Client Name']} is missing Client ID")
-            utils.add_failure(format_failed_client(client, "Missing Client ID"))
+            utils.add_failure(config, format_failed_client(client, "Missing Client ID"))
             continue
 
         if prev_failed_clients != {}:
@@ -1837,13 +1840,19 @@ def main():
 
             if not client_url:
                 logger.error("Client URL not found")
-                utils.add_failure(format_failed_client(client, "Unable to find client"))
+                utils.add_failure(
+                    config, format_failed_client(client, "Unable to find client")
+                )
                 continue
             if not check_if_opened_portal(driver):
-                utils.add_failure(format_failed_client(client, "Portal not opened"))
+                utils.add_failure(
+                    config, format_failed_client(client, "Portal not opened")
+                )
                 continue
             if not check_if_docs_signed(driver):
-                utils.add_failure(format_failed_client(client, "Docs not signed"))
+                utils.add_failure(
+                    config, format_failed_client(client, "Docs not signed")
+                )
                 continue
 
             client_info = extract_client_data(driver)
@@ -1856,7 +1865,9 @@ def main():
 
         except NoSuchElementException as e:
             logger.exception(f"Element not found: {e}")
-            utils.add_failure(format_failed_client(client, "Unable to find client"))
+            utils.add_failure(
+                config, format_failed_client(client, "Unable to find client")
+            )
             continue
 
         write_file(
@@ -1882,7 +1893,7 @@ def main():
 
             if str(questionnaires_needed) == "Too young":
                 logger.error(f"Client {client['Client Name']} is too young")
-                utils.add_failure(format_failed_client(client, "Too young"))
+                utils.add_failure(config, format_failed_client(client, "Too young"))
                 continue
 
             if str(questionnaires_needed) == "Unknown":
@@ -1890,7 +1901,7 @@ def main():
                     f"Client {client['Client Name']} has unknown questionnaire needs"
                 )
                 utils.add_failure(
-                    format_failed_client(client, "Unknown questionnaire needs")
+                    config, format_failed_client(client, "Unknown questionnaire needs")
                 )
                 continue
 
@@ -1909,11 +1920,12 @@ def main():
                             f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
                         )
                         utils.add_failure(
+                            config,
                             format_failed_client(
                                 client,
                                 f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
                                 questionnaires_needed,
-                            )
+                            ),
                         )
                         continue
 
@@ -1937,12 +1949,13 @@ def main():
                     logger.exception(f"Error assigning {questionnaire}: {e}")
 
                     utils.add_failure(
+                        config,
                         format_failed_client(
                             client,
                             "Error assigning questionnaires",
                             questionnaires_needed,
                             questionnaire_links_generated=questionnaires,
-                        )
+                        ),
                     )
                     send = False
                     continue
@@ -1950,12 +1963,13 @@ def main():
                 if link is None or link == "":
                     logger.error(f"Gap in elif statement for {questionnaire}")
                     utils.add_failure(
+                        config,
                         format_failed_client(
                             client,
                             "Gap in elif statement",
                             questionnaires_needed,
                             questionnaire_links_generated=questionnaires,
-                        )
+                        ),
                     )
                     send = False
                     continue
@@ -1996,7 +2010,7 @@ def main():
                 send_message_ta(driver, client_url, message)
         except NoSuchElementException as e:
             logger.exception(f"Element not found: {e}")
-            utils.add_failure(format_failed_client(client, "Unknown error"))
+            utils.add_failure(config, format_failed_client(client, "Unknown error"))
 
 
 if __name__ == "__main__":

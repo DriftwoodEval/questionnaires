@@ -92,6 +92,7 @@ class Config(BaseModel):
         str,
         StringConstraints(pattern=r"^.+![A-z]+\d*(:[A-z]+\d*)?$"),
     ]
+    failed_sheet_id: str
     database_url: str
     excluded_ta: list[str]
 
@@ -103,6 +104,18 @@ class Questionnaire(TypedDict):
     status: Literal["COMPLETED", "PENDING", "RESCHEDULED"]
     reminded: int
     lastReminded: Optional[date]
+
+
+class FailedClient(TypedDict):
+    firstName: str
+    lastName: str
+    fullName: str
+    asdAdhd: str
+    daEval: str
+    failedDate: str
+    error: str
+    questionnaires_needed: Optional[list[str] | str]
+    questionnaire_links_generated: Optional[list[dict[str, bool | str]]]
 
 
 class _ClientBase(BaseModel):
@@ -422,11 +435,14 @@ def update_yaml(clients: dict, filepath: str) -> None:
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
-def add_failure(client: dict) -> None:
+def add_failure(config: Config, client: dict[str, FailedClient]) -> None:
     qfailure_filepath = "./put/qfailure.yml"
     qfailsend_filepath = "./put/qfailsend.yml"
+
     update_yaml(client, qfailure_filepath)
     update_yaml(client, qfailsend_filepath)
+
+    add_to_failure_sheet(config, client)
 
 
 ### ASANA ###
@@ -1123,3 +1139,42 @@ def update_punch_by_daeval(config: Config, client_name: str, daeval: str):
     elif daeval == "DAEVAL":
         update_punch_list(config, client_name, "DA Qs Sent", "TRUE")
         update_punch_list(config, client_name, "EVAL Qs Sent", "TRUE")
+
+
+def add_to_failure_sheet(config: Config, failed_client_dict: dict[str, FailedClient]):
+    creds = google_authenticate()
+
+    try:
+        service = build("sheets", "v4", credentials=creds)
+        sheet = service.spreadsheets()
+        client_id, failed_client = next(iter(failed_client_dict.items()))
+        body = {
+            "values": [
+                [
+                    client_id,
+                    failed_client["asdAdhd"],
+                    failed_client["daEval"],
+                    failed_client["error"],
+                    failed_client["failedDate"],
+                    failed_client["fullName"],
+                    ", ".join(failed_client.get("questionnaires_needed", []) or []),
+                ]
+            ]
+        }
+
+        questionnaire_links_generated = failed_client.get(
+            "questionnaire_links_generated"
+        )
+        if questionnaire_links_generated:
+            for link in questionnaire_links_generated:
+                body["values"][0].extend([str(link.get("type")), str(link.get("link"))])
+
+        sheet.values().append(
+            spreadsheetId=config.failed_sheet_id,
+            range="A:Z",
+            body=body,
+            valueInputOption="USER_ENTERED",
+        ).execute()
+
+    except Exception as e:
+        logger.exception(e)
