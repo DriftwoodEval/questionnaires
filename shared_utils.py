@@ -1172,7 +1172,7 @@ def add_to_failure_sheet(config: Config, failed_client_dict: dict[str, FailedCli
 
         sheet.values().append(
             spreadsheetId=config.failed_sheet_id,
-            range="A:Z",
+            range="clients!A1:Z",
             body=body,
             valueInputOption="USER_ENTERED",
         ).execute()
