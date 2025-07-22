@@ -313,6 +313,12 @@ def main():
                         else:
                             logger.error(f"Failed to send message to {client.fullName}")
                             email_info["failed"].append(client)
+            else:
+                if len(client.questionnaires) > 2:
+                    utils.update_punch_by_column(config, str(client.id), "DA", "done")
+                    utils.update_punch_by_column(config, str(client.id), "EVAL", "done")
+                else:
+                    utils.update_punch_by_column(config, str(client.id), "DA", "done")
 
             utils.update_questionnaires_in_db(config, [client])
 

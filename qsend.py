@@ -1993,8 +1993,8 @@ def main():
                     client["Gender"],
                     client["Phone Number"],
                 )
-                utils.update_punch_by_daeval(
-                    config, client["Client Name"], client["daeval"]
+                utils.update_punch_by_column(
+                    config, client["Client ID"], client["daeval"], "sent"
                 )
                 for questionnaire in questionnaires:
                     utils.put_questionnaire_in_db(

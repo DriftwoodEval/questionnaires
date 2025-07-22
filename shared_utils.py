@@ -1080,7 +1080,7 @@ def get_punch_list(config: Config):
 
 
 def update_punch_list(
-    config: Config, name_for_search: str, update_header: str, new_value: str
+    config: Config, id_for_search: str, update_header: str, new_value: str
 ):
     creds = google_authenticate()
 
@@ -1099,7 +1099,7 @@ def update_punch_list(
 
         row_number = None
         for i, row in enumerate(values):
-            if row and row[0] == name_for_search:
+            if row and row[1] == id_for_search:
                 row_number = i + 1  # Spreadsheets are 1-indexed
                 break
 
@@ -1123,23 +1123,38 @@ def update_punch_list(
                 )
                 .execute()
             )
-            logger.success(
-                f"Updated {update_column} for {name_for_search} in Punch List"
-            )
+            logger.success(f"Updated {update_column} for {id_for_search} in Punch List")
         else:
-            logger.error(f"Client {name_for_search} not found in Punch List")
+            logger.error(f"Client {id_for_search} not found in Punch List")
     except Exception as e:
         logger.exception(e)
 
 
-def update_punch_by_daeval(config: Config, client_name: str, daeval: str):
+def update_punch_by_column(
+    config: Config,
+    client_id: str,
+    daeval: Literal["DA", "EVAL", "DAEVAL"],
+    sent_done: Literal["sent", "done"],
+):
+    logger.info(f"Updating punch list for {client_id}: {daeval} {sent_done}")
+    client_id = str(client_id)
     if daeval == "DA":
-        update_punch_list(config, client_name, "DA Qs Sent", "TRUE")
+        if sent_done == "sent":
+            update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+        if sent_done == "done":
+            update_punch_list(config, client_id, "DA Qs Done", "TRUE")
     elif daeval == "EVAL":
-        update_punch_list(config, client_name, "EVAL Qs Sent", "TRUE")
-    elif daeval == "DAEVAL":
-        update_punch_list(config, client_name, "DA Qs Sent", "TRUE")
-        update_punch_list(config, client_name, "EVAL Qs Sent", "TRUE")
+        if sent_done == "sent":
+            update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+        if sent_done == "done":
+            update_punch_list(config, client_id, "EVAL Qs Done", "TRUE")
+    elif daeval == "DAEVAL" and sent_done == "sent":
+        if sent_done == "sent":
+            update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+            update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+        if sent_done == "done":
+            update_punch_list(config, client_id, "DA Qs Done", "TRUE")
+            update_punch_list(config, client_id, "EVAL Qs Done", "TRUE")
 
 
 def add_to_failure_sheet(config: Config, failed_client_dict: dict[str, FailedClient]):
