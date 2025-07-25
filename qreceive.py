@@ -63,7 +63,9 @@ class OpenPhone:
     @on_exception(
         expo,
         (ConnectionError, requests.HTTPError),
-        max_tries=8,
+        factor=2,
+        base=2,
+        max_tries=10,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
@@ -85,10 +87,11 @@ class OpenPhone:
         return response_data
 
     @on_predicate(
-        constant,
-        jitter=None,
+        expo,
+        factor=2,
+        base=2,
         interval=1,
-        max_tries=5,
+        max_tries=10,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
