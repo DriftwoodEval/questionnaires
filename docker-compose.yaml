@@ -1,0 +1,14 @@
+services:
+  qreceive:
+    image: ghcr.io/driftwoodeval/questionnaires-qreceive:latest
+    network_mode: host
+    environment:
+      - HEADLESS=true
+    volumes:
+      - ./config:/app/config
+      - ./put:/app/put
+      - ./logs:/app/logs
+    logging:
+      driver: "syslog"
+      options:
+        tag: "qreceive"
