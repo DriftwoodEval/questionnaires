@@ -1176,6 +1176,31 @@ def gen_asrs_6_18(
     return link, accounts_created
 
 
+def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
+    logger.debug("Clicking continue to email")
+    utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
+
+    sleep(3)
+
+    logger.debug("Clicking create e-mail")
+    utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
+
+    sleep(2)
+
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+    sleep(2)
+
+    utils.click_element(driver, By.XPATH, "//button[contains(.,'Preview')]")
+
+    sleep(2)
+
+    link_element = utils.find_element(driver, By.CSS_SELECTOR, "div.email-message a")
+    link = link_element.get_attribute("href")
+
+    return link
+
+
 def gen_basc_preschool(
     driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
@@ -1212,19 +1237,7 @@ def gen_basc_preschool(
         config.initials[-1]
     )
 
-    logger.debug("Clicking continue to email")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
-
-    sleep(5)
-
-    logger.debug("Clicking create e-mail")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
-    driver.switch_to.frame(
-        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
-    )
-    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
-
-    driver.switch_to.default_content()
+    link = get_qglobal_link(driver, actions)
 
     if link is None:
         raise ValueError("Link is None")
@@ -1269,19 +1282,7 @@ def gen_basc_child(
         config.initials[-1]
     )
 
-    logger.debug("Clicking continue to email")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
-
-    sleep(5)
-
-    logger.debug("Clicking create e-mail")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
-    driver.switch_to.frame(
-        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
-    )
-    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
-
-    driver.switch_to.default_content()
+    link = get_qglobal_link(driver, actions)
 
     if link is None:
         raise ValueError("Link is None")
@@ -1326,19 +1327,7 @@ def gen_basc_adolescent(
         config.initials[-1]
     )
 
-    logger.debug("Clicking continue to email")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
-
-    sleep(5)
-
-    logger.debug("Clicking create e-mail")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
-    driver.switch_to.frame(
-        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
-    )
-    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
-
-    driver.switch_to.default_content()
+    link = get_qglobal_link(driver, actions)
 
     if link is None:
         raise ValueError("Link is None")
@@ -1394,19 +1383,7 @@ def gen_vineland(
         "//div[2]/qg2-multi-column-layout/div/section[2]/div/qg2-form-radio-button/div/div/section[2]/div/div[2]/label",
     )
 
-    logger.debug("Clicking continue to email")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
-
-    sleep(5)
-
-    logger.debug("Clicking create e-mail")
-    utils.click_element(driver, By.XPATH, "//button[contains(.,'Create e-mail')]")
-    driver.switch_to.frame(
-        utils.find_element(driver, By.XPATH, "//iframe[@title='Editor, editor1']")
-    )
-    link = utils.find_element(driver, By.CSS_SELECTOR, "a").get_attribute("href")
-
-    driver.switch_to.default_content()
+    link = get_qglobal_link(driver, actions)
 
     if link is None:
         raise ValueError("Link is None")
