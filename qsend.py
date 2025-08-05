@@ -1889,9 +1889,11 @@ def main():
                     previous_questionnaire_types = [
                         q["questionnaireType"] for q in previous_questionnaires
                     ]
-                    overlapping_questionnaires = list(
-                        set(previous_questionnaire_types) & set(questionnaires_needed)
-                    )
+                    overlapping_questionnaires = [
+                        q
+                        for q in questionnaires_needed
+                        if q in previous_questionnaire_types
+                    ]
                     if overlapping_questionnaires:
                         logger.error(
                             f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
