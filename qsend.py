@@ -172,7 +172,7 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
     _search_helper(driver, client["Human Friendly ID"])
 
     logger.debug("Waiting for page to load")
-    sleep(1)
+    sleep(15)
 
     logger.debug("Submitting search form")
     actions.send_keys(Keys.ENTER)
