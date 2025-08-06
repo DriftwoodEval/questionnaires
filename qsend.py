@@ -567,7 +567,7 @@ def get_questionnaires(
                 "Vineland",
             ]
         elif age < 7:
-            return ["Conners 4", "ASRS (6-18 Years)", "BASC Child", "Vineland"]
+            return ["Conners 4", "ASRS (6-18 Years)", "DP4", "BASC Child", "Vineland"]
         elif age < 12:
             return [
                 "Conners 4",
