@@ -42,32 +42,44 @@ from tqdm import tqdm
 
 ### TYPES ###
 class Service(TypedDict):
+    """A TypedDict containing service credentials."""
+
     username: str
     password: str
 
 
 class ServiceWithAdmin(Service):
+    """A TypedDict containing service credentials and an admin user."""
+
     admin_username: str
     admin_password: str
 
 
 class OpenPhoneUser(TypedDict):
+    """A TypedDict containing OpenPhone user information."""
+
     id: str
     phone: str
 
 
 class OpenPhoneService(TypedDict):
+    """A TypedDict containing OpenPhone API credentials and settings."""
+
     key: str
     main_number: str
     users: dict[str, OpenPhoneUser]
 
 
 class AsanaService(TypedDict):
+    """A TypedDict containing Asana API credentials."""
+
     token: str
     workspace: str
 
 
 class Services(TypedDict):
+    """A TypedDict containing all the service configurations and credentials."""
+
     asana: AsanaService
     mhs: Service
     openphone: OpenPhoneService
@@ -77,6 +89,8 @@ class Services(TypedDict):
 
 
 class Config(BaseModel):
+    """A Pydantic model representing the configuration of the application."""
+
     initials: Annotated[
         str,
         StringConstraints(strip_whitespace=True, to_upper=True, max_length=4),
@@ -98,6 +112,8 @@ class Config(BaseModel):
 
 
 class Questionnaire(TypedDict):
+    """A TypedDict containing information about a questionnaire."""
+
     questionnaireType: str
     link: str
     sent: date
@@ -107,6 +123,8 @@ class Questionnaire(TypedDict):
 
 
 class FailedClient(TypedDict):
+    """A TypedDict containing information about a failed client."""
+
     firstName: str
     lastName: str
     fullName: str
@@ -132,20 +150,27 @@ class _ClientBase(BaseModel):
 
 
 class ClientFromDB(_ClientBase):
+    """A Pydantic model representing a client from the database."""
+
     questionnaires: Optional[list[Questionnaire]]
 
 
 class ClientWithQuestionnaires(_ClientBase):
+    """A Pydantic model representing a client with questionnaires."""
+
     questionnaires: list[Questionnaire]
 
     @field_validator("questionnaires")
     def validate_questionnaires(cls, v: list[Questionnaire]) -> list[Questionnaire]:
+        """Validate that the client has questionnaires."""
         if not v:
             raise ValueError("Client has no questionnaires")
         return v
 
 
 class AdminEmailInfo(TypedDict):
+    """A TypedDict containing lists of clients grouped by status, for emailing."""
+
     reschedule: list[ClientWithQuestionnaires]
     failed: list[ClientWithQuestionnaires]
     call: list[ClientWithQuestionnaires]
@@ -153,11 +178,18 @@ class AdminEmailInfo(TypedDict):
 
 
 def load_config() -> tuple[Services, Config]:
+    """Load and parse the configuration from the 'info.yml' file.
+
+    Returns:
+        tuple[Services, Config]: A tuple containing the initialized `Services`
+        and `Config` instances.
+    """
     with open("./config/info.yml", "r") as file:
         logger.debug("Loading config info file")
         info = yaml.safe_load(file)
         services = info["services"]
         config = info["config"]
+        # Validate as Services and Config types
         try:
             services = Services(**services)
             config = Config(**config)
@@ -169,11 +201,22 @@ def load_config() -> tuple[Services, Config]:
 
 ### SELENIUM ###
 def initialize_selenium(save_profile: bool = False) -> tuple[WebDriver, ActionChains]:
+    """Initialize a Selenium WebDriver with the given options.
+
+    Args:
+        save_profile (bool, optional): If true, save the browser profile to the
+            `./config/chrome_profile` directory. Defaults to False.
+
+    Returns:
+        tuple[WebDriver, ActionChains]: A tuple containing the initialized WebDriver
+        and ActionChains instances.
+    """
     logger.info("Initializing Selenium")
     chrome_options: Options = Options()
     chrome_options.add_argument("--no-sandbox")
     if os.getenv("HEADLESS") == "true":
         chrome_options.add_argument("--headless")
+    # /dev/shm partition can be too small in VMs, causing Chrome to crash, make a temp dir instead
     chrome_options.add_argument("--disable-dev-shm-usage")
     if save_profile:
         chrome_options.add_argument("--user-data-dir=./config/chrome_profile")
@@ -201,13 +244,19 @@ def click_element(
     delay: int = 1,
     refresh: bool = False,
 ) -> None:
+    """Click on a web element located by the specified method within the given attempts.
+
+    Raises:
+        NoSuchElementException: If the element is not found after the specified
+            number of attempts.
+    """
     for attempt in range(max_attempts):
         try:
             element = driver.find_element(by, locator)
             element.click()
             return
         except (StaleElementReferenceException, NoSuchElementException) as e:
-            logger.warning(f"Attempt {attempt + 1} failed: {type(e).__name__}.")
+            f"Attempt {attempt + 1}/{max_attempts} failed: {type(e).__name__}. Retrying in {delay} seconds..."
             sleep(delay)
             if refresh:
                 logger.info("Refreshing page")
@@ -222,37 +271,42 @@ def find_element(
     locator: str,
     max_attempts: int = 3,
     delay: int = 1,
-) -> WebElement:
+    return_boolean: bool = False,
+) -> WebElement | bool:
+    """Find a web element with reties and optionally return a boolean.
+
+    Returns:
+        The found WebElement if return_boolean is False.
+        A boolean if return_boolean is True.
+
+    Raises:
+        NoSuchElementException: If the element is not found and return_boolean is False.
+    """
     for attempt in range(max_attempts):
         try:
             element = driver.find_element(by, locator)
+            if return_boolean:
+                return True
             return element
         except (StaleElementReferenceException, NoSuchElementException) as e:
             logger.warning(
-                f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
+                f"Attempt {attempt + 1}/{max_attempts} failed: {type(e).__name__}. Retrying in {delay} seconds..."
             )
             sleep(delay)
+
+    if return_boolean:
+        logger.warning(f"Element not found after {max_attempts} attempts")
+        return False
     raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
-
-
-def check_if_element_exists(
-    driver: WebDriver, by: str, locator: str, max_attempts: int = 3, delay: int = 1
-) -> bool:
-    for attempt in range(max_attempts):
-        try:
-            driver.find_element(by, locator)
-            return True
-        except (StaleElementReferenceException, NoSuchElementException) as e:
-            logger.warning(
-                f"Attempt {attempt + 1} failed: {type(e).__name__}. Retrying..."
-            )
-            sleep(delay)
-    logger.error(f"Failed to find element after {max_attempts} attempts")
-    return False
 
 
 ### DATABASE ###
 def get_db(config: Config):
+    """Connect to the database and return a connection object.
+
+    Returns:
+        A pymysql connection object.
+    """
     # TODO: Send email if unable to connect
     db_url = urlparse(config.database_url)
     connection = pymysql.connect(
@@ -269,19 +323,31 @@ def get_db(config: Config):
 def get_previous_clients(
     config: Config, failed: bool = False
 ) -> tuple[dict[int | str, ClientFromDB], dict[int | str, ClientFromDB]]:
-    logger.info("Loading previous clients")
+    """Load previous clients from the database and a YAML file.
+
+    Args:
+        config (Config): The configuration object.
+        failed (bool, optional): Whether to load failed clients from the YAML file. Defaults to False.
+
+    Returns:
+        tuple[dict[int | str, ClientFromDB], dict[int | str, ClientFromDB]]: A tuple containing two dictionaries.
+            The first dictionary contains clients loaded from the database.
+            The second dictionary contains failed clients loaded from the YAML file.
+    """
+    logger.info(
+        f"Loading previous clients from DB{' and failed clients' if failed else ''}"
+    )
     qfailure_filepath = "./put/qfailure.yml"
-
-    prev_clients = {}
     failed_prev_clients = {}
-
     if failed:
+        # Load failed clients from the YAML file
         try:
             with open(qfailure_filepath, "r") as file:
                 failed_prev_clients = yaml.safe_load(file) or {}
         except FileNotFoundError:
             logger.info(f"{qfailure_filepath} does not exist.")
 
+    # Load clients from the database
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -293,12 +359,15 @@ def get_previous_clients(
             cursor.execute(sql)
             questionnaires = cursor.fetchall()
             for client in clients:
+                # Add the questionnaires to each client
                 client["questionnaires"] = [
                     questionnaire
                     for questionnaire in questionnaires
                     if questionnaire["clientId"] == client["id"]
                 ]
 
+    # Create a dictionary of clients with their IDs as keys
+    prev_clients = {}
     if clients:
         for client in clients:
             prev_clients[client["id"]] = {key: value for key, value in client.items()}
@@ -309,6 +378,12 @@ def get_previous_clients(
 def validate_questionnaires(
     clients: dict[int | str, ClientFromDB],
 ) -> dict[int | str, ClientWithQuestionnaires]:
+    """Validate clients from the database and convert them to ClientWithQuestionnaires.
+
+    Returns:
+        A dictionary of validated clients, where the keys are the client IDs and the values
+        are ClientWithQuestionnaires objects.
+    """
     validated = {}
     for client_id, client in clients.items():
         try:
@@ -319,6 +394,15 @@ def validate_questionnaires(
 
 
 def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
+    """Get the NPI of an evaluator from the database.
+
+    Args:
+        config: The configuration.
+        evaluator_email: The email address of the evaluator.
+
+    Returns:
+        The NPI of the evaluator, or None if not found.
+    """
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -339,6 +423,22 @@ def insert_basic_client(
     gender: str,
     phone_number,
 ):
+    """Insert a client into the database, using only the data from sending a questionnaire.
+
+    Args:
+        config (Config): The configuration object.
+        client_id (str): The client ID.
+        asana_id (str): The Asana ID of the client.
+        dob: The date of birth of the client.
+        first_name (str): The first name of the client.
+        last_name (str): The last name of the client.
+        asd_adhd (str): The type of condition the client has (ASD, ADHD, or ASD+ADHD).
+        gender (str): The gender of the client.
+        phone_number: The phone number of the client.
+
+    Returns:
+        None
+    """
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -374,6 +474,19 @@ def put_questionnaire_in_db(
     sent_date,
     status: Literal["COMPLETED", "PENDING", "RESCHEDULED"],
 ):
+    """Insert a questionnaire into the database.
+
+    Args:
+        config (Config): The configuration object.
+        client_id (str): The client ID.
+        link (str): The link of the questionnaire.
+        type (str): The type of the questionnaire.
+        sent_date: The date the questionnaire was sent.
+        status (Literal["COMPLETED", "PENDING", "RESCHEDULED"]): The status of the questionnaire.
+
+    Returns:
+        None
+    """
     db_connection = get_db(config)
 
     with db_connection:
@@ -393,6 +506,12 @@ def put_questionnaire_in_db(
 def update_questionnaires_in_db(
     config: Config, clients: list[ClientWithQuestionnaires]
 ):
+    """Update questionnaires in the database, setting status, reminded count, and last reminded date.
+
+    Args:
+        config (Config): The configuration object.
+        clients (list[ClientWithQuestionnaires]): A list of ClientWithQuestionnaires objects.
+    """
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -418,6 +537,18 @@ def update_questionnaires_in_db(
 
 
 def update_yaml(clients: dict, filepath: str) -> None:
+    """Update a YAML file with a given dictionary.
+
+    If the file does not exist, it will be created. If it does exist, the dictionary
+    will be merged into the existing YAML.
+
+    Args:
+        clients (dict): The dictionary to update the YAML with.
+        filepath (str): The path to the YAML file.
+
+    Returns:
+        None
+    """
     try:
         with open(filepath, "r") as file:
             current_yaml = yaml.safe_load(file)
@@ -437,6 +568,15 @@ def update_yaml(clients: dict, filepath: str) -> None:
 
 
 def add_failure(config: Config, client: dict[str, FailedClient]) -> None:
+    """Add a client to the failure YAML files and the failure sheet.
+
+    Args:
+        config (Config): The configuration object.
+        client (dict[str, FailedClient]): The client to add to the failure files and sheet.
+
+    Returns:
+        None
+    """
     qfailure_filepath = "./put/qfailure.yml"
     qfailsend_filepath = "./put/qfailsend.yml"
 
@@ -448,6 +588,14 @@ def add_failure(config: Config, client: dict[str, FailedClient]) -> None:
 
 ### ASANA ###
 def init_asana(services: Services) -> asana.ProjectsApi:
+    """Initialize and return an Asana ProjectsApi instance.
+
+    Args:
+        services (Services): The services configuration containing the Asana token.
+
+    Returns:
+        asana.ProjectsApi: An instance of the Asana ProjectsApi for interacting with Asana projects.
+    """
     logger.info("Initializing Asana")
     configuration = asana.Configuration()
     configuration.access_token = services["asana"]["token"]
@@ -460,7 +608,11 @@ def fetch_project(
     project_gid: str,
     opt_fields: str = "name,color,permalink_url,notes,html_notes,created_at",
 ) -> dict | None:
-    """Fetch the latest version of a single project by its GID"""
+    """Fetch an Asana project with the given GID.
+
+    Returns:
+        dict | None: The fetched project, or None if an exception occurred.
+    """
     logger.info(f"Fetching project {project_gid}")
     try:
         return projects_api.get_project(
@@ -475,7 +627,11 @@ def fetch_project(
 def replace_notes(
     projects_api: asana.ProjectsApi, new_note: str, project_gid: str
 ) -> bool:
-    """Update the notes field in a project."""
+    """Replace the notes of an Asana project with a new note.
+
+    Returns:
+        bool: True if the update was successful, False otherwise.
+    """
     logger.info(f"Updating project {project_gid} with note '{new_note}'")
     body = {"data": {"html_notes": new_note}}
     try:
@@ -495,6 +651,20 @@ def add_note(
     new_note: str,
     raw_note: bool = False,
 ):
+    """Add a note to an Asana project's notes.
+
+    Args:
+        config (Config): The configuration object containing user initials.
+        projects_api (asana.ProjectsApi): The Asana ProjectsApi instance.
+        project_gid (str): The global ID of the Asana project.
+        new_note (str): The note content to be added.
+        raw_note (bool, optional): If True, add the note as-is without a date or initials. Defaults to False.
+
+    This function fetches the current notes of the specified Asana project and adds the new note
+    according to the specified logic. If `raw_note` is False, it prefixes the note with the current
+    date and appends the user's initials if available. It inserts the new note after a blank line
+    within the first 5 lines of the existing notes, if present, or at the top otherwise.
+    """
     today_str = datetime.now().strftime("%m/%d")
     if not raw_note:
         new_note = today_str + " " + new_note
@@ -504,10 +674,12 @@ def add_note(
 
     current_project: dict[str, str] | None = fetch_project(projects_api, project_gid)
     if current_project:
+        # Extract and clean up current notes
         current_notes = current_project.get("html_notes", "")
         current_notes = re.sub(
             r"^<body.*?>|</body>$", "", current_notes, flags=re.DOTALL
         ).strip()
+        # Split note into lines
         notes_by_line = current_notes.split("\n")
         # Check if there is a blank line in the first 5 lines
         blank_line_index = next(
@@ -520,6 +692,7 @@ def add_note(
         else:
             # Otherwise, add the note to the top
             notes_by_line.insert(0, new_note)
+        # Join the notes back into a single string, and wrap it in <body> tags
         new_notes = "\n".join(notes_by_line)
         new_notes = "<body>" + new_notes + "</body>"
         replace_notes(projects_api, new_notes, project_gid)
@@ -528,6 +701,11 @@ def add_note(
 def search_by_name(
     projects_api: asana.ProjectsApi, services: dict, name: str
 ) -> dict | None:
+    """Search for an Asana project by name.
+
+    Returns:
+        dict | None: The first project matching the name if found only one project; otherwise, None.
+    """
     name = str(name)
     opts = {
         "limit": 100,
@@ -582,6 +760,11 @@ def search_and_add_note(
     note,
     raw_note: bool = False,
 ) -> str | bool:
+    """Search for an Asana project by name and add a note to it if found.
+
+    Returns:
+        str | bool: The project GID if the project was found and the note was added, False otherwise.
+    """
     project = search_by_name(projects_api, services, name)
     if project:
         add_note(config, projects_api, project["gid"], note, raw_note)
@@ -597,6 +780,12 @@ def search_and_add_questionnaires(
     client: pd.Series,
     questionnaires: list[dict],
 ) -> pd.Series:
+    """Search for an Asana project by name and add a note containing the questionnaire and links to it if found.
+
+    Returns:
+        pd.Series: The client data with the Asana link added to it.
+    """
+    # Format questionnaire links for Asana's HTML notes
     questionnaire_links_format = [
         f"<a href='{item['link']}'>{item['link']}</a> - {item['type']}"
         for item in questionnaires
@@ -607,16 +796,14 @@ def search_and_add_questionnaires(
         + " Qs sent automatically\n"
         + questionnaire_links_str
     )
-    asana_link = search_and_add_note(
-        projects_api,
-        services,
-        config,
+
+    names = [
         re.sub(r"C0+", "", client["Client ID"]),
-        questionnaire_links_str,
-        True,
-    )
-    if not asana_link:
-        name = client["Client Name"]
+        client["Client Name"],
+        f"{client['TA First Name']} {client['TA Last Name']}",
+    ]
+    asana_link = None
+    for name in names:
         asana_link = search_and_add_note(
             projects_api,
             services,
@@ -625,16 +812,8 @@ def search_and_add_questionnaires(
             questionnaire_links_str,
             True,
         )
-    if not asana_link:
-        name = f"{client['TA First Name']} {client['TA Last Name']}"
-        asana_link = search_and_add_note(
-            projects_api,
-            services,
-            config,
-            name,
-            questionnaire_links_str,
-            True,
-        )
+        if asana_link:
+            break
     client["Asana"] = asana_link
     return client
 
@@ -642,6 +821,16 @@ def search_and_add_questionnaires(
 def mark_link_done(
     projects_api: asana.ProjectsApi, project_gid: str, link: str
 ) -> None:
+    """Mark a link in an Asana project as ready to download.
+
+    Args:
+        projects_api (asana.ProjectsApi): The Asana ProjectsApi instance.
+        project_gid (str): The global ID of the Asana project.
+        link (str): The link to be marked as Ready to Download.
+
+    Returns:
+        None
+    """
     project = fetch_project(projects_api, project_gid)
     if project:
         notes = project["html_notes"]
@@ -669,6 +858,15 @@ def mark_links_in_asana(
     projects_api: asana.ProjectsApi,
     client: ClientWithQuestionnaires,
 ) -> None:
+    """Mark links in an Asana project as Ready to Download for a client.
+
+    Args:
+        projects_api (asana.ProjectsApi): The Asana ProjectsApi instance.
+        client (ClientWithQuestionnaires): The client to mark links for.
+
+    Returns:
+        None
+    """
     if client.asanaId:
         for questionnaire in client.questionnaires:
             if questionnaire["status"] == "COMPLETED":
@@ -684,6 +882,16 @@ def mark_links_in_asana(
 def sent_reminder_asana(
     config: Config, projects_api: asana.ProjectsApi, client: ClientFromDB
 ) -> None:
+    """Add a note to the client's Asana project indicating that a reminder has been sent.
+
+    Args:
+        config (Config): The configuration object.
+        projects_api (asana.ProjectsApi): The Asana ProjectsApi instance.
+        client (ClientFromDB): The client to add the note for.
+
+    Returns:
+        None
+    """
     if client.asanaId:
         add_note(
             config,
@@ -698,8 +906,16 @@ def sent_reminder_asana(
 def update_all_projects_permissions(
     services: Services, projects_api: asana.ProjectsApi, members_list: list[str]
 ) -> str:
-    """Add new members to all projects and update permissions."""
+    """Update all projects in the given Asana workspace to have the specified default access level and add the given members to each project.
 
+    Args:
+        services (Services): The configuration object containing the Asana token and workspace.
+        projects_api (asana.ProjectsApi): The Asana ProjectsApi instance.
+        members_list (list[str]): The list of emails to add as members to each project.
+
+    Returns:
+        str: A message indicating the number of projects updated.
+    """
     options = {
         "limit": 100,
         "archived": False,
@@ -753,6 +969,12 @@ def update_all_projects_permissions(
 
 
 def log_asana(services: Services, projects_api: asana.ProjectsApi):
+    """Log all Asana projects in the specified workspace to a JSON file in the logs/asana directory.
+
+    Args:
+        services (Services): The configuration object containing the Asana token and workspace.
+        projects_api (asana.ProjectsApi): The Asana ProjectsApi instance.
+    """
     opts = {
         "limit": 100,
         "archived": False,
@@ -783,12 +1005,28 @@ def log_asana(services: Services, projects_api: asana.ProjectsApi):
 
 ### QUESTIONNAIRES ###
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
+    """Check if all questionnaires for the given client are completed.
+
+    Args:
+        client (ClientWithQuestionnaires): The client to check.
+
+    Returns:
+        bool: True if all questionnaires are completed, False otherwise.
+    """
     return all(
         q["status"] == "COMPLETED" for q in client.questionnaires if isinstance(q, dict)
     )
 
 
 def check_if_rescheduled(client: ClientWithQuestionnaires) -> bool:
+    """Check if any questionnaire for the given client has been rescheduled.
+
+    Args:
+        client (ClientWithQuestionnaires): The client to check.
+
+    Returns:
+        bool: True if any questionnaire has been rescheduled, False otherwise.
+    """
     return any(
         q["status"] == "RESCHEDULED"
         for q in client.questionnaires
@@ -797,6 +1035,16 @@ def check_if_rescheduled(client: ClientWithQuestionnaires) -> bool:
 
 
 def check_q_done(driver: WebDriver, q_link: str) -> bool:
+    """Check if a questionnaire linked by `q_link` is completed. This function navigates to the URL specified by `q_link` and looks for specific text on the page based on the URL.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for
+                            browser automation.
+        q_link (str): The URL of the questionnaire to check.
+
+    Returns:
+        bool: True if the questionnaire is completed, False otherwise.
+    """
     driver.implicitly_wait(3)
     url = q_link
     driver.get(url)
@@ -805,22 +1053,33 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 
     if "mhs.com" in url:
         logger.info(f"Checking MHS completion for {url}")
-        complete = check_if_element_exists(
-            driver,
-            By.XPATH,
-            "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
+        complete = bool(
+            find_element(
+                driver,
+                By.XPATH,
+                "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
+                return_boolean=True,
+            )
         )
     elif "pearsonassessments.com" in url:
         logger.info(f"Checking Pearson completion for {url}")
-        complete = check_if_element_exists(
-            driver, By.XPATH, "//*[contains(text(), 'Test Completed!')]"
+        complete = bool(
+            find_element(
+                driver,
+                By.XPATH,
+                "//*[contains(text(), 'Test Completed!')]",
+                return_boolean=True,
+            )
         )
     elif "wpspublish" in url:
         logger.info(f"Checking WPS completion for {url}")
-        complete = check_if_element_exists(
-            driver,
-            By.XPATH,
-            "//*[contains(text(), 'This assessment is not available at this time')]",
+        complete = bool(
+            find_element(
+                driver,
+                By.XPATH,
+                "//*[contains(text(), 'This assessment is not available at this time')]",
+                return_boolean=True,
+            )
         )
 
     return complete
@@ -832,42 +1091,52 @@ def check_questionnaires(
     services: Services,
     clients: dict[int | str, ClientWithQuestionnaires],
 ) -> list[ClientWithQuestionnaires]:
-    if clients:
-        completed_clients = []
-        for id in clients:
-            client = clients[id]
-            if all_questionnaires_done(client):
+    """Check if all questionnaires for the given clients are completed. This function will navigate to each questionnaire link and look for specific text on the page based on the URL.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        config (Config): The configuration object.
+        services (Services): The configuration object containing the Asana token and workspace.
+        clients (dict[int | str, ClientWithQuestionnaires]): A dictionary of clients with their IDs as keys and ClientWithQuestionnaires objects as values.
+
+    Returns:
+        list[ClientWithQuestionnaires]: A list of clients whose questionnaires are all completed.
+    """
+    if not clients:
+        return []
+    completed_clients = []
+    for id in clients:
+        client = clients[id]
+        if all_questionnaires_done(client):
+            logger.info(f"{client.fullName} has already completed their questionnaires")
+            continue
+        for questionnaire in client.questionnaires:
+            if questionnaire["status"] == "COMPLETED":
                 logger.info(
-                    f"{client.fullName} has already completed their questionnaires"
+                    f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
                 )
                 continue
-            for questionnaire in client.questionnaires:
-                if questionnaire["status"] == "COMPLETED":
-                    logger.info(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
-                    )
-                    continue
+            logger.info(
+                f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
+            )
+            if check_q_done(driver, questionnaire["link"]):
+                questionnaire["status"] = "COMPLETED"
                 logger.info(
-                    f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
+                    f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                 )
-                if check_q_done(driver, questionnaire["link"]):
-                    questionnaire["status"] = "COMPLETED"
-                    logger.info(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
-                    )
-                else:
-                    questionnaire["status"] = "PENDING"
-                    logger.warning(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
-                    )
-                    logger.warning(
-                        f"At least one questionnaire is not done for {client.fullName}"
-                    )
-                    break
-            if all_questionnaires_done(client):
-                completed_clients.append(client)
-        update_questionnaires_in_db(config, completed_clients)
-        return completed_clients
+            else:
+                questionnaire["status"] = "PENDING"
+                logger.warning(
+                    f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                )
+                logger.warning(
+                    f"At least one questionnaire is not done for {client.fullName}"
+                )
+                break
+        if all_questionnaires_done(client):
+            completed_clients.append(client)
+    update_questionnaires_in_db(config, completed_clients)
+    return completed_clients
 
 
 ### FORMATTING ###

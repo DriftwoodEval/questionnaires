@@ -21,3 +21,15 @@ dependencies = [
     "email-validator>=2.2.0",
     "tqdm>=4.67.1",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.8",
+]
+
+[tool.ruff.lint]
+select = ["D"]
+ignore = ["D100"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
