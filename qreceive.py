@@ -32,7 +32,7 @@ class LimitedRequest:
     @on_exception(
         expo,
         RateLimitException,
-        max_tries=8,
+        max_tries=5,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
@@ -43,7 +43,7 @@ class LimitedRequest:
     @on_exception(
         expo,
         RateLimitException,
-        max_tries=8,
+        max_tries=5,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
@@ -65,7 +65,7 @@ class OpenPhone:
         (ConnectionError, requests.HTTPError),
         factor=2,
         base=2,
-        max_tries=10,
+        max_tries=5,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
@@ -90,8 +90,7 @@ class OpenPhone:
         expo,
         factor=2,
         base=2,
-        interval=1,
-        max_tries=10,
+        max_tries=5,
         on_backoff=log_backoff,
         on_giveup=log_giveup,
     )
@@ -241,7 +240,8 @@ def main():
         numbers_sent = []
         for _, client in clients.items():
             # TODO: Change when Asana is no longer used
-            utils.mark_links_in_asana(projects_api, client)
+            if client in email_info["completed"]:
+                utils.mark_links_in_asana(projects_api, client)
 
             done = utils.all_questionnaires_done(client)
 
@@ -249,6 +249,7 @@ def main():
                 logger.warning(f"Client {client.fullName} wants to/has rescheduled")
                 # TODO: Change how we hold onto email data? Revisit with Maddy
                 email_info["reschedule"].append(client)
+                continue
 
             if not done:
                 most_recent_q = utils.get_most_recent_not_done(client)
@@ -319,7 +320,7 @@ def main():
                             logger.error(f"Failed to send message to {client.fullName}")
                             # TODO: Track the reason for failure
                             email_info["failed"].append(client)
-            else:
+            elif client in email_info["completed"]:
                 if len(client.questionnaires) > 2:
                     utils.update_punch_by_column(config, str(client.id), "DA", "done")
                     utils.update_punch_by_column(config, str(client.id), "EVAL", "done")
@@ -333,7 +334,7 @@ def main():
         if admin_email_text != "":
             utils.send_gmail(
                 admin_email_text,
-                f"Receive Run for {datetime.today().strftime('%a, %b %-d')}",
+                f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
                 ",".join(config.qreceive_emails),
                 config.automated_email,
                 html=admin_email_html,
