@@ -228,35 +228,34 @@ def main():
 
     clients = utils.validate_questionnaires(clients)
     email_info["completed"] = (
-        utils.check_questionnaires(driver, config, services, clients) or []
+        utils.check_questionnaires(driver, config, services, clients)
     )
 
     clients, _ = utils.get_previous_clients(config)
 
+    # TODO: Remove when Asana is no longer used
     utils.log_asana(services, projects_api)
 
     if clients:
         clients = utils.validate_questionnaires(clients)
         numbers_sent = []
         for _, client in clients.items():
+            # TODO: Change when Asana is no longer used
             utils.mark_links_in_asana(projects_api, client)
 
             done = utils.all_questionnaires_done(client)
 
             if utils.check_if_rescheduled(client):
                 logger.warning(f"Client {client.fullName} wants to/has rescheduled")
+                # TODO: Change how we hold onto email data? Revisit with Maddy
                 email_info["reschedule"].append(client)
 
             if not done:
                 most_recent_q = utils.get_most_recent_not_done(client)
-                if not most_recent_q:
-                    logger.trace(
-                        f"Client {client.fullName} has no unfinished questionnaires"
-                    )
-                    continue
                 distance = utils.check_distance(most_recent_q["sent"])
                 last_reminded = most_recent_q.get("lastReminded")
                 if last_reminded is not None:
+                    # TODO: This is a lot like check_distance, maybe try for reusability?
                     last_reminded_distance = (date.today() - last_reminded).days
                 else:
                     last_reminded_distance = 0
@@ -267,6 +266,7 @@ def main():
 
                 if not client.phoneNumber:
                     logger.warning(f"Client {client.fullName} has no phone number")
+                    # TODO: Include reasons for failures in email
                     email_info["failed"].append(client)
                     continue
 
@@ -283,6 +283,7 @@ def main():
                         f"Already messaged {client.fullName} at {client.phoneNumber} today"
                     )
 
+                # TODO: For some reason this appears to work but doesn't register as the same variable as last_reminded distance above
                 if most_recent_q["reminded"] == 3 and last_reminded_distance >= 3:
                     email_info["call"].append(client)
                     for q in client.questionnaires:
@@ -298,6 +299,7 @@ def main():
                     if should_send_reminder(most_recent_q, last_reminded_distance):
                         logger.info(f"Sending reminder TO {client.fullName}")
                         message = build_message(config, client, most_recent_q, distance)
+                        # Redundant failsafe to super ensure we don't text people a message that just says "None"
                         if not message:
                             logger.error(
                                 f"Failed to build message for {client.fullName}"
@@ -315,6 +317,7 @@ def main():
                                     q["lastReminded"] = date.today()
                         else:
                             logger.error(f"Failed to send message to {client.fullName}")
+                            # TODO: Track the reason for failure
                             email_info["failed"].append(client)
             else:
                 if len(client.questionnaires) > 2:
@@ -322,9 +325,10 @@ def main():
                     utils.update_punch_by_column(config, str(client.id), "EVAL", "done")
                 else:
                     utils.update_punch_by_column(config, str(client.id), "DA", "done")
-
+            # URGENT TODO: update every time, in loop
             utils.update_questionnaires_in_db(config, [client])
 
+        # TODO: Can we send an incomplete email, even with exception?
         admin_email_text, admin_email_html = utils.build_admin_email(email_info)
         if admin_email_text != "":
             utils.send_gmail(
@@ -334,7 +338,8 @@ def main():
                 config.automated_email,
                 html=admin_email_html,
             )
-
+    else:
+        logger.info("No clients to check")
 
 if __name__ == "__main__":
     main()

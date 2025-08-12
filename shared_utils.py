@@ -253,6 +253,7 @@ def check_if_element_exists(
 
 ### DATABASE ###
 def get_db(config: Config):
+    # TODO: Send email if unable to connect
     db_url = urlparse(config.database_url)
     connection = pymysql.connect(
         host=db_url.hostname,
@@ -830,7 +831,7 @@ def check_questionnaires(
     config: Config,
     services: Services,
     clients: dict[int | str, ClientWithQuestionnaires],
-) -> list[ClientWithQuestionnaires] | None:
+) -> list[ClientWithQuestionnaires]:
     if clients:
         completed_clients = []
         for id in clients:
@@ -881,11 +882,11 @@ def check_distance(x: date) -> int:
     return delta.days
 
 
-def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire | None:
+def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire:
+    # Get latest questionnaire that is still PENDING by taking max of q["sent"]
     return max(
         (q for q in client.questionnaires if q["status"] == "PENDING"),
         key=lambda q: q["sent"],
-        default=None,
     )
 
 
@@ -1106,6 +1107,7 @@ def update_punch_list(
         update_column = None
         for i, header in enumerate(values[0]):
             if header == update_header:
+                # TODO: Make this work for more than 26 columns
                 update_column = chr(ord("A") + i)
                 break
 
