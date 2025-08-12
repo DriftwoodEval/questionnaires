@@ -1348,6 +1348,18 @@ def get_punch_list(config: Config):
     except Exception as e:
         logger.exception(e)
 
+def col_index_to_a1(col_index):
+    """Converts a zero-based column index to A1 notation."""
+    column_letter = ""
+    while col_index >= 0:
+        # Find the character for the current place
+        remainder = col_index % 26
+        column_letter = chr(ord("A") + remainder) + column_letter
+
+        # Move to the next place (like carrying over in division)
+        col_index = (col_index // 26) - 1
+
+    return column_letter
 
 def update_punch_list(
     config: Config, id_for_search: str, update_header: str, new_value: str
@@ -1376,8 +1388,7 @@ def update_punch_list(
         update_column = None
         for i, header in enumerate(values[0]):
             if header == update_header:
-                # TODO: Make this work for more than 26 columns
-                update_column = chr(ord("A") + i)
+                update_column = col_index_to_a1(i)
                 break
 
         if row_number is not None and update_column is not None:
