@@ -6,10 +6,20 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Environments
+.env
+.envrc
 .venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
+# Data
 config/*
 put/*
 logs/*
-previous_clients.yml
+*.yaml
+*.yml
+*.csv
