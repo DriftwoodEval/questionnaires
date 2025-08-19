@@ -271,22 +271,15 @@ def find_element(
     locator: str,
     max_attempts: int = 3,
     delay: int = 1,
-    return_boolean: bool = False,
-) -> WebElement | bool:
-    """Find a web element with reties and optionally return a boolean.
-
-    Returns:
-        The found WebElement if return_boolean is False.
-        A boolean if return_boolean is True.
+) -> WebElement:
+    """Find a web element with retries.
 
     Raises:
-        NoSuchElementException: If the element is not found and return_boolean is False.
+        NoSuchElementException: If the element is not found.
     """
     for attempt in range(max_attempts):
         try:
             element = driver.find_element(by, locator)
-            if return_boolean:
-                return True
             return element
         except (StaleElementReferenceException, NoSuchElementException) as e:
             logger.warning(
@@ -294,10 +287,26 @@ def find_element(
             )
             sleep(delay)
 
-    if return_boolean:
-        logger.warning(f"Element not found after {max_attempts} attempts")
-        return False
     raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
+
+
+def find_element_exists(
+    driver: WebDriver,
+    by: str,
+    locator: str,
+    max_attempts: int = 3,
+    delay: int = 1,
+) -> bool:
+    """Check if a web element exists with retries.
+
+    Returns:
+        bool: True if the element is found, False otherwise.
+    """
+    try:
+        find_element(driver, by, locator, max_attempts, delay)
+        return True
+    except NoSuchElementException:
+        return False
 
 
 ### DATABASE ###
@@ -1054,31 +1063,28 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
     if "mhs.com" in url:
         logger.info(f"Checking MHS completion for {url}")
         complete = bool(
-            find_element(
+            find_element_exists(
                 driver,
                 By.XPATH,
                 "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
-                return_boolean=True,
             )
         )
     elif "pearsonassessments.com" in url:
         logger.info(f"Checking Pearson completion for {url}")
         complete = bool(
-            find_element(
+            find_element_exists(
                 driver,
                 By.XPATH,
                 "//*[contains(text(), 'Test Completed!')]",
-                return_boolean=True,
             )
         )
     elif "wpspublish" in url:
         logger.info(f"Checking WPS completion for {url}")
         complete = bool(
-            find_element(
+            find_element_exists(
                 driver,
                 By.XPATH,
                 "//*[contains(text(), 'This assessment is not available at this time')]",
-                return_boolean=True,
             )
         )
 
@@ -1348,6 +1354,7 @@ def get_punch_list(config: Config):
     except Exception as e:
         logger.exception(e)
 
+
 def col_index_to_a1(col_index):
     """Converts a zero-based column index to A1 notation."""
     column_letter = ""
@@ -1360,6 +1367,7 @@ def col_index_to_a1(col_index):
         col_index = (col_index // 26) - 1
 
     return column_letter
+
 
 def update_punch_list(
     config: Config, id_for_search: str, update_header: str, new_value: str
