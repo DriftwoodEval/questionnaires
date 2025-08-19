@@ -1147,18 +1147,41 @@ def check_questionnaires(
 
 ### FORMATTING ###
 def format_phone_number(phone_number: str) -> str:
+    """Format a phone number string into (XXX) XXX-XXXX format.
+
+    Args:
+        phone_number (str): The phone number string to format.
+
+    Returns:
+        str: The formatted phone number string.
+    """
     phone_number = re.sub(r"\D", "", phone_number)
     return f"({phone_number[:3]}) {phone_number[3:6]}-{phone_number[6:]}"
 
 
 def check_distance(x: date) -> int:
+    """Calculate the number of days between the given date and today.
+
+    Args:
+        x (date): The date to calculate the distance from.
+
+    Returns:
+        int: The number of days between x and today.
+    """
     today = date.today()
     delta = today - x
     return delta.days
 
 
 def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire:
-    # Get latest questionnaire that is still PENDING by taking max of q["sent"]
+    """Get the most recent questionnaire that is still PENDING from the given client by taking max of q["sent"].
+
+    Args:
+        client (ClientWithQuestionnaires): The client with questionnaires to check.
+
+    Returns:
+        Questionnaire: The most recent questionnaire that is still PENDING.
+    """
     return max(
         (q for q in client.questionnaires if q["status"] == "PENDING"),
         key=lambda q: q["sent"],
@@ -1166,6 +1189,14 @@ def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire:
 
 
 def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
+    """Check if the client has ever been reminded of a questionnaire.
+
+    Args:
+        client (ClientWithQuestionnaires): The client with questionnaires to check.
+
+    Returns:
+        bool: True if the client has ever been reminded of a questionnaire, False otherwise.
+    """
     return any(
         q["reminded"] != 0 and q["status"] == "PENDING"
         for q in client.questionnaires
@@ -1184,6 +1215,12 @@ SCOPES = [
 
 
 def google_authenticate():
+    """Authenticate with Google using the credentials in ./config/credentials.json (obtained from Google Cloud Console) and ./config/token.json (user-specific).
+
+    If the credentials are not valid, the user is prompted to log in.
+    The credentials are then saved to ./config/token.json for the next run.
+    Returns the authenticated credentials.
+    """
     creds = None
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
@@ -1214,6 +1251,19 @@ def send_gmail(
     cc_addr: str | None = None,
     html: str | None = None,
 ):
+    """Send an email using Gmail API.
+
+    Parameters:
+        message_text (str): The text of the message
+        subject (str): The subject of the message
+        to_addr (str): The recipient's email address, can be a comma-separated list
+        from_addr (str): The sender's email address
+        cc_addr (str | None): The CC recipient's email address, can be a comma-separated list (optional)
+        html (str | None): The HTML version of the message (optional)
+
+    Returns:
+        The ID of the sent message
+    """
     creds = google_authenticate()
 
     try:
@@ -1247,6 +1297,14 @@ def send_gmail(
 
 
 def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
+    """Builds an email to admin based on the grouped clients.
+
+    Parameters:
+        email_info (AdminEmailInfo): The grouped clients
+
+    Returns:
+        tuple[str, str]: A tuple of the text and HTML versions of the email message
+    """
     email_text = ""
     email_html = ""
     if email_info["completed"]:
@@ -1307,6 +1365,11 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
 
 
 def get_punch_list(config: Config):
+    """Downloads the punch list and returns it as a pandas DataFrame.
+
+    Returns:
+        pandas.DataFrame: A DataFrame containing the punch list data.
+    """
     creds = google_authenticate()
 
     try:
@@ -1372,6 +1435,17 @@ def col_index_to_a1(col_index):
 def update_punch_list(
     config: Config, id_for_search: str, update_header: str, new_value: str
 ):
+    """Updates the Punch List sheet with the given value.
+
+    Args:
+        config: The application configuration.
+        id_for_search: The ID to search for in the Punch List.
+        update_header: The header of the column to update.
+        new_value: The new value to write to the cell.
+
+    Raises:
+        Exception: If anything goes wrong.
+    """
     creds = google_authenticate()
 
     try:
@@ -1426,6 +1500,14 @@ def update_punch_by_column(
     daeval: Literal["DA", "EVAL", "DAEVAL"],
     sent_done: Literal["sent", "done"],
 ):
+    """Updates the punch list for the given client ID.
+
+    Args:
+        config: The application configuration.
+        client_id: The ID of the client to update.
+        daeval: The type of questionnaire to update ("DA", "EVAL", or "DAEVAL").
+        sent_done: Whether to update the "Sent" or "Done" column for the given type of questionnaire.
+    """
     logger.info(f"Updating punch list for {client_id}: {daeval} {sent_done}")
     client_id = str(client_id)
     if daeval == "DA":
@@ -1448,6 +1530,15 @@ def update_punch_by_column(
 
 
 def add_to_failure_sheet(config: Config, failed_client_dict: dict[str, FailedClient]):
+    """Adds the given failed client to the failure sheet.
+
+    Args:
+        config: The application configuration.
+        failed_client_dict: A dictionary mapping the client ID to a FailedClient object.
+
+    Raises:
+        Exception: If anything goes wrong.
+    """
     creds = google_authenticate()
 
     try:

@@ -1,7 +1,6 @@
 import re
 from datetime import datetime
 from time import sleep, strftime, strptime
-from typing import TypedDict
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -19,20 +18,32 @@ from selenium.webdriver.support.ui import Select
 import shared_utils as utils
 
 
-def get_clients_to_send(config: utils.Config):
+def get_clients_to_send(config: utils.Config) -> pd.DataFrame | None:
+    """Gets a list of clients from the punch list who need to have their questionnaire(s) sent to them.
+
+    The list is filtered to only include clients who have a "TRUE" value in the "DA Qs Needed" column, but not in the "DA Qs Sent" column, or who have a "TRUE" value in the "EVAL Qs Needed" column, but not in the "EVAL Qs Sent" column.
+
+    The "daeval" column is added to the DataFrame to distinguish between clients who need to receive the DA and EVAL questionnaires, just the DA questionnaires, or just the EVAL questionnaires.
+
+    Returns:
+        pandas.DataFrame | None: A DataFrame containing the punch list data, or None if the punch list is empty.
+    """
     punch_list = utils.get_punch_list(config)
 
     if punch_list is None:
         logger.critical("Punch list is empty")
         return None
 
+    # Filter the punch list to only include clients who need to receive the DA and/or EVAL questionnaires
     punch_list = punch_list[
         (punch_list["DA Qs Needed"] == "TRUE") & (punch_list["DA Qs Sent"] != "TRUE")
         | (punch_list["EVAL Qs Needed"] == "TRUE")
         & (punch_list["EVAL Qs Sent"] != "TRUE")
     ]
 
+    # Add the "daeval" column to the DataFrame
     punch_list["daeval"] = punch_list.apply(
+        # Use a lambda function to determine the value of the "daeval" column
         lambda client: (
             "DAEVAL"
             if (
@@ -52,6 +63,14 @@ def get_clients_to_send(config: utils.Config):
 
 
 def rearrangedob(dob: str) -> str:
+    """Rearrange a date of birth string from "YYYY-MM-DD" to "MM/DD/YYYY" format.
+
+    Args:
+        dob (str): The date of birth string in "YYYY-MM-DD" format.
+
+    Returns:
+        str: The rearranged date of birth string in "MM/DD/YYYY" format.
+    """
     year = dob[0:4]
     month = dob[5:7]
     day = dob[8:10]
@@ -64,6 +83,14 @@ def login_ta(
     services: utils.Services,
     admin: bool = False,
 ) -> None:
+    """Log in to TherapyAppointment.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        actions (ActionChains): The ActionChains instance used for simulating user actions.
+        services (utils.Services): The configuration object containing the TherapyAppointment credentials.
+        admin (bool, optional): Whether to log in as an admin user. Defaults to False.
+    """
     logger.info("Logging in to TherapyAppointment")
 
     logger.debug("Going to login page")
@@ -89,6 +116,13 @@ def login_ta(
 def login_wps(
     driver: WebDriver, actions: ActionChains, services: utils.Services
 ) -> None:
+    """Log in to WPS.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        actions (ActionChains): The ActionChains instance used for simulating user actions.
+        services (utils.Services): The configuration object containing the WPS credentials.
+    """
     logger.info("Logging in to WPS")
     driver.get("https://platform.wpspublish.com")
 
@@ -109,6 +143,13 @@ def login_wps(
 def login_qglobal(
     driver: WebDriver, actions: ActionChains, services: utils.Services
 ) -> None:
+    """Log in to QGlobal.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        actions (ActionChains): The ActionChains instance used for simulating user actions.
+        services (utils.Services): The configuration object containing the QGlobal credentials.
+    """
     logger.info("Logging in to QGlobal")
     driver.get("https://qglobal.pearsonassessments.com/")
 
@@ -136,6 +177,13 @@ def login_qglobal(
 def login_mhs(
     driver: WebDriver, actions: ActionChains, services: utils.Services
 ) -> None:
+    """Log in to MHS.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        actions (ActionChains): The ActionChains instance used for simulating user actions.
+        services (utils.Services): The configuration object containing the MHS credentials.
+    """
     logger.info("Logging in to MHS")
     driver.get("https://assess.mhs.com/Account/Login.aspx")
 
@@ -153,6 +201,22 @@ def login_mhs(
 
 
 def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) -> None:
+    """Search for a client in QGlobal.
+
+    Searches for a client using their human-friendly ID, which is the ID
+    shown on TherapyAppointment, "C" + 9-digit number.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for
+            browser automation.
+        actions (ActionChains): The ActionChains instance used for
+            simulating user actions.
+        client (pd.Series): A Pandas Series containing the client's data.
+
+    Returns:
+        None
+    """
+
     def _search_helper(driver: WebDriver, id: str) -> None:
         logger.info(f"Attempting to search QGlobal for {id}")
         try:
@@ -182,6 +246,18 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 def check_for_qglobal_account(
     driver: WebDriver, actions: ActionChains, client: pd.Series
 ) -> bool:
+    """Check if a client has an account on QGlobal.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for
+            browser automation.
+        actions (ActionChains): The ActionChains instance used for
+            simulating user actions.
+        client (pd.Series): A Pandas Series containing the client's data.
+
+    Returns:
+        bool: True if the client has an account on QGlobal, False otherwise.
+    """
     driver.get("https://qglobal.pearsonassessments.com/qg/searchExaminee.seam")
     search_qglobal(driver, actions, client)
 
@@ -200,6 +276,18 @@ def check_for_qglobal_account(
 def add_client_to_qglobal(
     driver: WebDriver, actions: ActionChains, client: pd.Series
 ) -> bool:
+    """Add a client to QGlobal if they don't already have an account.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for
+            browser automation.
+        actions (ActionChains): The ActionChains instance used for
+            simulating user actions.
+        client (pd.Series): A Pandas Series containing the client's data.
+
+    Returns:
+        bool: True if the client was successfully added to QGlobal, False otherwise.
+    """
     logger.info(
         f"Attempting to add {client['TA First Name']} {client['TA Last Name']} to QGlobal"
     )
@@ -253,6 +341,22 @@ def add_client_to_mhs(
     questionnaire: str,
     accounts_created: dict[str, bool],
 ) -> bool:
+    """Add a client to MHS, or goes to the existing client.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for
+            browser automation.
+        actions (ActionChains): The ActionChains instance used for
+            simulating user actions.
+        client (pd.Series): A Pandas Series containing the client's data.
+        questionnaire (str): The type of questionnaire to be added to MHS.
+        accounts_created (dict[str, bool]): A dictionary containing the
+            status of accounts created for the client.
+
+    Returns:
+        bool: True if successful, False otherwise.
+    """
+
     def _add_to_existing(
         driver: WebDriver, actions: ActionChains, client: pd.Series, questionnaire: str
     ) -> bool:
@@ -481,6 +585,10 @@ def add_client_to_mhs(
 def get_questionnaires(
     age: int, check: str, daeval: str, qglobal_exists: bool
 ) -> list[str] | str:
+    """Get the list of questionnaires to send to a client based on age, appointment type, and prospective diagnosis.
+
+    Returns a list of questionnaire names as strings or a string indicating the client is too young.
+    """
     if check == "ADHD+LD":
         check = "ADHD"
     if check == "ASD+LD":
@@ -607,6 +715,23 @@ def assign_questionnaire(
     questionnaire: str,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
+    """Generate a questionnaire and assign it to a client.
+
+    Args:
+       driver (WebDriver): The Selenium WebDriver instance used for
+           browser automation.
+       actions (ActionChains): The ActionChains instance used for
+           simulating user actions.
+       config (Config): The configuration object.
+       client (pd.Series): A Pandas Series containing the client's data.
+       questionnaire (str): The type of questionnaire to be added to MHS.
+       accounts_created (dict[str, bool]): A dictionary containing the
+           status of accounts created for the client.
+
+    Returns:
+        tuple[str, dict[str, bool]]: A tuple containing the assigned
+            questionnaire and the updated accounts_created dictionary.
+    """
     logger.info(
         f"Assigning questionnaire '{questionnaire}' to client {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -678,6 +803,7 @@ def assign_questionnaire(
 def gen_dp4(
     driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
+    """Generates a DP4 assessment for the given client and returns the link."""
     logger.info(
         f"Generating DP4 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -837,6 +963,7 @@ def gen_conners_ec(
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
+    """Generates a Conners EC assessment for the given client and returns the link."""
     logger.info(
         f"Generating Conners EC for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -904,6 +1031,7 @@ def gen_conners_ec(
 def gen_conners_4(
     driver: WebDriver, actions: ActionChains, client: pd.Series, accounts_created: dict
 ) -> tuple[str, dict[str, bool]]:
+    """Generates a Conners 4 assessment for the given client and returns the link."""
     logger.info(
         f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -966,6 +1094,7 @@ def gen_conners_4_self(
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
+    """Generates a Conners 4 Self assessment for the given client and returns the link."""
     logger.info(
         f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1034,6 +1163,7 @@ def gen_asrs_2_5(
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
+    """Generates an ASRS 2-5 assessment for the given client and returns the link."""
     logger.info(
         f"Generating ASRS (2-5 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1108,6 +1238,7 @@ def gen_asrs_6_18(
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
+    """Generates an ASRS 6-18 assessment for the given client and returns the link."""
     logger.info(
         f"Generating ASRS (6-18 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1177,6 +1308,11 @@ def gen_asrs_6_18(
 
 
 def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
+    """Clicks through the QGlobal UI to get the link for an assessment.
+
+    Returns:
+        str | None: The link for the assessment, or None if it can't be found.
+    """
     logger.debug("Clicking continue to email")
     utils.click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
 
@@ -1204,6 +1340,7 @@ def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
 def gen_basc_preschool(
     driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
+    """Generates a BASC Preschool assessment for the given client and returns the link."""
     logger.info(
         f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1249,6 +1386,7 @@ def gen_basc_preschool(
 def gen_basc_child(
     driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
+    """Generates a BASC Child assessment for the given client and returns the link."""
     logger.info(
         f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1294,6 +1432,7 @@ def gen_basc_child(
 def gen_basc_adolescent(
     driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
+    """Generates a BASC Adolescent assessment for the given client and returns the link."""
     logger.info(
         f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1339,6 +1478,7 @@ def gen_basc_adolescent(
 def gen_vineland(
     driver: WebDriver, actions: ActionChains, config: utils.Config, client: pd.Series
 ) -> str:
+    """Generates a Vineland assessment for the given client and returns the link."""
     logger.info(
         f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1398,6 +1538,7 @@ def gen_caars_2(
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
+    """Generates a CAARS 2 assessment for the given client and returns the link."""
     logger.info(
         f"Generating CAARS 2 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1459,6 +1600,8 @@ def gen_caars_2(
 def go_to_client(
     driver: WebDriver, actions: ActionChains, client_id: str
 ) -> str | None:
+    """Navigates to the given client in TA and returns the client's URL."""
+
     def _search_clients(
         driver: WebDriver, actions: ActionChains, client_id: str
     ) -> None:
@@ -1530,10 +1673,27 @@ def go_to_client(
 
 
 def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
+    """Extracts client data from TherapyAppointment client profile page.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for
+            browser automation.
+
+    Returns:
+        dict[str, str | int]: A dictionary containing the following client data:
+            - firstname (str)
+            - lastname (str)
+            - account_number (str)
+            - birthdate (str): formatted as "%Y/%m/%d"
+            - gender (str): one of "Male", "Female", or "Other"
+            - age (int): the client's age in years
+            - phone_number (str): the client's phone number
+    """
     logger.debug("Attempting to extract client data")
     name = utils.find_element(driver, By.CLASS_NAME, "text-h4").text
     firstname = name.split(" ")[0]
     lastname = name.split(" ")[-1]
+    # If client has a suffix, remove it
     if lastname.lower() in [
         "jr",
         "sr",
@@ -1588,6 +1748,7 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
 
 
 def check_if_opened_portal(driver: WebDriver) -> bool:
+    """Check if the TA portal has been opened by the client."""
     try:
         utils.find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']")
         return True
@@ -1596,6 +1757,7 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
 
 
 def check_if_docs_signed(driver: WebDriver) -> bool:
+    """Check if the TA docs have been signed by the client."""
     try:
         utils.find_element(
             driver,
@@ -1608,6 +1770,7 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
 
 
 def format_ta_message(questionnaires: list[dict]) -> str:
+    """Formats the message to be sent in TA."""
     logger.debug("Formatting TA message")
     message = ""
     for id, questionnaire in enumerate(questionnaires, start=1):
@@ -1619,7 +1782,20 @@ def format_ta_message(questionnaires: list[dict]) -> str:
     return message
 
 
-def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
+def send_message_ta(
+    driver: WebDriver,
+    client_url: str,
+    message: str,
+    subject: str = "Please complete the link(s) below. Thank you.",
+) -> None:
+    """Sends a message in TherapyAppointment to the client.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        client_url (str): The URL of the client's profile page in TherapyAppointment.
+        message (str): The message to be sent to the client, formatted as a string with newlines.
+        subject (str, optional): The subject of the message. Defaults to "Please complete the link(s) below. Thank you."
+    """
     logger.info("Navigating to client URL")
     driver.get(client_url)
 
@@ -1637,9 +1813,7 @@ def send_message_ta(driver: WebDriver, client_url: str, message: str) -> None:
     sleep(1)
 
     logger.debug("Setting message subject")
-    utils.find_element(driver, By.ID, "message_thread_subject").send_keys(
-        "Please complete the link(s) below. Thank you."
-    )
+    utils.find_element(driver, By.ID, "message_thread_subject").send_keys(subject)
     sleep(1)
 
     logger.debug("Entering message content")
@@ -1660,6 +1834,19 @@ def format_failed_client(
     questionnaires_needed: list[str] | str = "",
     questionnaire_links_generated: list[dict[str, bool | str]] = [],
 ) -> dict[str, utils.FailedClient]:
+    """Formats a client into a dictionary to be written to the failed clients YAML file.
+
+    Args:
+        client (pd.Series): A Pandas Series containing the client's data.
+        error (str): The error message to be written to the file.
+        questionnaires_needed (list[str] | str, optional): The questionnaires that were needed by the client.
+            Defaults to "".
+        questionnaire_links_generated (list[dict[str, bool | str]], optional): The links generated for the client before failing.
+            Defaults to [].
+
+    Returns:
+        dict[str, utils.FailedClient]: A dictionary with the client's ID as the key and a utils.FailedClient object as the value.
+    """
     key = client["Client ID"] if client["Client ID"] else client["Client Name"]
     failed_client: utils.FailedClient = {
         "firstName": client["TA First Name"]
@@ -1684,6 +1871,14 @@ def format_failed_client(
 
 
 def write_file(filepath: str, data: str) -> None:
+    """Writes data to a file, avoiding duplicates.
+
+    Args:
+        filepath (str): The path to the file to be written to.
+        data (str): The data to be written to the file.
+
+    If the data already exists in the file, does nothing. If the file does not exist, creates a new file with the data.
+    """
     data = data.strip("\n")
     try:
         logger.debug(f"Opening file {filepath} for reading")
@@ -1707,6 +1902,18 @@ def write_file(filepath: str, data: str) -> None:
 
 
 def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bool:
+    """Checks if the client has failed before.
+
+    Args:
+        prev_failed_clients (dict): A dictionary where the keys are client IDs and the values are dictionaries containing
+            client information.
+        client_info (pd.Series): A Pandas Series containing the client to be checked's data.
+
+    Returns:
+        bool: True if the client has failed before, False if not.
+
+    A client is considered to have failed before if their ID is in the prev_failed_clients dictionary, they are looking at the same appointment type, and the "error" key in the dictionary does not have a value of "too young", "portal not opened", or "docs not signed".
+    """
     logger.debug("Checking if client failed previously")
     if prev_failed_clients == {}:
         return False
@@ -1754,6 +1961,15 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
 
 
 def check_client_previous(prev_clients: dict, client_info: pd.Series):
+    """Check if a client has any questionnaires from a previous run.
+
+    Args:
+        prev_clients (dict): A dictionary of clients from a previous run.
+        client_info (pd.Series): A Pandas Series containing the client to be checked's data.
+
+    Returns:
+        list | None: A list of questionnaires for the client, if the client was found in the previous clients dictionary and had questionnaires. Otherwise, None.
+    """
     if prev_clients is None:
         return False
 
@@ -1776,6 +1992,23 @@ def check_client_previous(prev_clients: dict, client_info: pd.Series):
 
 
 def main():
+    """Main function for qsend.py.
+
+    Loads the configuration and services objects, sets up the Selenium WebDriver,
+    gets the clients to send questionnaires to, and loops through each client to
+    send the necessary questionnaires.
+
+    Also handles if a client has already failed to send before, and if a client
+    has already been sent questionnaires before, to avoid sending duplicate
+    questionnaires.
+
+    If a client has no Client ID or is missing required information, will log an
+    error and skip the client.
+
+    If an error occurs while sending questionnaires, will log the error and skip
+    the client.
+
+    """
     services, config = utils.load_config()
     driver, actions = utils.initialize_selenium()
 
