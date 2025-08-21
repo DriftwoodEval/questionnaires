@@ -130,6 +130,15 @@ class OpenPhone:
             if response is None:
                 raise ConnectionError("Failed to retrieve response from OpenPhone API")
 
+
+            # TODO: Fail gracefully and stop trying when out of credits
+            # {
+            #     "message": "The organization does not have enough prepaid credits to send the message",
+            #     "code": "0200402",
+            #     "status": 402,
+            #     "docs": "https://openphone.com/docs",
+            #     "title": "Not Enough Credits",
+            # }
             if response.status_code >= 400:
                 raise requests.HTTPError(
                     "API response: {}".format(response.status_code)
