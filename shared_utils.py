@@ -1227,18 +1227,24 @@ def google_authenticate():
     # time.
     if os.path.exists("./config/token.json"):
         creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
+    # If there are no valid credentials, start the authorization flow
+    else:
+        creds = None
+
+    # If the credentials are invalid or have expired, refresh the credentials
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+        # If there are no credentials, start the manual login
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 "./config/credentials.json", SCOPES
             )
             creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open("./config/token.json", "w") as token:
-            token.write(creds.to_json())
+
+    # Save the credentials for the next run
+    with open("./config/token.json", "w") as token:
+        token.write(creds.to_json())
 
     return creds
 
@@ -1251,7 +1257,7 @@ def send_gmail(
     cc_addr: str | None = None,
     html: str | None = None,
 ):
-    """Send an email using Gmail API.
+    """Send an email using the Gmail API.
 
     Parameters:
         message_text (str): The text of the message
@@ -1260,9 +1266,6 @@ def send_gmail(
         from_addr (str): The sender's email address
         cc_addr (str | None): The CC recipient's email address, can be a comma-separated list (optional)
         html (str | None): The HTML version of the message (optional)
-
-    Returns:
-        The ID of the sent message
     """
     creds = google_authenticate()
 
@@ -1389,8 +1392,10 @@ def get_punch_list(config: Config):
         if values:
             df = pd.DataFrame(values[1:], columns=values[0])
 
+            # Rename the first column to "Client Name"
             df = df.rename(columns={df.columns[0]: "Client Name"})
 
+            # Select only the columns we need
             df = df[
                 [
                     "Client Name",
@@ -1403,12 +1408,15 @@ def get_punch_list(config: Config):
                 ]
             ]
 
+            # Drop any rows where the "Client ID" column is empty
             df = df[df["Client ID"].notna() & df["Client ID"].str.len().astype(bool)]
 
+            # Convert "Human friendly" IDs to proper IDs
             df["Client ID"] = df["Client ID"].apply(
                 lambda client_id: re.sub(r"^C?0*", "", client_id)
             )
 
+            # Create a "Human Friendly ID" column
             df["Human Friendly ID"] = df["Client ID"].apply(
                 lambda client_id: f"C{client_id.zfill(9)}"
             )
@@ -1461,12 +1469,14 @@ def update_punch_list(
         )
         values = result.get("values", [])
 
+        # Find the row containing the client ID
         row_number = None
         for i, row in enumerate(values):
             if row and row[1] == id_for_search:
                 row_number = i + 1  # Spreadsheets are 1-indexed
                 break
 
+        # Find the column containing the header
         update_column = None
         for i, header in enumerate(values[0]):
             if header == update_header:
