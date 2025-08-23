@@ -220,7 +220,6 @@ def should_send_reminder(
 
 
 def main():
-    projects_api = utils.init_asana(services)
     openphone = OpenPhone(config, services)
     driver, actions = utils.initialize_selenium()
     email_info: utils.AdminEmailInfo = {
@@ -241,16 +240,10 @@ def main():
 
     clients, _ = utils.get_previous_clients(config)
 
-    # TODO: Remove when Asana is no longer used
-    utils.log_asana(services, projects_api)
-
     if clients:
         clients = utils.validate_questionnaires(clients)
         numbers_sent = []
         for _, client in clients.items():
-            # TODO: Change when Asana is no longer used
-            if client in email_info["completed"]:
-                utils.mark_links_in_asana(projects_api, client)
 
             done = utils.all_questionnaires_done(client)
 
@@ -353,3 +346,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

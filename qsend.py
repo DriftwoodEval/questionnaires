@@ -2019,7 +2019,6 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    projects_api = utils.init_asana(services)
     for login in [login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
             try:
@@ -2191,9 +2190,6 @@ def main():
                 )
 
             if send:
-                client = utils.search_and_add_questionnaires(
-                    projects_api, services, config, client, questionnaires
-                )
                 utils.insert_basic_client(
                     config,
                     client["Client ID"],
@@ -2228,3 +2224,5 @@ def main():
 if __name__ == "__main__":
     logger.add("logs/qsend.log", rotation="500 MB")
     main()
+
+
