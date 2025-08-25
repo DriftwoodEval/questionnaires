@@ -130,7 +130,6 @@ class OpenPhone:
             if response is None:
                 raise ConnectionError("Failed to retrieve response from OpenPhone API")
 
-
             # TODO: Fail gracefully and stop trying when out of credits
             # {
             #     "message": "The organization does not have enough prepaid credits to send the message",
@@ -234,9 +233,7 @@ def main():
         return
 
     clients = utils.validate_questionnaires(clients)
-    email_info["completed"] = (
-        utils.check_questionnaires(driver, config, services, clients)
-    )
+    email_info["completed"] = utils.check_questionnaires(driver, config, clients)
 
     clients, _ = utils.get_previous_clients(config)
 
@@ -244,7 +241,6 @@ def main():
         clients = utils.validate_questionnaires(clients)
         numbers_sent = []
         for _, client in clients.items():
-
             done = utils.all_questionnaires_done(client)
 
             if utils.check_if_rescheduled(client):
@@ -344,6 +340,6 @@ def main():
     else:
         logger.info("No clients to check")
 
+
 if __name__ == "__main__":
     main()
-

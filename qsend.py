@@ -62,7 +62,7 @@ def get_clients_to_send(config: utils.Config) -> pd.DataFrame | None:
     return punch_list
 
 
-def rearrangedob(dob: str) -> str:
+def rearrange_dob(dob: str) -> str:
     """Rearrange a date of birth string from "YYYY-MM-DD" to "MM/DD/YYYY" format.
 
     Args:
@@ -326,7 +326,7 @@ def add_client_to_qglobal(
         print("edge case")
 
     logger.debug("Entering birthdate")
-    dob = rearrangedob(dob)
+    dob = rearrange_dob(dob)
     birth.send_keys(dob)
 
     logger.debug("Saving new examinee")
@@ -2193,7 +2193,6 @@ def main():
                 utils.insert_basic_client(
                     config,
                     client["Client ID"],
-                    client["Asana"],
                     client["Date of Birth"],
                     client["TA First Name"],
                     client["TA Last Name"],
@@ -2224,5 +2223,3 @@ def main():
 if __name__ == "__main__":
     logger.add("logs/qsend.log", rotation="500 MB")
     main()
-
-

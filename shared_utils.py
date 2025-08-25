@@ -67,6 +67,7 @@ class OpenPhoneService(TypedDict):
     main_number: str
     users: dict[str, OpenPhoneUser]
 
+
 class Services(TypedDict):
     """A TypedDict containing all the service configurations and credentials."""
 
@@ -127,7 +128,6 @@ class FailedClient(TypedDict):
 
 class _ClientBase(BaseModel):
     id: int
-    asanaId: Optional[str] = None
     dob: Optional[date] = None
     firstName: str
     lastName: str
@@ -413,7 +413,6 @@ def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
 def insert_basic_client(
     config: Config,
     client_id: str,
-    asana_id: str,
     dob,
     first_name: str,
     last_name: str,
@@ -426,7 +425,6 @@ def insert_basic_client(
     Args:
         config (Config): The configuration object.
         client_id (str): The client ID.
-        asana_id (str): The Asana ID of the client.
         dob: The date of birth of the client.
         first_name (str): The first name of the client.
         last_name (str): The last name of the client.
@@ -441,15 +439,14 @@ def insert_basic_client(
     with db_connection:
         with db_connection.cursor() as cursor:
             sql = """
-                INSERT INTO `emr_client` (id, hash, asanaId, dob, firstName, lastName, fullName, asdAdhd, gender, phoneNumber)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO `emr_client` (id, hash, dob, firstName, lastName, fullName, asdAdhd, gender, phoneNumber)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE id=id, asdAdhd=VALUES(asdAdhd)
             """
 
             values = (
                 int(client_id),
                 hashlib.sha256(str(client_id).encode("utf-8")).hexdigest(),
-                asana_id if asana_id else None,
                 dob,
                 first_name,
                 last_name,
@@ -583,6 +580,7 @@ def add_failure(config: Config, client: dict[str, FailedClient]) -> None:
 
     add_to_failure_sheet(config, client)
 
+
 ### QUESTIONNAIRES ###
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
     """Check if all questionnaires for the given client are completed.
@@ -665,7 +663,6 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 def check_questionnaires(
     driver: WebDriver,
     config: Config,
-    services: Services,
     clients: dict[int | str, ClientWithQuestionnaires],
 ) -> list[ClientWithQuestionnaires]:
     """Check if all questionnaires for the given clients are completed. This function will navigate to each questionnaire link and look for specific text on the page based on the URL.
@@ -673,7 +670,6 @@ def check_questionnaires(
     Args:
         driver (WebDriver): The Selenium WebDriver instance used for browser automation.
         config (Config): The configuration object.
-        services (Services): The configuration object containing the Asana token and workspace.
         clients (dict[int | str, ClientWithQuestionnaires]): A dictionary of clients with their IDs as keys and ClientWithQuestionnaires objects as values.
 
     Returns:
