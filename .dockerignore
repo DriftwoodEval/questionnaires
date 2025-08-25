@@ -1,5 +1,27 @@
+# Git and version control
+.git
+.github
+
+# Docker and orchestration files
+Dockerfile
+.dockerignore
+docker-compose.yaml
+docker-compose.override.yaml
+
+# Environment and cache
 .venv
+__pycache__
+.env
+.env.*
+!.env.example
+
+# Configs and data
 config/
 put/
+logs/
+School Records Requests/
 *.log
-__pycache__
+*.yaml
+*.yml
+*.csv
+*.txt

@@ -20,6 +20,8 @@ venv.bak/
 config/*
 put/*
 logs/*
+School Records Requests/*
 *.yaml
 *.yml
 *.csv
+*.txt
