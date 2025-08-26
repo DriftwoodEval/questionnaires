@@ -15,9 +15,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 import shared_utils as utils
 
-SOURCE_FILE = "records.txt"
-SUCCESS_FILE = "savedrecords.txt"
-FAILURE_FILE = "recordfailures.txt"
+SOURCE_FILE = Path("put/records.txt")
+SUCCESS_FILE = Path("put/savedrecords.txt")
+FAILURE_FILE = Path("put/recordfailures.txt")
 OUTPUT_DIR = Path("School Records Requests")
 WAIT_TIMEOUT = 15  # seconds
 
@@ -86,9 +86,9 @@ class TherapyAppointmentBot:
         password_field.submit()
         logger.success("Login successful.")
 
-    def go_to_client(self, first_name: str, last_name: str) -> bool:
+    def go_to_client(self, client_id: str) -> bool:
         """Navigates to a specific client in TherapyAppointment."""
-        logger.info(f"Searching for client: {first_name} {last_name}...")
+        logger.info(f"Searching for client: {client_id}...")
         try:
             # Wait for the main navigation to be clickable
             clients_button = self.wait.until(
@@ -99,17 +99,12 @@ class TherapyAppointmentBot:
             clients_button.click()
 
             # Wait for the search form to be ready
-            firstname_field = self.wait.until(
+            client_id_field = self.wait.until(
                 EC.visibility_of_element_located(
-                    (By.XPATH, "//label[text()='First Name']/following-sibling::input")
+                    (By.XPATH, "//label[text()='Account Number']/following-sibling::input")
                 )
             )
-            firstname_field.send_keys(first_name)
-
-            lastname_field = self.driver.find_element(
-                By.XPATH, "//label[text()='Last Name']/following-sibling::input"
-            )
-            lastname_field.send_keys(last_name)
+            client_id_field.send_keys(client_id)
 
             search_button = self.driver.find_element(
                 By.CSS_SELECTOR, "button[aria-label='Search']"
@@ -129,12 +124,12 @@ class TherapyAppointmentBot:
             return True
         except TimeoutException:
             logger.warning(
-                f"Client not found or search failed for: {first_name} {last_name}"
+                f"Client not found or search failed for: {client_id}"
             )
             return False
         except NoSuchElementException:
             logger.warning(
-                f"Could not find a search element for: {first_name} {last_name}"
+                f"Could not find a search element for: {client_id}"
             )
             return False
 
@@ -262,14 +257,14 @@ def main():
         bot.login()
         for client_name in new_clients:
             try:
-                first, last = client_name.split()
+                first, last, client_id, sent = client_name.split()
             except ValueError:
                 logger.warning(f"Skipping malformed name: '{client_name}'")
                 append_to_csv_file(Path(FAILURE_FILE), client_name)
                 new_failure_count += 1
                 continue
 
-            if bot.go_to_client(first, last):
+            if bot.go_to_client(client_id):
                 try:
                     client_data = bot.extract_client_data()
                     bot.download_consent_forms(client_data)
