@@ -333,7 +333,6 @@ def main():
                     utils.update_punch_by_column(config, str(client.id), "EVAL", "done")
                 else:
                     utils.update_punch_by_column(config, str(client.id), "DA", "done")
-            # URGENT TODO: update every time, in loop
             utils.update_questionnaires_in_db(config, [client])
 
         # TODO: Can we send an incomplete email, even with exception?
