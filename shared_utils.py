@@ -877,6 +877,11 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
     """
     email_text = ""
     email_html = ""
+
+    if email_info["api_failure"]:
+        email_text += f"OpenPhone API Failure:\n{email_info['api_failure']}\n"
+        email_html += f"<b>OpenPhone API Failure:</b><br>{email_info['api_failure']}<br>"
+
     if email_info["completed"]:
         email_text += (
             "Download:\n"
