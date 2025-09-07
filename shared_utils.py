@@ -1,11 +1,11 @@
 import base64
 import hashlib
-import json
 import os
 import re
-from datetime import date, datetime
+from datetime import date
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from email.message import EmailMessage
-from pathlib import Path
 from time import sleep
 from typing import Annotated, Literal, Optional, TypedDict
 from urllib.parse import urlparse
@@ -18,6 +18,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from selenium.common.exceptions import TimeoutException
 from loguru import logger
 from pydantic import (
     BaseModel,
@@ -35,7 +36,6 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
-from tqdm import tqdm
 
 
 ### TYPES ###
@@ -613,51 +613,65 @@ def check_if_rescheduled(client: ClientWithQuestionnaires) -> bool:
 
 
 def check_q_done(driver: WebDriver, q_link: str) -> bool:
-    """Check if a questionnaire linked by `q_link` is completed. This function navigates to the URL specified by `q_link` and looks for specific text on the page based on the URL.
+    """Check if a questionnaire linked by `q_link` is completed.
 
     Args:
-        driver (WebDriver): The Selenium WebDriver instance used for
-                            browser automation.
-        q_link (str): The URL of the questionnaire to check.
+        driver (WebDriver): The Selenium WebDriver instance.
+        q_link (str): The URL of the questionnaire.
 
     Returns:
         bool: True if the questionnaire is completed, False otherwise.
     """
-    driver.implicitly_wait(3)
-    url = q_link
-    driver.get(url)
+    driver.get(q_link)
+    wait = WebDriverWait(driver, 15)
 
-    complete = False
+    try:
+        if "mhs.com" in q_link:
+            logger.info(f"Checking MHS completion for {q_link}")
+            wait.until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
+                    )
+                )
+            )
+            return True
 
-    if "mhs.com" in url:
-        logger.info(f"Checking MHS completion for {url}")
-        complete = bool(
-            find_element_exists(
-                driver,
-                By.XPATH,
-                "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
+        elif "pearsonassessments.com" in q_link:
+            logger.info(f"Checking Pearson completion for {q_link}")
+            wait.until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(text(), 'Test Completed!')]",
+                    )
+                )
             )
-        )
-    elif "pearsonassessments.com" in url:
-        logger.info(f"Checking Pearson completion for {url}")
-        complete = bool(
-            find_element_exists(
-                driver,
-                By.XPATH,
-                "//*[contains(text(), 'Test Completed!')]",
-            )
-        )
-    elif "wpspublish" in url:
-        logger.info(f"Checking WPS completion for {url}")
-        complete = bool(
-            find_element_exists(
-                driver,
-                By.XPATH,
-                "//*[contains(text(), 'This assessment is not available at this time')]",
-            )
-        )
+            return True
 
-    return complete
+        elif "wpspublish" in q_link:
+            logger.info(f"Checking WPS completion for {q_link}")
+            wait.until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(text(), 'This assessment is not available at this time')]",
+                    )
+                )
+            )
+            return True
+
+        else:
+            logger.warning(f"Unknown questionnaire link: {q_link}")
+            return False
+
+    except (TimeoutException, NoSuchElementException):
+        logger.info(f"Questionnaire at {q_link} is likely not completed")
+
+    except Exception as e:
+        logger.error(f"Error checking questionnaire at {q_link}: {e}")
+        return False
 
 
 def check_questionnaires(
@@ -880,7 +894,9 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
 
     if email_info["api_failure"]:
         email_text += f"OpenPhone API Failure:\n{email_info['api_failure']}\n"
-        email_html += f"<b>OpenPhone API Failure:</b><br>{email_info['api_failure']}<br>"
+        email_html += (
+            f"<b>OpenPhone API Failure:</b><br>{email_info['api_failure']}<br>"
+        )
 
     if email_info["completed"]:
         email_text += (

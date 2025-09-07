@@ -51,17 +51,21 @@ class LimitedRequest:
     def post(self, url: str, data=None, headers=None, **kwargs) -> requests.Response:
         return requests.post(url, data, headers=headers, **kwargs)
 
+
 class NotEnoughCreditsError(requests.HTTPError):
     """Custom exception for when not enough credits are available."""
 
     def __init__(self, *args, **kwargs):
-        default_message = "The organization does not have enough prepaid credits to send the message."
+        default_message = (
+            "The organization does not have enough prepaid credits to send the message."
+        )
 
         # If the user provides a custom message, use it; otherwise, use the default.
         if not args:
             args = (default_message,)
 
         super().__init__(*args, **kwargs)
+
 
 class OpenPhone:
     def __init__(self, config: utils.Config, services: utils.Services):
@@ -141,7 +145,7 @@ class OpenPhone:
             if response is None:
                 raise ConnectionError("Failed to retrieve response from OpenPhone API")
 
-            if response.status_code == 402: # Payment Required
+            if response.status_code == 402:  # Payment Required
                 raise NotEnoughCreditsError()
 
             if response.status_code >= 400:
@@ -232,7 +236,7 @@ def main():
         "failed": [],
         "call": [],
         "completed": [],
-        "api_failure": None
+        "api_failure": None,
     }
     clients, _ = utils.get_previous_clients(config)
     if clients is None:
@@ -312,7 +316,9 @@ def main():
                             continue
 
                         try:
-                            message_sent = openphone.send_text_and_ensure(message, client.phoneNumber)
+                            message_sent = openphone.send_text_and_ensure(
+                                message, client.phoneNumber
+                            )
 
                             if message_sent:
                                 numbers_sent.append(client.phoneNumber)
@@ -321,11 +327,17 @@ def main():
                                         q["reminded"] += 1
                                         q["lastReminded"] = date.today()
                             else:
-                                logger.error(f"Failed to send message to {client.fullName}")
+                                logger.error(
+                                    f"Failed to send message to {client.fullName}"
+                                )
                                 email_info["failed"].append(client)
                         except NotEnoughCreditsError:
-                            logger.critical("Aborting all further message sends due to insufficient credits.")
-                            email_info["api_failure"] = "OpenPhone API needs more credits to send messages."
+                            logger.critical(
+                                "Aborting all further message sends due to insufficient credits."
+                            )
+                            email_info["api_failure"] = (
+                                "OpenPhone API needs more credits to send messages."
+                            )
                             break
             elif client in email_info["completed"]:
                 if len(client.questionnaires) > 2:

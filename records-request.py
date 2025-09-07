@@ -101,7 +101,10 @@ class TherapyAppointmentBot:
             # Wait for the search form to be ready
             client_id_field = self.wait.until(
                 EC.visibility_of_element_located(
-                    (By.XPATH, "//label[text()='Account Number']/following-sibling::input")
+                    (
+                        By.XPATH,
+                        "//label[text()='Account Number']/following-sibling::input",
+                    )
                 )
             )
             client_id_field.send_keys(client_id)
@@ -123,14 +126,10 @@ class TherapyAppointmentBot:
             client_link.click()
             return True
         except TimeoutException:
-            logger.warning(
-                f"Client not found or search failed for: {client_id}"
-            )
+            logger.warning(f"Client not found or search failed for: {client_id}")
             return False
         except NoSuchElementException:
-            logger.warning(
-                f"Could not find a search element for: {client_id}"
-            )
+            logger.warning(f"Could not find a search element for: {client_id}")
             return False
 
     def extract_client_data(self) -> dict:
