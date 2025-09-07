@@ -692,11 +692,13 @@ def check_questionnaires(
     if not clients:
         return []
     completed_clients = []
+    updated_clients = []
     for id in clients:
         client = clients[id]
         if all_questionnaires_done(client):
             logger.info(f"{client.fullName} has already completed their questionnaires")
             continue
+        client_updated = False
         for questionnaire in client.questionnaires:
             if questionnaire["status"] == "COMPLETED":
                 logger.info(
@@ -711,6 +713,7 @@ def check_questionnaires(
                 logger.info(
                     f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                 )
+                client_updated = True
             else:
                 questionnaire["status"] = "PENDING"
                 logger.warning(
@@ -720,9 +723,16 @@ def check_questionnaires(
                     f"At least one questionnaire is not done for {client.fullName}"
                 )
                 break
+
+
+        if client_updated:
+            updated_clients.append(client)
+
         if all_questionnaires_done(client):
             completed_clients.append(client)
-    update_questionnaires_in_db(config, completed_clients)
+
+    if updated_clients:
+        update_questionnaires_in_db(config, updated_clients)
     return completed_clients
 
 
