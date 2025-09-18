@@ -1,7 +1,10 @@
+import io
 from base64 import b64decode
 from pathlib import Path
 
-import yaml
+import pandas as pd
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
 from nameparser import HumanName
 from selenium import webdriver
@@ -15,23 +18,34 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 import shared_utils as utils
 
-SOURCE_FILE = Path("put/records.txt")
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")
 OUTPUT_DIR = Path("School Records Requests")
 WAIT_TIMEOUT = 15  # seconds
 
 
-def load_previous_csv(filepath: Path) -> set:
-    """Reads a comma-separated file and returns a set of its items."""
-    if not filepath.exists():
-        return set()
-    with open(filepath, "r") as file:
-        content = file.read().strip()
-        if not content:
-            return set()
-        # Split by comma and space, and strip extra whitespace from each item
-        return {item.strip() for item in content.split(",") if item.strip()}
+def get_clients_to_request(config: utils.Config) -> pd.DataFrame | None:
+    """Gets a list of clients from the punch list who need to have their records requested.
+
+    The list is filtered to only include clients who have a "TRUE" value in the "Records Needed" column, but not in the "Records Requested?" or "Records Reviewed?" columns.
+
+    Returns:
+        pandas.DataFrame | None: A DataFrame containing the punch list data, or None if the punch list is empty.
+    """
+    punch_list = utils.get_punch_list(config)
+
+    if punch_list is None:
+        logger.critical("Punch list is empty")
+        return None
+
+    # Filter the punch list to only include clients who need to receive the DA and/or EVAL questionnaires
+    punch_list = punch_list[
+        (punch_list["Records Needed"] == "TRUE")
+        & (punch_list["Records Requested?"] != "TRUE")
+        & (punch_list["Records Reviewed?"] != "TRUE")
+    ]
+
+    return punch_list
 
 
 def append_to_csv_file(filepath: Path, data: str):
@@ -48,9 +62,10 @@ def append_to_csv_file(filepath: Path, data: str):
 class TherapyAppointmentBot:
     """A bot to automate downloading client documents from TherapyAppointment."""
 
-    def __init__(self, services: utils.Services):
+    def __init__(self, services: utils.Services, config: utils.Config):
         """Initializes the TherapyAppointmentBot."""
-        self.config = services["therapyappointment"]
+        self.taconfig = services["therapyappointment"]
+        self.config = config
         self.driver = self._initialize_driver()
         self.wait = WebDriverWait(self.driver, WAIT_TIMEOUT)
 
@@ -79,10 +94,10 @@ class TherapyAppointmentBot:
         username_field = self.wait.until(
             EC.presence_of_element_located((By.NAME, "user_username"))
         )
-        username_field.send_keys(self.config["username"])
+        username_field.send_keys(self.taconfig["username"])
 
         password_field = self.driver.find_element(By.NAME, "user_password")
-        password_field.send_keys(self.config["password"])
+        password_field.send_keys(self.taconfig["password"])
         password_field.submit()
         logger.success("Login successful.")
 
@@ -163,13 +178,26 @@ class TherapyAppointmentBot:
 
     def download_consent_forms(self, client_data: dict):
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
+        creds = utils.google_authenticate()
+
+        service = build("drive", "v3", credentials=creds)
+        filename = f"{client_data['fullname'].title()} {client_data['birthdate']} Receiving.pdf"
+        receive = self.file_exists(service, filename, self.config.records_folder_id)
+        filename = (
+            f"{client_data['fullname'].title()} {client_data['birthdate']} Sending.pdf"
+        )
+        send = self.file_exists(service, filename, self.config.records_folder_id)
+        if receive or send:
+            logger.info("Files already exist, skipping download.")
+            return
+
         logger.info("Navigating to Docs & Forms...")
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        self._save_document_as_pdf(
+        self.save_document_as_pdf(
             "Receiving Consent to Release of Information", client_data
         )
-        self._save_document_as_pdf(
+        self.save_document_as_pdf(
             "Sending Consent to Release of Information", client_data
         )
 
@@ -178,7 +206,34 @@ class TherapyAppointmentBot:
         )
         clients_button.click()
 
-    def _save_document_as_pdf(self, link_text: str, client: dict):
+    def upload_pdf_from_driver(self, filename, folder_id):
+        """Prints page as PDF (in memory) and uploads to Drive."""
+        pdf_options = PrintOptions()
+        pdf_options.orientation = "portrait"
+
+        pdf_base64 = self.driver.print_page(pdf_options)
+
+        pdf_bytes = b64decode(pdf_base64)
+        pdf_stream = io.BytesIO(pdf_bytes)
+
+        creds = utils.google_authenticate()
+
+        service = build("drive", "v3", credentials=creds)
+        file_metadata = {
+            "name": filename,
+            "parents": [folder_id],
+        }
+        media = MediaIoBaseUpload(pdf_stream, mimetype="application/pdf")
+
+        uploaded_file = (
+            service.files()
+            .create(body=file_metadata, media_body=media, fields="id, webViewLink")
+            .execute()
+        )
+
+        return uploaded_file
+
+    def save_document_as_pdf(self, link_text: str, client: dict):
         """Helper function to find, print, and save a single document."""
         logger.info(f"Opening {link_text}...")
         try:
@@ -201,20 +256,11 @@ class TherapyAppointmentBot:
             doc_type = link_text.split(" ")[0]
 
             filename = (
-                OUTPUT_DIR
-                / f"{client['fullname']} {client['birthdate']} {doc_type}.pdf"
+                f"{client['fullname'].title()} {client['birthdate']} {doc_type}.pdf"
             )
 
             logger.info(f"Saving {filename}...")
-            pdf_options = PrintOptions()
-            pdf_options.orientation = "portrait"
-
-            pdf_base64 = self.driver.print_page(pdf_options)
-            with open(filename, "wb") as file:
-                file.write(b64decode(pdf_base64))
-
-            if filename.exists():
-                logger.success(f"Saved {filename}")
+            self.upload_pdf_from_driver(filename, self.config.records_folder_id)
 
         except TimeoutException:
             logger.error(f"Could not find or load document: {link_text}")
@@ -222,27 +268,39 @@ class TherapyAppointmentBot:
             # Go back to the Docs & Forms list
             self.driver.back()
 
+    def file_exists(self, service, filename, folder_id):
+        """Helper function to check if a file exists in Drive."""
+        query = f"name = '{filename}' and '{folder_id}' in parents and trashed = false"
+        results = (
+            service.files()
+            .list(q=query, spaces="drive", fields="files(id, name)", pageSize=1)
+            .execute()
+        )
+
+        files = results.get("files", [])
+        if files:
+            return files[0]["id"]  # return the ID of the first matching file
+        return None
+
 
 def main():
     """Main function to run the automation script."""
     services, config = utils.load_config()
 
-    successful_clients = load_previous_csv(Path(SUCCESS_FILE))
-    failed_clients = load_previous_csv(Path(FAILURE_FILE))
-    already_processed = successful_clients.union(failed_clients)
-    logger.info(f"Loaded {len(already_processed)} previously processed clients.")
+    clients_to_process = get_clients_to_request(config)
+    new_clients = []
 
-    try:
-        with open(SOURCE_FILE, "r") as file:
-            content = file.read().strip()
-            clients_to_process = {
-                item.strip() for item in content.split(",") if item.strip()
-            }
-    except FileNotFoundError:
-        logger.error(f"Source file not found: {SOURCE_FILE}")
+    if clients_to_process is None:
+        logger.critical("No clients found.")
         return
 
-    new_clients = clients_to_process - already_processed
+    for _, client in clients_to_process.iterrows():
+        client_name = client["Client Name"]
+        first = client_name.split()[0]
+        last = client_name.split()[-1]
+        client_id = client["Client ID"]
+        new_clients.append(f"{first} {last} {client_id}")
+
     if not new_clients:
         logger.info("No new clients to process.")
         return
@@ -252,11 +310,11 @@ def main():
     new_success_count = 0
     new_failure_count = 0
 
-    with TherapyAppointmentBot(services) as bot:
+    with TherapyAppointmentBot(services, config) as bot:
         bot.login()
         for client_name in new_clients:
             try:
-                first, last, client_id, sent = client_name.split()
+                first, last, client_id = client_name.split()
             except ValueError:
                 logger.warning(f"Skipping malformed name: '{client_name}'")
                 append_to_csv_file(Path(FAILURE_FILE), client_name)
@@ -278,9 +336,6 @@ def main():
             else:
                 append_to_csv_file(Path(FAILURE_FILE), client_name)
                 new_failure_count += 1
-
-    with open(SOURCE_FILE, "w") as f:
-        f.truncate(0)
 
     logger.info(
         f"Process complete. Success: {new_success_count}, Failed: {new_failure_count}"

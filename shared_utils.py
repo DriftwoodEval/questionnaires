@@ -3,8 +3,6 @@ import hashlib
 import os
 import re
 from datetime import date
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from email.message import EmailMessage
 from time import sleep
 from typing import Annotated, Literal, Optional, TypedDict
@@ -18,7 +16,6 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from selenium.common.exceptions import TimeoutException
 from loguru import logger
 from pydantic import (
     BaseModel,
@@ -30,12 +27,15 @@ from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
+    TimeoutException,
 )
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 ### TYPES ###
@@ -99,6 +99,7 @@ class Config(BaseModel):
     failed_sheet_id: str
     database_url: str
     excluded_ta: list[str]
+    records_folder_id: str
 
 
 class Questionnaire(TypedDict):
@@ -164,6 +165,7 @@ class AdminEmailInfo(TypedDict):
     failed: list[ClientWithQuestionnaires]
     call: list[ClientWithQuestionnaires]
     completed: list[ClientWithQuestionnaires]
+    api_failure: list[ClientWithQuestionnaires]
 
 
 def load_config() -> tuple[Services, Config]:
@@ -668,6 +670,7 @@ def check_q_done(driver: WebDriver, q_link: str) -> bool:
 
     except (TimeoutException, NoSuchElementException):
         logger.info(f"Questionnaire at {q_link} is likely not completed")
+        return False
 
     except Exception as e:
         logger.error(f"Error checking questionnaire at {q_link}: {e}")
@@ -723,7 +726,6 @@ def check_questionnaires(
                     f"At least one questionnaire is not done for {client.fullName}"
                 )
                 break
-
 
         if client_updated:
             updated_clients.append(client)
@@ -802,6 +804,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 
@@ -999,6 +1002,9 @@ def get_punch_list(config: Config):
                     "Client Name",
                     "Client ID",
                     "For",
+                    "Records Needed",
+                    "Records Requested?",
+                    "Records Reviewed?",
                     "DA Qs Needed",
                     "DA Qs Sent",
                     "EVAL Qs Needed",
