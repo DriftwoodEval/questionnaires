@@ -2066,6 +2066,11 @@ def main():
                 )
                 continue
 
+        if client["Language"] is not None or client["Language"] != "" or client["Language"] != "English":
+            logger.error(f"Client {client['Client Name']} doesn't speak English")
+            utils.add_failure(config, format_failed_client(client, client["Language"]))
+            continue
+
         try:
             client_url = go_to_client(driver, actions, client["Client ID"])
 
