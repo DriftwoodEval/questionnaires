@@ -589,12 +589,49 @@ def get_questionnaires(
 
     Returns a list of questionnaire names as strings or a string indicating the client is too young.
     """
-    if check == "ADHD+LD":
-        check = "ADHD"
-    if check == "ASD+LD":
-        check = "ASD"
-    if daeval == "EVAL":
+    def _get_da_questionnaires(age: int, check: str):
+        if check == "ASD+ADHD":
+            asd_da = _get_da_questionnaires(age, "ASD")
+            if asd_da == "Too young":
+                return "Too young"
+            adhd_da = _get_da_questionnaires(age, "ADHD")
+            return asd_da + adhd_da
         if check == "ASD":
+            if age < 2:  # 1.5
+                return "Too young"
+            elif age < 6:
+                return ["ASRS (2-5 Years)"]
+            elif age < 19:
+                return ["ASRS (6-18 Years)"]
+            elif age < 22:
+                return ["SRS Self"]
+            else:
+                return ["SRS Self"]
+        elif check == "ADHD":
+            if age < 4:
+                return "Too young"
+            elif age < 6:
+                return ["Conners EC"]
+            elif age < 12:
+                return ["Conners 4"]
+            elif age < 18:
+                return ["Conners 4", "Conners 4 Self"]
+            else:
+                return ["CAARS 2"]
+
+    def _get_eval_questionnaires(age: int, check: str):
+         if check == "ASD+ADHD":
+            asd_adhd_da = _get_eval_questionnaires(age, "ASD+ADHD")
+            if asd_adhd_da == "Too young":
+                return "Too young"
+
+            asd_eval = _get_eval_questionnaires(age, "ASD")
+            adhd_eval = _get_eval_questionnaires(age, "ADHD")
+            combined_eval = asd_eval + adhd_eval
+            combined_eval = [q for q in combined_eval if q not in asd_adhd_da]
+            return combined_eval
+
+         if check == "ASD":
             if age < 2:  # 1.5
                 return "Too young"
             elif age < 6:
@@ -632,38 +669,8 @@ def get_questionnaires(
                 return ["ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
             else:
                 return ["ABAS 3", "SRS-2", "CAARS 2", "PAI"]
-    elif daeval == "DA":
-        if check == "ASD":
-            if age < 2:  # 1.5
-                return "Too young"
-            elif age < 6:
-                return ["ASRS (2-5 Years)"]
-            elif age < 7:
-                return ["ASRS (6-18 Years)"]
-            elif age < 8:
-                return ["ASRS (6-18 Years)"]
-            elif age < 12:
-                return ["ASRS (6-18 Years)"]
-            elif age < 18:
-                return ["ASRS (6-18 Years)"]
-            elif age < 19:
-                return ["ASRS (6-18 Years)"]
-            elif age < 22:
-                return ["SRS Self"]
-            else:
-                return ["SRS Self"]
-        elif check == "ADHD":
-            if age < 4:
-                return "Too young"
-            elif age < 6:
-                return ["Conners EC"]
-            elif age < 12:
-                return ["Conners 4"]
-            elif age < 18:
-                return ["Conners 4", "Conners 4 Self"]
-            else:
-                return ["CAARS 2"]
-    elif daeval == "DAEVAL":
+
+    def _get_daeval_questionnaires(age: int):
         if age < 2:  # 1.5
             return "Too young"
         elif age < 6:
@@ -704,6 +711,21 @@ def get_questionnaires(
             return ["SRS Self", "ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
         else:
             return ["SRS Self", "ABAS 3", "SRS-2", "CAARS 2", "PAI"]
+
+    if check == "ADHD+LD":
+        check = "ADHD"
+    if check == "ASD+LD":
+        check = "ASD"
+
+    if daeval == "EVAL":
+        return _get_eval_questionnaires(age, check)
+
+    elif daeval == "DA":
+        return _get_da_questionnaires(age, check)
+
+    elif daeval == "DAEVAL":
+        return _get_daeval_questionnaires(age)
+
     return "Unknown"
 
 
