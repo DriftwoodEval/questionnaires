@@ -589,13 +589,14 @@ def get_questionnaires(
 
     Returns a list of questionnaire names as strings or a string indicating the client is too young.
     """
-    def _get_da_questionnaires(age: int, check: str):
+
+    def _get_da_questionnaires(age: int, check: str) -> list[str] | str:
         if check == "ASD+ADHD":
             asd_da = _get_da_questionnaires(age, "ASD")
             if asd_da == "Too young":
                 return "Too young"
             adhd_da = _get_da_questionnaires(age, "ADHD")
-            return asd_da + adhd_da
+            return list(asd_da) + list(adhd_da)
         if check == "ASD":
             if age < 2:  # 1.5
                 return "Too young"
@@ -619,19 +620,21 @@ def get_questionnaires(
             else:
                 return ["CAARS 2"]
 
-    def _get_eval_questionnaires(age: int, check: str):
-         if check == "ASD+ADHD":
+        return "Unknown"
+
+    def _get_eval_questionnaires(age: int, check: str) -> list[str] | str:
+        if check == "ASD+ADHD":
             asd_adhd_da = _get_eval_questionnaires(age, "ASD+ADHD")
             if asd_adhd_da == "Too young":
                 return "Too young"
 
             asd_eval = _get_eval_questionnaires(age, "ASD")
             adhd_eval = _get_eval_questionnaires(age, "ADHD")
-            combined_eval = asd_eval + adhd_eval
+            combined_eval = list(asd_eval) + list(adhd_eval)
             combined_eval = [q for q in combined_eval if q not in asd_adhd_da]
             return combined_eval
 
-         if check == "ASD":
+        elif check == "ASD":
             if age < 2:  # 1.5
                 return "Too young"
             elif age < 6:
@@ -670,7 +673,9 @@ def get_questionnaires(
             else:
                 return ["ABAS 3", "SRS-2", "CAARS 2", "PAI"]
 
-    def _get_daeval_questionnaires(age: int):
+        return "Unknown"
+
+    def _get_daeval_questionnaires(age: int) -> list[str] | str:
         if age < 2:  # 1.5
             return "Too young"
         elif age < 6:
@@ -2041,7 +2046,10 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    for login in [login_ta, login_wps, login_qglobal, login_mhs]:
+    for login in [
+        login_ta
+        #   login_wps, login_qglobal, login_mhs
+    ]:
         while True:
             try:
                 login(driver, actions, services)
@@ -2066,7 +2074,7 @@ def main():
                 )
                 continue
 
-        if client["Language"] is not None or client["Language"] != "" or client["Language"] != "English":
+        if client["Language"] != "" and client["Language"] != "English":
             logger.error(f"Client {client['Client Name']} doesn't speak English")
             utils.add_failure(config, format_failed_client(client, client["Language"]))
             continue

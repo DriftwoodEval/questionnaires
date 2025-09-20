@@ -1002,6 +1002,7 @@ def get_punch_list(config: Config):
                     "Client Name",
                     "Client ID",
                     "For",
+                    "Language",
                     "Records Needed",
                     "Records Requested?",
                     "Records Reviewed?",
