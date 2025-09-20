@@ -2046,10 +2046,7 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    for login in [
-        login_ta
-        #   login_wps, login_qglobal, login_mhs
-    ]:
+    for login in [login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
             try:
                 login(driver, actions, services)
