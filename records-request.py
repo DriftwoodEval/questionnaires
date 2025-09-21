@@ -1,5 +1,6 @@
 import io
 from base64 import b64decode
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -312,12 +313,7 @@ def main():
         logger.critical("No clients found.")
         return
 
-    for _, client in clients_to_process.iterrows():
-        client_name = client["Client Name"]
-        first = client_name.split()[0]
-        last = client_name.split()[-1]
-        client_id = client["Client ID"]
-        new_clients.append(f"{first} {last} {client_id}")
+    today = date.today()
 
     if not new_clients:
         logger.info("No new clients to process.")
@@ -330,14 +326,10 @@ def main():
 
     with TherapyAppointmentBot(services, config) as bot:
         bot.login()
-        for client_name in new_clients:
-            try:
-                first, last, client_id = client_name.split()
-            except ValueError:
-                logger.warning(f"Skipping malformed name: '{client_name}'")
-                append_to_csv_file(Path(FAILURE_FILE), client_name)
-                new_failure_count += 1
-                continue
+        for _, client in clients_to_process.iterrows():
+            client_id = client["Client ID"]
+            client_name = client["Client Name"]
+            asdAdhd = client["For"]
 
             if bot.go_to_client(client_id):
                 try:
@@ -351,10 +343,26 @@ def main():
                     logger.error(
                         f"An error occurred while processing {client_name}: {e}"
                     )
-                    append_to_csv_file(Path(FAILURE_FILE), client_name)
+                    utils.add_simple_to_failure_sheet(
+                        config,
+                        client_id,
+                        asdAdhd,
+                        "Records Request",
+                        str(e),
+                        str(today),
+                        client_name,
+                    )
                     new_failure_count += 1
             else:
-                append_to_csv_file(Path(FAILURE_FILE), client_name)
+                utils.add_simple_to_failure_sheet(
+                    config,
+                    client_id,
+                    asdAdhd,
+                    "Records Request",
+                    "Client not found",
+                    str(today),
+                    client_name,
+                )
                 new_failure_count += 1
 
     logger.info(

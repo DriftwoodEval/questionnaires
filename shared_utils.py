@@ -580,7 +580,7 @@ def add_failure(config: Config, client: dict[str, FailedClient]) -> None:
     update_yaml(client, qfailure_filepath)
     update_yaml(client, qfailsend_filepath)
 
-    add_to_failure_sheet(config, client)
+    add_qfailed_to_failure_sheet(config, client)
 
 
 ### QUESTIONNAIRES ###
@@ -1144,16 +1144,10 @@ def update_punch_by_column(
             update_punch_list(config, client_id, "EVAL Qs Done", "TRUE")
 
 
-def add_to_failure_sheet(config: Config, failed_client_dict: dict[str, FailedClient]):
-    """Adds the given failed client to the failure sheet.
-
-    Args:
-        config: The application configuration.
-        failed_client_dict: A dictionary mapping the client ID to a FailedClient object.
-
-    Raises:
-        Exception: If anything goes wrong.
-    """
+def add_qfailed_to_failure_sheet(
+    config: Config, failed_client_dict: dict[str, FailedClient]
+):
+    """Adds the given failed client to the failure sheet."""
     creds = google_authenticate()
 
     try:
@@ -1180,6 +1174,34 @@ def add_to_failure_sheet(config: Config, failed_client_dict: dict[str, FailedCli
         if questionnaire_links_generated:
             for link in questionnaire_links_generated:
                 body["values"][0].extend([str(link.get("type")), str(link.get("link"))])
+
+        sheet.values().append(
+            spreadsheetId=config.failed_sheet_id,
+            range="clients!A1:Z",
+            body=body,
+            valueInputOption="USER_ENTERED",
+        ).execute()
+
+    except Exception as e:
+        logger.exception(e)
+
+
+def add_simple_to_failure_sheet(
+    config: Config,
+    client_id: str,
+    asdAdhd: str,
+    daEval: str,
+    error: str,
+    failedDate: str,
+    fullName: str,
+):
+    """Adds the information given to the failure sheet."""
+    creds = google_authenticate()
+
+    try:
+        service = build("sheets", "v4", credentials=creds)
+        sheet = service.spreadsheets()
+        body = {"values": [[client_id, asdAdhd, daEval, error, failedDate, fullName]]}
 
         sheet.values().append(
             spreadsheetId=config.failed_sheet_id,
