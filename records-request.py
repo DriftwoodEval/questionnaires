@@ -38,7 +38,6 @@ def get_clients_to_request(config: utils.Config) -> pd.DataFrame | None:
         logger.critical("Punch list is empty")
         return None
 
-    # Filter the punch list to only include clients who need to receive the DA and/or EVAL questionnaires
     punch_list = punch_list[
         (punch_list["Records Needed"] == "TRUE")
         & (punch_list["Records Requested?"] != "TRUE")
@@ -175,6 +174,25 @@ class TherapyAppointmentBot:
         }
         logger.info(f"Client data extracted: {data}")
         return data
+
+    def check_if_opened_portal(self) -> bool:
+        """Check if the TA portal has been opened by the client."""
+        try:
+            self.driver.find_element(By.CSS_SELECTOR, "input[aria-checked='true']")
+            return True
+        except NoSuchElementException:
+            raise Exception("Portal not opened.")
+
+    def check_if_docs_signed(self) -> bool:
+        """Check if the TA docs have been signed by the client."""
+        try:
+            self.driver.find_element(
+                By.XPATH,
+                "//div[contains(normalize-space(text()), 'has completed registration')]",
+            )
+            return True
+        except NoSuchElementException:
+            raise Exception("Docs not signed.")
 
     def download_consent_forms(self, client_data: dict):
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
@@ -324,6 +342,8 @@ def main():
             if bot.go_to_client(client_id):
                 try:
                     client_data = bot.extract_client_data()
+                    bot.check_if_opened_portal()
+                    bot.check_if_docs_signed()
                     bot.download_consent_forms(client_data)
                     append_to_csv_file(Path(SUCCESS_FILE), client_name)
                     new_success_count += 1
