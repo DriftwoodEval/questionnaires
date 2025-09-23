@@ -307,7 +307,6 @@ def main():
     services, config = utils.load_config()
 
     clients_to_process = get_clients_to_request(config)
-    new_clients = []
 
     if clients_to_process is None:
         logger.critical("No clients found.")
@@ -315,11 +314,7 @@ def main():
 
     today = date.today()
 
-    if not new_clients:
-        logger.info("No new clients to process.")
-        return
-
-    logger.info(f"Found {len(new_clients)} new clients to process.")
+    logger.info(f"Found {len(clients_to_process)} new clients to process.")
 
     new_success_count = 0
     new_failure_count = 0
