@@ -308,7 +308,7 @@ def main():
 
     clients_to_process = get_clients_to_request(config)
 
-    if clients_to_process is None:
+    if clients_to_process is None or clients_to_process.empty:
         logger.critical("No clients found.")
         return
 
