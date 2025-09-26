@@ -165,7 +165,7 @@ class AdminEmailInfo(TypedDict):
     failed: list[ClientWithQuestionnaires]
     call: list[ClientWithQuestionnaires]
     completed: list[ClientWithQuestionnaires]
-    api_failure: list[ClientWithQuestionnaires]
+    api_failure: Optional[str]
 
 
 def load_config() -> tuple[Services, Config]:

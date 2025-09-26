@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from time import sleep, strftime, strptime
+from typing import Union
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -1928,7 +1929,9 @@ def write_file(filepath: str, data: str) -> None:
             logger.success("Wrote data to new file")
 
 
-def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bool:
+def check_client_failed(
+    prev_failed_clients: dict, client_info: pd.Series
+) -> tuple[bool, Union[str, None]]:
     """Checks if the client has failed before.
 
     Args:
@@ -1943,7 +1946,7 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
     """
     logger.debug("Checking if client failed previously")
     if prev_failed_clients == {}:
-        return False
+        return (False, None)
 
     client_id = client_info["Client ID"]
     human_friendly_id = client_info["Human Friendly ID"]
@@ -1955,7 +1958,7 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
         elif human_friendly_id in prev_failed_clients:
             client_id_to_use = human_friendly_id
         else:
-            return False
+            return (False, None)
 
         previously_failed = str(client_id_to_use) != ""
 
@@ -1974,17 +1977,17 @@ def check_client_failed(prev_failed_clients: dict, client_info: pd.Series) -> bo
                 or error == "portal not opened"
                 or error == "docs not signed"
             ):
-                return False
+                return (False, error)
             if daeval == "DA":
-                return True
+                return (True, error)
             elif daeval == "EVAL" and prev_daeval == "DA":
-                return False
+                return (False, error)
             elif daeval == "EVAL" and prev_daeval != "DA":
-                return True
+                return (True, error)
             elif daeval == "DAEVAL":
-                return True
+                return (True, error)
 
-    return False
+    return (False, None)
 
 
 def check_client_previous(prev_clients: dict, client_info: pd.Series):
@@ -2065,9 +2068,19 @@ def main():
             continue
 
         if prev_failed_clients != {}:
-            if check_client_failed(prev_failed_clients, client):
+            previously_failed, error = check_client_failed(prev_failed_clients, client)
+            if previously_failed and error is not None:
                 logger.error(
                     f"Client {client['Client Name']} has already failed to send"
+                )
+                utils.add_simple_to_failure_sheet(
+                    config,
+                    client["Client ID"],
+                    client["For"],
+                    client["daEval"],
+                    error,
+                    datetime.today().strftime("%Y/%m/%d"),
+                    client["Client Name"],
                 )
                 continue
 
