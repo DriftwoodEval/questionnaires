@@ -2077,7 +2077,7 @@ def main():
                     config,
                     client["Client ID"],
                     client["For"],
-                    client["daEval"],
+                    client["daeval"],
                     error,
                     datetime.today().strftime("%Y/%m/%d"),
                     client["Client Name"],
@@ -2268,3 +2268,4 @@ def main():
 if __name__ == "__main__":
     logger.add("logs/qsend.log", rotation="500 MB")
     main()
+
