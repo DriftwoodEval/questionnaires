@@ -2,6 +2,7 @@ import base64
 import hashlib
 import os
 import re
+import time
 from datetime import date
 from email.message import EmailMessage
 from time import sleep
@@ -614,20 +615,44 @@ def check_if_rescheduled(client: ClientWithQuestionnaires) -> bool:
     )
 
 
-def check_q_done(driver: WebDriver, q_link: str) -> bool:
+def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
     """Check if a questionnaire linked by `q_link` is completed.
 
     Args:
         driver (WebDriver): The Selenium WebDriver instance.
         q_link (str): The URL of the questionnaire.
+        q_type (str): The type of the questionnaire.
 
     Returns:
         bool: True if the questionnaire is completed, False otherwise.
+
+    Raises:
+        Exception: If the questionnaire type does not match the URL.
     """
     driver.get(q_link)
     wait = WebDriverWait(driver, 15)
 
+    url_patterns = {
+        "ASRS (2-5 Years)": "/asrs_web/",
+        "ASRS (6-18 Years)": "/asrs_web/",
+        "Conners EC": "/CEC/",
+        "DP-4": "respondent.wpspublish.com",
+    }
+
     try:
+        time.sleep(2)
+
+        current_url = driver.current_url
+        # logger.debug(f"Current URL: {current_url}")
+
+        if q_type in url_patterns:
+            expected_pattern = url_patterns[q_type]
+            if expected_pattern not in current_url:
+                error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{current_url}'"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            # logger.debug(f"URL validation passed for type '{q_type}'")
+
         if "mhs.com" in q_link:
             logger.info(f"Checking MHS completion for {q_link}")
             wait.until(
@@ -711,7 +736,9 @@ def check_questionnaires(
             logger.info(
                 f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
             )
-            if check_q_done(driver, questionnaire["link"]):
+            if check_q_done(
+                driver, questionnaire["link"], questionnaire["questionnaireType"]
+            ):
                 questionnaire["status"] = "COMPLETED"
                 logger.info(
                     f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
