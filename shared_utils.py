@@ -636,6 +636,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         "ASRS (2-5 Years)": "/asrs_web/",
         "ASRS (6-18 Years)": "/asrs_web/",
         "Conners EC": "/CEC/",
+        "Conners 4": "/conners4/",
         "DP-4": "respondent.wpspublish.com",
     }
 
