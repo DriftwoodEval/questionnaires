@@ -1,4 +1,5 @@
 import io
+import time
 from base64 import b64decode
 from datetime import date
 from pathlib import Path
@@ -9,10 +10,16 @@ from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
 from nameparser import HumanName
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    NoSuchElementException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.webdriver import WebDriver
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -105,7 +112,6 @@ class TherapyAppointmentBot:
         """Navigates to a specific client in TherapyAppointment."""
         logger.info(f"Searching for client: {client_id}...")
         try:
-            # Wait for the main navigation to be clickable
             clients_button = self.wait.until(
                 EC.element_to_be_clickable(
                     (By.XPATH, "//*[contains(text(), 'Clients')]")
@@ -113,7 +119,6 @@ class TherapyAppointmentBot:
             )
             clients_button.click()
 
-            # Wait for the search form to be ready
             client_id_field = self.wait.until(
                 EC.visibility_of_element_located(
                     (
@@ -129,7 +134,6 @@ class TherapyAppointmentBot:
             )
             search_button.click()
 
-            # Wait for the search result link and click it
             client_link = self.wait.until(
                 EC.element_to_be_clickable(
                     (
@@ -138,7 +142,25 @@ class TherapyAppointmentBot:
                     )
                 )
             )
-            client_link.click()
+            try:
+                client_link.click()
+            except ElementClickInterceptedException:
+                logger.warning(
+                    "Click intercepted by popup, trying ESC and clicking again..."
+                )
+                actions = ActionChains(self.driver)
+                actions.send_keys(Keys.ESCAPE)
+                actions.perform()
+                time.sleep(1)
+                client_link = self.wait.until(
+                    EC.element_to_be_clickable(
+                        (
+                            By.CSS_SELECTOR,
+                            "a[aria-description*='Press Enter to view the profile of']",
+                        )
+                    )
+                )
+                client_link.click()
             return True
         except TimeoutException:
             logger.warning(f"Client not found or search failed for: {client_id}")
