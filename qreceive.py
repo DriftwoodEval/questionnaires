@@ -13,6 +13,7 @@ services, config = utils.load_config()
 
 
 def log_backoff(details):
+    """Logging function for backoff library."""
     logger.debug(
         "Backing off {wait:0.1f} seconds after {tries} tries "
         "calling function {target} with args {args} and kwargs "
@@ -21,6 +22,7 @@ def log_backoff(details):
 
 
 def log_giveup(details):
+    """Logging function for giving up with backoff library."""
     logger.error(
         "Gave up after {tries} tries "
         "calling function {target} with args {args} and kwargs "
@@ -29,6 +31,8 @@ def log_giveup(details):
 
 
 class LimitedRequest:
+    """Custom request class with rate limiting."""
+
     @on_exception(
         expo,
         RateLimitException,
@@ -38,6 +42,7 @@ class LimitedRequest:
     )
     @limits(calls=10, period=1)
     def get(self, url: str, params=None, headers=None, **kwargs) -> requests.Response:
+        """Custom get request with rate limiting."""
         return requests.get(url, params, headers=headers, **kwargs)
 
     @on_exception(
@@ -49,6 +54,7 @@ class LimitedRequest:
     )
     @limits(calls=10, period=1)
     def post(self, url: str, data=None, headers=None, **kwargs) -> requests.Response:
+        """Custom post request with rate limiting."""
         return requests.post(url, data, headers=headers, **kwargs)
 
 
@@ -56,6 +62,7 @@ class NotEnoughCreditsError(requests.HTTPError):
     """Custom exception for when not enough credits are available."""
 
     def __init__(self, *args, **kwargs):
+        """Initializes the NotEnoughCreditsError exception."""
         default_message = (
             "The organization does not have enough prepaid credits to send the message."
         )
@@ -68,6 +75,8 @@ class NotEnoughCreditsError(requests.HTTPError):
 
 
 class OpenPhone:
+    """Custom class for interacting with the OpenPhone API."""
+
     def __init__(self, config: utils.Config, services: utils.Services):
         self.config = config
         self.services = services
@@ -85,6 +94,7 @@ class OpenPhone:
         on_giveup=log_giveup,
     )
     def get_text_info(self, message_id: str) -> dict:
+        """Retrieves information about a text message, retrying exponentially on failure."""
         url = f"https://api.openphone.com/v1/messages/{message_id}"
         headers = {
             "Content-Type": "application/json",
@@ -110,6 +120,7 @@ class OpenPhone:
         on_giveup=log_giveup,
     )
     def check_text_delivered(self, message_id: str) -> bool:
+        """Checks if a text message has been delivered, retrying exponentially on failure."""
         message_info = self.get_text_info(message_id)
         message_status = message_info["status"]
         return message_status == "delivered"
@@ -121,6 +132,7 @@ class OpenPhone:
         from_number: str | None = None,
         user_blame: str | None = None,
     ) -> dict | None:
+        """Sends a text message, retrying exponentially on failure."""
         if from_number is None:
             from_number = self.main_number
         if user_blame is None:
@@ -166,6 +178,7 @@ class OpenPhone:
         from_number: str | None = None,
         user_blame: str | None = None,
     ) -> bool:
+        """Sends a text message and ensures it has been delivered."""
         attempt_text = self.send_text(message, to_number, from_number, user_blame)
         if not attempt_text:
             logger.error(f"Possibly failed to send message {message} to {to_number}")
@@ -186,6 +199,7 @@ def build_message(
     most_recent_q: utils.Questionnaire,
     distance: int,
 ) -> str | None:
+    """Builds the message to be sent to the client."""
     link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
     if distance == 0:
         distance_phrase = "today"
@@ -202,7 +216,7 @@ def build_message(
     elif most_recent_q["reminded"] == 1:
         message = f"Hello, this is {config.name} with Driftwood Evaluation Center. We are waiting for you to complete the questionnaire{'' if link_count == 1 else 's'} sent to you {distance_phrase}. We are unable to schedule your appointment until {'it is' if link_count == 1 else 'they are'} completed in {'its' if link_count == 1 else 'their'} entirety. You can find {'it' if link_count == 1 else 'them'} in the messages tab in our patient portal: https://portal.therapyappointment.com Please reply to this text with any questions. Thank you for your help."
     elif most_recent_q["reminded"] == 2:
-        message = f"This is Driftwood Evaluation Center. We haven't heard from you. If your questionnaire{' is' if link_count == 1 else 's are'} not completed by {(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), we will close out your referral. Reply to this text with any concerns. You can find the questionnaire{'' if link_count == 1 else 's'} in the messages tab in our patient portal: https://portal.therapyappointment.com"
+        message = f"This is Driftwood Evaluation Center. If your questionnaire{' is' if link_count == 1 else 's are'} not completed by {(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), we will close out your referral. Reply to this text with any concerns. You can find the questionnaire{'' if link_count == 1 else 's'} in the messages tab in our patient portal: https://portal.therapyappointment.com"
 
     return message
 
@@ -210,6 +224,7 @@ def build_message(
 def should_send_reminder(
     most_recent_q: utils.Questionnaire, last_reminded_distance: int
 ) -> bool:
+    """Checks if a reminder should be sent to the client, based on the last reminder distance."""
     reminded_count = most_recent_q["reminded"]
 
     reminder_schedule = {
@@ -229,6 +244,7 @@ def should_send_reminder(
 
 
 def main():
+    """Main function for qreceive.py."""
     openphone = OpenPhone(config, services)
     driver, actions = utils.initialize_selenium()
     email_info: utils.AdminEmailInfo = {
