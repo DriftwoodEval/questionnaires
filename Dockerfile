@@ -2,6 +2,15 @@ FROM selenium/standalone-chrome:4 AS base
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 USER root
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    make \
+    libffi-dev \
+    libgdal-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --chmod=555 ./docker/scripts/*.sh .
@@ -11,10 +20,10 @@ ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.
     SUPERCRONIC=supercronic-linux-amd64
 
 RUN curl -fsSLO "$SUPERCRONIC_URL" \
- && echo "${SUPERCRONIC_SHA1SUM}  ${SUPERCRONIC}" | sha1sum -c - \
- && chmod +x "$SUPERCRONIC" \
- && mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}" \
- && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
+    && echo "${SUPERCRONIC_SHA1SUM}  ${SUPERCRONIC}" | sha1sum -c - \
+    && chmod +x "$SUPERCRONIC" \
+    && mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}" \
+    && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
@@ -35,6 +44,6 @@ ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
 # COPY shared_utils.py qmail.py ./
 
 # ENV TZ=America/New_York \
-    # CRON_SCHEDULE="0 13 * * *"
+# CRON_SCHEDULE="0 13 * * *"
 
 # ENTRYPOINT ["/app/entrypoint-qmail.sh"]
