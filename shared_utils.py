@@ -397,7 +397,7 @@ def validate_questionnaires(
     return validated
 
 
-def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
+def get_evaluator_npi(config: Config, evaluator_email) -> Optional[str]:
     """Get the NPI of an evaluator from the database.
 
     Args:
@@ -879,12 +879,12 @@ def send_gmail(
     subject: str,
     to_addr: str,
     from_addr: str,
-    cc_addr: str | None = None,
-    html: str | None = None,
-    pdf_stream0: io.BytesIO | None = None,
-    filename0: str | None = None,
-    pdf_stream1: io.BytesIO | None = None,
-    filename1: str | None = None,
+    cc_addr: Optional[str] = None,
+    html: Optional[str] = None,
+    pdf_stream0: Optional[io.BytesIO] = None,
+    filename0: Optional[str] = None,
+    pdf_stream1: Optional[io.BytesIO] = None,
+    filename1: Optional[str] = None,
 ):
     """Send an email using the Gmail API.
 
@@ -893,12 +893,12 @@ def send_gmail(
         subject (str): The subject of the message
         to_addr (str): The recipient's email address, can be a comma-separated list
         from_addr (str): The sender's email address
-        cc_addr (str | None): The CC recipient's email address, can be a comma-separated list (optional)
-        html (str | None): The HTML version of the message (optional)
-        pdf_stream0 (io.BytesIO | None): Possible pdf attachment taken from memory (optional)
-        filename0 (str | None): Name of pdf0 taken from memory (optional)
-        pdf_stream1 (io.BytesIO | None): Possible pdf attachment taken from memory (optional)
-        filename1 (str | None): Name of pdf1 taken from memory (optional)
+        cc_addr (Optional[str]): The CC recipient's email address, can be a comma-separated list (optional)
+        html (Optional[str]): The HTML version of the message (optional)
+        pdf_stream0 (Optional[io.BytesIO]): Possible pdf attachment taken from memory (optional)
+        filename0 (Optional[str]): Name of pdf0 taken from memory (optional)
+        pdf_stream1 (Optional[io.BytesIO]): Possible pdf attachment taken from memory (optional)
+        filename1 (Optional[str]): Name of pdf1 taken from memory (optional)
     """
     creds = google_authenticate()
 
