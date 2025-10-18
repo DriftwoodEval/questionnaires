@@ -78,42 +78,6 @@ def rearrange_dob(dob: str) -> str:
     return f"{month}/{day}/{year}"
 
 
-def login_ta(
-    driver: WebDriver,
-    actions: ActionChains,
-    services: utils.Services,
-    admin: bool = False,
-) -> None:
-    """Log in to TherapyAppointment.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
-        services (utils.Services): The configuration object containing the TherapyAppointment credentials.
-        admin (bool, optional): Whether to log in as an admin user. Defaults to False.
-    """
-    logger.info("Logging in to TherapyAppointment")
-
-    logger.debug("Going to login page")
-    driver.get("https://portal.therapyappointment.com")
-
-    logger.debug("Entering username")
-    username_field = utils.find_element(driver, By.NAME, "user_username")
-    username_field.send_keys(
-        services["therapyappointment"]["admin_username" if admin else "username"]
-    )
-
-    logger.debug("Entering password")
-    password_field = utils.find_element(driver, By.NAME, "user_password")
-    password_field.send_keys(
-        services["therapyappointment"]["admin_password" if admin else "password"]
-    )
-
-    logger.debug("Submitting login form")
-    actions.send_keys(Keys.ENTER)
-    actions.perform()
-
-
 def login_wps(
     driver: WebDriver, actions: ActionChains, services: utils.Services
 ) -> None:
@@ -1625,81 +1589,6 @@ def gen_caars_2(
     return link, accounts_created
 
 
-def go_to_client(
-    driver: WebDriver, actions: ActionChains, client_id: str
-) -> str | None:
-    """Navigates to the given client in TA and returns the client's URL."""
-
-    def _search_clients(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> None:
-        logger.info(f"Searching for {client_id} on TA")
-        sleep(2)
-
-        logger.debug("Trying to escape random popups")
-        actions.send_keys(Keys.ESCAPE)
-        actions.perform()
-
-        logger.debug("Entering client ID")
-        client_id_label = utils.find_element(
-            driver, By.XPATH, "//label[text()='Account Number']"
-        )
-        client_id_field = client_id_label.find_element(
-            By.XPATH, "./following-sibling::input"
-        )
-        client_id_field.send_keys(client_id)
-
-        logger.debug("Clicking search")
-        utils.click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
-
-    def _go_to_client_loop(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> str:
-        driver.get("https://portal.therapyappointment.com")
-        sleep(1)
-        logger.debug("Navigating to Clients section")
-        utils.click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
-
-        for attempt in range(3):
-            try:
-                _search_clients(driver, actions, client_id)
-                break
-            except Exception as e:
-                if attempt == 2:
-                    logger.exception(f"Failed to search after 3 attempts: {e}")
-                    raise e
-                else:
-                    logger.warning(f"Failed to search: {e}, trying again")
-                    driver.refresh()
-
-        sleep(1)
-
-        logger.debug("Selecting client profile")
-
-        utils.click_element(
-            driver,
-            By.CSS_SELECTOR,
-            "a[aria-description*='Press Enter to view the profile of",
-            max_attempts=1,
-        )
-
-        current_url = driver.current_url
-        logger.success(f"Navigated to client profile: {current_url}")
-        return current_url
-
-    for attempt in range(3):
-        try:
-            return _go_to_client_loop(driver, actions, client_id)
-        except Exception as e:
-            if attempt == 2:
-                logger.exception(f"Failed to go to client after 3 attempts: {e}")
-                return
-            else:
-                logger.warning(f"Failed to go to client: {e}, trying again")
-                driver.refresh()
-    return
-
-
 def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     """Extracts client data from TherapyAppointment client profile page.
 
@@ -1775,28 +1664,6 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     }
 
 
-def check_if_opened_portal(driver: WebDriver) -> bool:
-    """Check if the TA portal has been opened by the client."""
-    try:
-        utils.find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']")
-        return True
-    except NoSuchElementException:
-        return False
-
-
-def check_if_docs_signed(driver: WebDriver) -> bool:
-    """Check if the TA docs have been signed by the client."""
-    try:
-        utils.find_element(
-            driver,
-            By.XPATH,
-            "//div[contains(normalize-space(text()), 'has completed registration')]",
-        )
-        return True
-    except NoSuchElementException:
-        return False
-
-
 def format_ta_message(questionnaires: list[dict]) -> str:
     """Formats the message to be sent in TA."""
     logger.debug("Formatting TA message")
@@ -1856,48 +1723,6 @@ def send_message_ta(
     logger.success("Submitted TA message")
 
 
-def format_failed_client(
-    client: pd.Series,
-    error: str,
-    questionnaires_needed: list[str] | str = "",
-    questionnaire_links_generated: list[dict[str, bool | str]] = [],
-) -> dict[str, utils.FailedClient]:
-    """Formats a client into a dictionary to be written to the failed clients YAML file.
-
-    Args:
-        client (pd.Series): A Pandas Series containing the client's data.
-        error (str): The error message to be written to the file.
-        questionnaires_needed (list[str] | str, optional): The questionnaires that were needed by the client.
-            Defaults to "".
-        questionnaire_links_generated (list[dict[str, bool | str]], optional): The links generated for the client before failing.
-            Defaults to [].
-
-    Returns:
-        dict[str, utils.FailedClient]: A dictionary with the client's ID as the key and a utils.FailedClient object as the value.
-    """
-    key = client["Client ID"] if client["Client ID"] else client["Client Name"]
-    failed_client: utils.FailedClient = {
-        "firstName": client["TA First Name"]
-        if "TA First Name" in client
-        else client["Client Name"].split(" ")[0],
-        "lastName": client["TA Last Name"]
-        if "TA Last Name" in client
-        else client["Client Name"].split(" ")[-1],
-        "fullName": client["Client Name"],
-        "asdAdhd": client.For,
-        "daEval": client.daeval,
-        "failedDate": datetime.today().strftime("%Y/%m/%d"),
-        "error": error,
-        "questionnaires_needed": None,
-        "questionnaire_links_generated": None,
-    }
-    if questionnaires_needed != "":
-        failed_client["questionnaires_needed"] = questionnaires_needed
-    if questionnaire_links_generated != []:
-        failed_client["questionnaire_links_generated"] = questionnaire_links_generated
-    return {key: failed_client}
-
-
 def write_file(filepath: str, data: str) -> None:
     """Writes data to a file, avoiding duplicates.
 
@@ -1930,7 +1755,7 @@ def write_file(filepath: str, data: str) -> None:
 
 
 def check_client_failed(
-    prev_failed_clients: dict, client_info: pd.Series
+    prev_failed_clients: dict[int, utils.FailedClientFromDB], client_info: pd.Series
 ) -> tuple[bool, Union[str, None]]:
     """Checks if the client has failed before.
 
@@ -1942,82 +1767,55 @@ def check_client_failed(
     Returns:
         bool: True if the client has failed before, False if not.
 
-    A client is considered to have failed before if their ID is in the prev_failed_clients dictionary, they are looking at the same appointment type, and the "error" key in the dictionary does not have a value of "too young", "portal not opened", or "docs not signed".
+    A client is considered to have failed before if their ID is in the prev_failed_clients dictionary and they are looking for the same appointment type as before.
     """
     logger.debug("Checking if client failed previously")
     if prev_failed_clients == {}:
         return (False, None)
 
     client_id = client_info["Client ID"]
-    human_friendly_id = client_info["Human Friendly ID"]
     if client_id and isinstance(prev_failed_clients, dict):
-        if int(client_id) in prev_failed_clients:
-            client_id_to_use = int(client_id)
-        elif client_id in prev_failed_clients:
-            client_id_to_use = client_id
-        elif human_friendly_id in prev_failed_clients:
-            client_id_to_use = human_friendly_id
-        else:
+        client_id = int(client_id)
+        if client_id not in prev_failed_clients:
             return (False, None)
 
-        previously_failed = str(client_id_to_use) != ""
+        prev_failed_client = prev_failed_clients[client_id]
 
-        prev_daeval = prev_failed_clients.get(client_id_to_use, {}).get("daEval", None)
-        if prev_daeval is None:
-            prev_daeval = prev_failed_clients.get(client_id_to_use, {}).get(
-                "check", None
-            )
+        if prev_failed_client.failure["reminded"] >= 100:
+            return (False, None)
+
+        prev_daeval = prev_failed_client.failure.get("daEval", None)
         daeval = client_info["daeval"]
 
-        if previously_failed:
-            error = prev_failed_clients.get(client_id_to_use, {}).get("error", None)
-            error = str(error).lower()
-            if (
-                error == "too young"
-                or error == "portal not opened"
-                or error == "docs not signed"
-            ):
-                return (False, error)
-            if daeval == "DA":
-                return (True, error)
-            elif daeval == "EVAL" and prev_daeval == "DA":
-                return (False, error)
-            elif daeval == "EVAL" and prev_daeval != "DA":
-                return (True, error)
-            elif daeval == "DAEVAL":
-                return (True, error)
+        error = prev_failed_client.failure.get("reason", None)
+        error = str(error).lower()
+        if daeval == "DA":
+            return (True, error)
+        elif daeval == "EVAL" and prev_daeval == "DA":
+            return (False, error)
+        elif daeval == "EVAL" and prev_daeval != "DA":
+            return (True, error)
+        elif daeval == "DAEVAL":
+            return (True, error)
 
     return (False, None)
 
 
-def check_client_previous(prev_clients: dict, client_info: pd.Series):
+def check_client_previous(
+    prev_clients: dict[int, utils.ClientFromDB], client_info: pd.Series
+):
     """Check if a client has any questionnaires from a previous run.
-
-    Args:
-        prev_clients (dict): A dictionary of clients from a previous run.
-        client_info (pd.Series): A Pandas Series containing the client to be checked's data.
 
     Returns:
         list | None: A list of questionnaires for the client, if the client was found in the previous clients dictionary and had questionnaires. Otherwise, None.
     """
-    if prev_clients is None:
-        return False
+    if not prev_clients:
+        return None
 
-    client_id = client_info["Client ID"]
-    human_friendly_id = client_info["Human Friendly ID"]
+    client_id = int(client_info["Client ID"])
 
-    if client_id and isinstance(prev_clients, dict):
-        if int(client_id) in prev_clients:
-            client_id_to_use = int(client_id)
-        elif client_id in prev_clients:
-            client_id_to_use = client_id
-        elif human_friendly_id in prev_clients:
-            client_id_to_use = human_friendly_id
-        else:
-            return False
-        questionnaires = prev_clients.get(client_id_to_use, {}).get(
-            "questionnaires", []
-        )
+    if client_id in prev_clients:
+        questionnaires = prev_clients[client_id].questionnaires
         return questionnaires if questionnaires else None
 
 
@@ -2049,7 +1847,10 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    for login in [login_ta, login_wps, login_qglobal, login_mhs]:
+    for login in [
+        utils.login_ta
+        #   , login_wps, login_qglobal, login_mhs
+    ]:
         while True:
             try:
                 login(driver, actions, services)
@@ -2060,212 +1861,302 @@ def main():
                 sleep(1)
 
     for _, client in clients.iterrows():
-        logger.info(f"Starting loop for {client['Client Name']}")
+        if client["Client Name"] == "Johnny Smonny":
+            logger.info(f"Starting loop for {client['Client Name']}")
 
-        if pd.isna(client["Client ID"]) or not client["Client ID"]:
-            logger.error(f"Client {client['Client Name']} is missing Client ID")
-            utils.add_failure(config, format_failed_client(client, "Missing Client ID"))
-            continue
-
-        if prev_failed_clients != {}:
-            previously_failed, error = check_client_failed(prev_failed_clients, client)
-            if previously_failed and error is not None:
-                logger.error(
-                    f"Client {client['Client Name']} has already failed to send"
+            if prev_failed_clients != {}:
+                previously_failed, error = check_client_failed(
+                    prev_failed_clients, client
                 )
-                utils.add_simple_to_failure_sheet(
-                    config,
-                    client["Client ID"],
-                    client["For"],
-                    client["daeval"],
-                    error,
-                    datetime.today().strftime("%Y/%m/%d"),
-                    client["Client Name"],
-                )
-                continue
-
-        if client["Language"] != "" and client["Language"] != "English":
-            logger.error(f"Client {client['Client Name']} doesn't speak English")
-            utils.add_failure(config, format_failed_client(client, client["Language"]))
-            continue
-
-        try:
-            client_url = go_to_client(driver, actions, client["Client ID"])
-
-            if not client_url:
-                logger.error("Client URL not found")
-                utils.add_failure(
-                    config, format_failed_client(client, "Unable to find client")
-                )
-                continue
-            if not check_if_opened_portal(driver):
-                utils.add_failure(
-                    config, format_failed_client(client, "Portal not opened")
-                )
-                continue
-            if not check_if_docs_signed(driver):
-                utils.add_failure(
-                    config, format_failed_client(client, "Docs not signed")
-                )
-                continue
-
-            client_info = extract_client_data(driver)
-            client["Date of Birth"] = client_info["birthdate"]
-            client["Age"] = client_info["age"]
-            client["Gender"] = client_info["gender"]
-            client["Phone Number"] = client_info["phone_number"]
-            client["TA First Name"] = client_info["firstname"]
-            client["TA Last Name"] = client_info["lastname"]
-
-        except NoSuchElementException as e:
-            logger.exception(f"Element not found: {e}")
-            utils.add_failure(
-                config, format_failed_client(client, "Unable to find client")
-            )
-            continue
-
-        write_file(
-            "./put/records.txt",
-            f"{client['Client Name']} {client['Client ID']} {datetime.today().strftime('%Y/%m/%d')}",
-        )
-
-        try:
-            accounts_created = {}
-            if int(client["Age"]) < 19 and client["daeval"] != "DA":
-                accounts_created["qglobal"] = check_for_qglobal_account(
-                    driver, actions, client
-                )
-            else:
-                accounts_created["qglobal"] = False
-
-            questionnaires_needed = get_questionnaires(
-                client["Age"],
-                client["For"],
-                client["daeval"],
-                accounts_created["qglobal"],
-            )
-
-            if str(questionnaires_needed) == "Too young":
-                logger.error(f"Client {client['Client Name']} is too young")
-                utils.add_failure(config, format_failed_client(client, "Too young"))
-                continue
-
-            if str(questionnaires_needed) == "Unknown":
-                logger.error(
-                    f"Client {client['Client Name']} has unknown questionnaire needs"
-                )
-                utils.add_failure(
-                    config, format_failed_client(client, "Unknown questionnaire needs")
-                )
-                continue
-
-            if prev_clients != {}:
-                previous_questionnaires = check_client_previous(prev_clients, client)
-
-                if previous_questionnaires:
-                    previous_questionnaire_types = [
-                        q["questionnaireType"] for q in previous_questionnaires
-                    ]
-                    overlapping_questionnaires = [
-                        q
-                        for q in questionnaires_needed
-                        if q in previous_questionnaire_types
-                    ]
-                    if overlapping_questionnaires:
+                if previously_failed and error is not None:
+                    client["Previous Error"] = error
+                    if error not in [
+                        "too young",
+                        "portal not opened",
+                        "docs not signed",
+                    ]:
                         logger.error(
-                            f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
+                            f"Client {client['Client Name']} has already failed to send"
                         )
                         utils.add_failure(
                             config,
-                            format_failed_client(
-                                client,
-                                f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
-                                questionnaires_needed,
-                            ),
+                            client["Client ID"],
+                            error.lower(),
+                            datetime.today(),
+                            client["Client Name"],
+                            client["For"],
+                            client["daeval"],
                         )
+
                         continue
 
-            logger.info(
-                f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
-            )
-
-            questionnaires = []
-            send = True
-            for questionnaire in questionnaires_needed:
-                try:
-                    link, accounts_created = assign_questionnaire(
-                        driver,
-                        actions,
-                        config,
-                        client,
-                        questionnaire,
-                        accounts_created,
-                    )
-                except Exception as e:  # noqa: E722
-                    logger.exception(f"Error assigning {questionnaire}: {e}")
-
-                    utils.add_failure(
-                        config,
-                        format_failed_client(
-                            client,
-                            "Error assigning questionnaires",
-                            questionnaires_needed,
-                            questionnaire_links_generated=questionnaires,
-                        ),
-                    )
-                    send = False
-                    continue
-
-                if link is None or link == "":
-                    logger.error(f"Gap in elif statement for {questionnaire}")
-                    utils.add_failure(
-                        config,
-                        format_failed_client(
-                            client,
-                            "Gap in elif statement",
-                            questionnaires_needed,
-                            questionnaire_links_generated=questionnaires,
-                        ),
-                    )
-                    send = False
-                    continue
-
-                questionnaires.append(
-                    {"done": False, "link": link, "type": questionnaire}
-                )
-
-            if send:
-                utils.insert_basic_client(
+            if client["Language"] != "" and client["Language"] != "English":
+                logger.error(f"Client {client['Client Name']} doesn't speak English")
+                utils.add_failure(
                     config,
                     client["Client ID"],
-                    client["Date of Birth"],
-                    client["TA First Name"],
-                    client["TA Last Name"],
+                    client["Language"].lower(),
+                    datetime.today(),
+                    client["Client Name"],
                     client["For"],
-                    client["Gender"],
-                    client["Phone Number"],
+                    client["daeval"],
                 )
-                utils.update_punch_by_column(
-                    config, client["Client ID"], client["daeval"], "sent"
-                )
-                for questionnaire in questionnaires:
-                    utils.put_questionnaire_in_db(
+                continue
+
+            try:
+                client_url = utils.go_to_client(driver, actions, client["Client ID"])
+
+                if not client_url:
+                    logger.error("Client URL not found")
+                    utils.add_failure(
                         config,
                         client["Client ID"],
-                        questionnaire["link"],
-                        questionnaire["type"],
-                        datetime.today().strftime("%Y-%m-%d"),
-                        "PENDING",
+                        "unable to find client",
+                        datetime.today(),
+                        client["Client Name"],
+                        client["For"],
+                        client["daeval"],
+                    )
+                    continue
+                if not utils.check_if_opened_portal(driver):
+                    utils.add_failure(
+                        config,
+                        client["Client ID"],
+                        "portal not opened",
+                        datetime.today(),
+                        client["Client Name"],
+                        client["For"],
+                        client["daeval"],
+                    )
+                    continue
+                else:
+                    if client.get("Previous Error") == "portal not opened":
+                        utils.update_failure_in_db(
+                            config,
+                            client["Client ID"],
+                            client["daeval"],
+                            client["Previous Error"],
+                            resolved=True,
+                        )
+
+                if not utils.check_if_docs_signed(driver):
+                    utils.add_failure(
+                        config,
+                        client["Client ID"],
+                        "docs not signed",
+                        datetime.today(),
+                        client["Client Name"],
+                        client["For"],
+                        client["daeval"],
+                    )
+                    continue
+                else:
+                    if client.get("Previous Error") == "docs not signed":
+                        utils.update_failure_in_db(
+                            config,
+                            client["Client ID"],
+                            client["daeval"],
+                            client["Previous Error"],
+                            resolved=True,
+                        )
+
+                client_info = extract_client_data(driver)
+                client["Date of Birth"] = client_info["birthdate"]
+                client["Age"] = client_info["age"]
+                client["Gender"] = client_info["gender"]
+                client["Phone Number"] = client_info["phone_number"]
+                client["TA First Name"] = client_info["firstname"]
+                client["TA Last Name"] = client_info["lastname"]
+
+            except NoSuchElementException as e:
+                logger.exception(f"Element not found: {e}")
+                utils.add_failure(
+                    config,
+                    client["Client ID"],
+                    "unable to find client",
+                    datetime.today(),
+                    client["Client Name"],
+                    client["For"],
+                    client["daeval"],
+                )
+                continue
+
+            write_file(
+                "./put/records.txt",
+                f"{client['Client Name']} {client['Client ID']} {datetime.today().strftime('%Y/%m/%d')}",
+            )
+
+            try:
+                accounts_created = {}
+                if int(client["Age"]) < 19 and client["daeval"] != "DA":
+                    accounts_created["qglobal"] = check_for_qglobal_account(
+                        driver, actions, client
+                    )
+                else:
+                    accounts_created["qglobal"] = False
+
+                questionnaires_needed = get_questionnaires(
+                    client["Age"],
+                    client["For"],
+                    client["daeval"],
+                    accounts_created["qglobal"],
+                )
+
+                if str(questionnaires_needed) == "Too young":
+                    logger.error(f"Client {client['Client Name']} is too young")
+                    utils.add_failure(
+                        config,
+                        client["Client ID"],
+                        "too young",
+                        datetime.today(),
+                        client["Client Name"],
+                        client["For"],
+                        client["daeval"],
+                    )
+                    continue
+
+                if str(questionnaires_needed) == "Unknown":
+                    logger.error(
+                        f"Client {client['Client Name']} has unknown questionnaire needs"
+                    )
+                    utils.add_failure(
+                        config,
+                        client["Client ID"],
+                        "unknown questionnaire needs",
+                        datetime.today(),
+                        client["Client Name"],
+                        client["For"],
+                        client["daeval"],
+                    )
+                    continue
+
+                if prev_clients != {}:
+                    previous_questionnaires = check_client_previous(
+                        prev_clients, client
                     )
 
-                message = format_ta_message(questionnaires)
-                send_message_ta(driver, client_url, message)
-        except NoSuchElementException as e:
-            logger.exception(f"Element not found: {e}")
-            utils.add_failure(config, format_failed_client(client, "Unknown error"))
+                    if previous_questionnaires:
+                        previous_questionnaire_types = [
+                            q["questionnaireType"] for q in previous_questionnaires
+                        ]
+                        overlapping_questionnaires = [
+                            q
+                            for q in questionnaires_needed
+                            if q in previous_questionnaire_types
+                        ]
+                        if overlapping_questionnaires:
+                            logger.error(
+                                f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
+                            )
+                            utils.add_failure(
+                                config,
+                                client["Client ID"],
+                                f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
+                                datetime.today(),
+                                client["Client Name"],
+                                client["For"],
+                                client["daeval"],
+                                questionnaires_needed
+                                if type(questionnaires_needed) is list
+                                else [],
+                            )
+                            continue
+
+                logger.info(
+                    f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
+                )
+
+                questionnaires = []
+                send = True
+                for questionnaire in questionnaires_needed:
+                    try:
+                        link, accounts_created = assign_questionnaire(
+                            driver,
+                            actions,
+                            config,
+                            client,
+                            questionnaire,
+                            accounts_created,
+                        )
+                    except Exception as e:  # noqa: E722
+                        logger.exception(f"Error assigning {questionnaire}: {e}")
+
+                        # TODO 🫠: see if generated questionnaires make it in
+                        utils.add_failure(
+                            config,
+                            client["Client ID"],
+                            f"Error assigning {questionnaire}: {e}",
+                            datetime.today(),
+                            client["Client Name"],
+                            client["For"],
+                            client["daeval"],
+                            questionnaires_needed
+                            if type(questionnaires_needed) is list
+                            else [],
+                            questionnaires,
+                        )
+                        send = False
+                        continue
+
+                    if link is None or link == "":
+                        logger.error(f"No link grabbed for {questionnaire}")
+                        utils.add_failure(
+                            config,
+                            client["Client ID"],
+                            f"No link grabbed for {questionnaire}",
+                            datetime.today(),
+                            client["Client Name"],
+                            client["For"],
+                            client["daeval"],
+                            questionnaires_needed
+                            if type(questionnaires_needed) is list
+                            else [],
+                            questionnaires,
+                        )
+                        send = False
+                        continue
+
+                    questionnaires.append({"link": link, "type": questionnaire})
+
+                if send:
+                    utils.insert_basic_client(
+                        config,
+                        client["Client ID"],
+                        client["Date of Birth"],
+                        client["TA First Name"],
+                        client["TA Last Name"],
+                        client["For"],
+                        client["Gender"],
+                        client["Phone Number"],
+                    )
+                    utils.update_punch_by_column(
+                        config, client["Client ID"], client["daeval"], "sent"
+                    )
+                    for questionnaire in questionnaires:
+                        utils.put_questionnaire_in_db(
+                            config,
+                            client["Client ID"],
+                            questionnaire["link"],
+                            questionnaire["type"],
+                            datetime.today().strftime("%Y-%m-%d"),
+                            "PENDING",
+                        )
+
+                    message = format_ta_message(questionnaires)
+                    send_message_ta(driver, client_url, message)
+            except Exception as e:
+                logger.exception(e)
+                utils.add_failure(
+                    config,
+                    client["Client ID"],
+                    str(e),
+                    datetime.today(),
+                    client["Client Name"],
+                    client["For"],
+                    client["daeval"],
+                )
 
 
 if __name__ == "__main__":
     logger.add("logs/qsend.log", rotation="500 MB")
     main()
-

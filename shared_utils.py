@@ -7,7 +7,7 @@ import time
 from datetime import date
 from email.message import EmailMessage
 from time import sleep
-from typing import Annotated, Literal, Optional, TypedDict
+from typing import Annotated, Literal, Optional, TypedDict, Union
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -34,6 +34,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
@@ -117,6 +118,15 @@ class Questionnaire(TypedDict):
     lastReminded: Optional[date]
 
 
+class Failure(TypedDict):
+    """A TypedDict containing information about a failure."""
+
+    failedDate: date
+    reason: str
+    reminded: int
+    lastReminded: Optional[date]
+
+
 class FailedClient(TypedDict):
     """A TypedDict containing information about a failed client."""
 
@@ -146,7 +156,7 @@ class _ClientBase(BaseModel):
 class ClientFromDB(_ClientBase):
     """A Pydantic model representing a client from the database."""
 
-    questionnaires: Optional[list[Questionnaire]]
+    questionnaires: Optional[list[Questionnaire]] = None
 
 
 class ClientWithQuestionnaires(_ClientBase):
@@ -162,12 +172,26 @@ class ClientWithQuestionnaires(_ClientBase):
         return v
 
 
+class FailedClientFromDB(ClientFromDB):
+    """A Pydantic model representing a failed client from the database."""
+
+    failure: Failure
+    note: Optional[dict] = None
+
+    @field_validator("failure")
+    def validate_failure(cls, v: Failure) -> Failure:
+        """Validate that the client has a failure."""
+        if not v:
+            raise ValueError("Client has no failure")
+        return v
+
+
 class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
     ignoring: list[ClientWithQuestionnaires]
-    failed: list[ClientWithQuestionnaires]
-    call: list[ClientWithQuestionnaires]
+    failed: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
+    call: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
     completed: list[ClientWithQuestionnaires]
     api_failure: Optional[str]
 
@@ -326,30 +350,19 @@ def get_db(config: Config):
 
 def get_previous_clients(
     config: Config, failed: bool = False
-) -> tuple[dict[int | str, ClientFromDB], dict[int | str, ClientFromDB]]:
+) -> tuple[dict[int, ClientFromDB], dict[int, FailedClientFromDB]]:
     """Load previous clients from the database and a YAML file.
 
     Args:
         config (Config): The configuration object.
-        failed (bool, optional): Whether to load failed clients from the YAML file. Defaults to False.
-
-    Returns:
-        tuple[dict[int | str, ClientFromDB], dict[int | str, ClientFromDB]]: A tuple containing two dictionaries.
-            The first dictionary contains clients loaded from the database.
-            The second dictionary contains failed clients loaded from the YAML file.
+        failed (bool, optional): Whether to load failed clients. Defaults to False.
     """
     logger.info(
         f"Loading previous clients from DB{' and failed clients' if failed else ''}"
     )
-    qfailure_filepath = "./put/qfailure.yml"
     failed_prev_clients = {}
     if failed:
-        # Load failed clients from the YAML file
-        try:
-            with open(qfailure_filepath, "r") as file:
-                failed_prev_clients = yaml.safe_load(file) or {}
-        except FileNotFoundError:
-            logger.info(f"{qfailure_filepath} does not exist.")
+        failed_prev_clients = get_failures_from_db(config)
 
     # Load clients from the database
     db_connection = get_db(config)
@@ -379,9 +392,42 @@ def get_previous_clients(
     return prev_clients, failed_prev_clients
 
 
+def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
+    """Get the failed clients from the database."""
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = "SELECT * FROM emr_failure"
+            cursor.execute(sql)
+            failures = cursor.fetchall()
+
+            sql = "SELECT * FROM emr_client"
+            cursor.execute(sql)
+            clients = cursor.fetchall()
+
+            sql = "SELECT * FROM emr_note"
+            cursor.execute(sql)
+            notes = cursor.fetchall()
+
+            for failure in failures:
+                for client in clients:
+                    if failure["clientId"] == client["id"]:
+                        client["failure"] = failure
+            for note in notes:
+                for client in clients:
+                    if note["clientId"] == client["id"]:
+                        client["note"] = note
+
+    failed_clients = {}
+    for client in clients:
+        if "failure" in client and client["failure"]["reminded"] < 100:
+            failed_clients[client["id"]] = {key: value for key, value in client.items()}
+    return failed_clients
+
+
 def validate_questionnaires(
-    clients: dict[int | str, ClientFromDB],
-) -> dict[int | str, ClientWithQuestionnaires]:
+    clients: dict[int, ClientFromDB],
+) -> dict[int, ClientWithQuestionnaires]:
     """Validate clients from the database and convert them to ClientWithQuestionnaires.
 
     Returns:
@@ -537,6 +583,67 @@ def update_questionnaires_in_db(
                     db_connection.commit()
 
 
+def add_failure_to_db(
+    config: Config,
+    client_id: int,
+    error: str,
+    failed_date: date,
+    da_eval: Optional[Literal["DA", "EVAL", "DA+EVAL"]] = None,
+):
+    """Adds the information given to the DB."""
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = "INSERT INTO emr_failure (clientId, daEval, reason, failedDate) VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE clientId=clientId"
+            values = (client_id, da_eval, error, failed_date)
+            cursor.execute(sql, values)
+            db_connection.commit()
+
+
+def update_failure_in_db(
+    config: Config,
+    client_id: int,
+    reason: str,
+    da_eval: Optional[Literal["DA", "EVAL", "DA+EVAL"]] = None,
+    resolved: Optional[bool] = None,
+    failed_date: Optional[date] = None,
+    reminded: Optional[int] = None,
+    last_reminded: Optional[date] = None,
+):
+    """Updates the failure in the DB."""
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = "UPDATE emr_failure SET "
+            values = ()
+
+            updates = []
+            if da_eval is not None:
+                updates.append("daEval=%s")
+                values += (da_eval,)
+
+            if failed_date is not None:
+                updates.append("failedDate=%s")
+                values += (failed_date,)
+
+            if resolved is True:
+                updates.append("reminded=reminded + 100")
+            elif reminded is not None:
+                updates.append("reminded=%s")
+                values += (reminded,)
+
+            if last_reminded is not None:
+                updates.append("lastReminded=%s")
+                values += (last_reminded,)
+
+            sql += ", ".join(updates)
+            sql += " WHERE clientId=%s AND reason=%s"
+            values += (client_id, reason)
+
+            cursor.execute(sql, values)
+            db_connection.commit()
+
+
 def update_yaml(clients: dict, filepath: str) -> None:
     """Update a YAML file with a given dictionary.
 
@@ -568,23 +675,37 @@ def update_yaml(clients: dict, filepath: str) -> None:
             yaml.dump(current_yaml, file, default_flow_style=False)
 
 
-def add_failure(config: Config, client: dict[str, FailedClient]) -> None:
-    """Add a client to the failure YAML files and the failure sheet.
+def add_failure(
+    config: Config,
+    client_id: int,
+    error: str,
+    failed_date: date,
+    full_name: str,
+    asd_adhd: Optional[str] = None,
+    da_eval: Optional[Literal["DA", "EVAL", "DA+EVAL"]] = None,
+    questionnaires_needed: Optional[list[str]] = None,
+    questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
+) -> None:
+    """Add a client to the failure sheet and database."""
+    add_qfailed_to_failure_sheet(
+        config,
+        client_id,
+        error,
+        failed_date,
+        full_name,
+        asd_adhd,
+        da_eval,
+        questionnaires_needed,
+        questionnaire_links_generated,
+    )
 
-    Args:
-        config (Config): The configuration object.
-        client (dict[str, FailedClient]): The client to add to the failure files and sheet.
-
-    Returns:
-        None
-    """
-    qfailure_filepath = "./put/qfailure.yml"
-    qfailsend_filepath = "./put/qfailsend.yml"
-
-    update_yaml(client, qfailure_filepath)
-    update_yaml(client, qfailsend_filepath)
-
-    add_qfailed_to_failure_sheet(config, client)
+    add_failure_to_db(
+        config,
+        client_id,
+        error,
+        failed_date,
+        da_eval,
+    )
 
 
 ### QUESTIONNAIRES ###
@@ -707,14 +828,14 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 def check_questionnaires(
     driver: WebDriver,
     config: Config,
-    clients: dict[int | str, ClientWithQuestionnaires],
+    clients: dict[int, ClientWithQuestionnaires],
 ) -> list[ClientWithQuestionnaires]:
     """Check if all questionnaires for the given clients are completed. This function will navigate to each questionnaire link and look for specific text on the page based on the URL.
 
     Args:
         driver (WebDriver): The Selenium WebDriver instance used for browser automation.
         config (Config): The configuration object.
-        clients (dict[int | str, ClientWithQuestionnaires]): A dictionary of clients with their IDs as keys and ClientWithQuestionnaires objects as values.
+        clients (dict[int, ClientWithQuestionnaires]): A dictionary of clients with their IDs as keys and ClientWithQuestionnaires objects as values.
 
     Returns:
         list[ClientWithQuestionnaires]: A list of clients whose questionnaires are all completed.
@@ -996,8 +1117,14 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             + "\n".join(
                 [
                     f"- {client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
+                    if isinstance(client, ClientWithQuestionnaires)
+                    else f"- {client.fullName} ({client.failure['reason'].capitalize()} on {client.failure['failedDate'].strftime('%m/%d')}, reminded {str(client.failure['reminded']) + ' times'})"
                     for client in email_info["call"]
-                    if (most_recent_q := get_most_recent_not_done(client))
+                    if (
+                        most_recent_q := get_most_recent_not_done(client)
+                        if isinstance(client, ClientWithQuestionnaires)
+                        else None
+                    )
                 ]
             )
             + "\n"
@@ -1006,8 +1133,14 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             "<h2>Call</h2><ul><li>"
             + "</li><li>".join(
                 f"{client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
+                if isinstance(client, ClientWithQuestionnaires)
+                else f"{client.fullName} ({client.failure['reason'].capitalize()} on {client.failure['failedDate'].strftime('%m/%d')}, reminded {str(client.failure['reminded']) + ' times'})"
                 for client in email_info["call"]
-                if (most_recent_q := get_most_recent_not_done(client))
+                if (
+                    most_recent_q := get_most_recent_not_done(client)
+                    if isinstance(client, ClientWithQuestionnaires)
+                    else None
+                )
             )
             + "</li></ul>"
         )
@@ -1191,7 +1324,15 @@ def update_punch_by_column(
 
 
 def add_qfailed_to_failure_sheet(
-    config: Config, failed_client_dict: dict[str, FailedClient]
+    config: Config,
+    client_id: int,
+    error: str,
+    failed_date: date,
+    full_name: str,
+    asd_adhd: Optional[str] = None,
+    da_eval: Optional[str] = None,
+    questionnaires_needed: Optional[list[str]] = None,
+    questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
 ):
     """Adds the given failed client to the failure sheet."""
     creds = google_authenticate()
@@ -1199,24 +1340,20 @@ def add_qfailed_to_failure_sheet(
     try:
         service = build("sheets", "v4", credentials=creds)
         sheet = service.spreadsheets()
-        client_id, failed_client = next(iter(failed_client_dict.items()))
         body = {
             "values": [
                 [
                     client_id,
-                    failed_client["asdAdhd"],
-                    failed_client["daEval"],
-                    failed_client["error"],
-                    failed_client["failedDate"],
-                    failed_client["fullName"],
-                    ", ".join(failed_client.get("questionnaires_needed", []) or []),
+                    asd_adhd,
+                    da_eval,
+                    error,
+                    failed_date,
+                    full_name,
+                    ", ".join(questionnaires_needed or []),
                 ]
             ]
         }
 
-        questionnaire_links_generated = failed_client.get(
-            "questionnaire_links_generated"
-        )
         if questionnaire_links_generated:
             for link in questionnaire_links_generated:
                 body["values"][0].extend([str(link.get("type")), str(link.get("link"))])
@@ -1227,42 +1364,6 @@ def add_qfailed_to_failure_sheet(
             body=body,
             valueInputOption="USER_ENTERED",
         ).execute()
-
-    except Exception as e:
-        logger.exception(e)
-
-
-def add_simple_to_failure_sheet(
-    config: Config,
-    client_id: str,
-    asdAdhd: str,
-    type: str,
-    error: str,
-    failedDate: str,
-    fullName: str,
-):
-    """Adds the information given to the failure sheet."""
-    creds = google_authenticate()
-
-    try:
-        service = build("sheets", "v4", credentials=creds)
-        sheet = service.spreadsheets()
-        body = {"values": [[client_id, asdAdhd, type, error, failedDate, fullName]]}
-
-        if type == "Records Request":
-            sheet.values().append(
-                spreadsheetId=config.failed_sheet_id,
-                range="records!A1:Z",
-                body=body,
-                valueInputOption="USER_ENTERED",
-            ).execute()
-        else:
-            sheet.values().append(
-                spreadsheetId=config.failed_sheet_id,
-                range="questionnaires!A1:Z",
-                body=body,
-                valueInputOption="USER_ENTERED",
-            ).execute()
 
     except Exception as e:
         logger.exception(e)
@@ -1284,4 +1385,149 @@ def move_file_in_drive(service, file_id: str, dest_folder_id: str):
             fields="id, parents",
         )
         .execute()
+    )
+
+
+def login_ta(
+    driver: WebDriver,
+    actions: ActionChains,
+    services: Services,
+    admin: bool = False,
+) -> None:
+    """Log in to TherapyAppointment.
+
+    Args:
+        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
+        actions (ActionChains): The ActionChains instance used for simulating user actions.
+        services (Services): The configuration object containing the TherapyAppointment credentials.
+        admin (bool, optional): Whether to log in as an admin user. Defaults to False.
+    """
+    logger.info("Logging in to TherapyAppointment")
+
+    logger.debug("Going to login page")
+    driver.get("https://portal.therapyappointment.com")
+
+    logger.debug("Entering username")
+    username_field = find_element(driver, By.NAME, "user_username")
+    username_field.send_keys(
+        services["therapyappointment"]["admin_username" if admin else "username"]
+    )
+
+    logger.debug("Entering password")
+    password_field = find_element(driver, By.NAME, "user_password")
+    password_field.send_keys(
+        services["therapyappointment"]["admin_password" if admin else "password"]
+    )
+
+    logger.debug("Submitting login form")
+    actions.send_keys(Keys.ENTER)
+    actions.perform()
+
+
+def go_to_client(
+    driver: WebDriver, actions: ActionChains, client_id: str
+) -> str | None:
+    """Navigates to the given client in TA and returns the client's URL."""
+
+    def _search_clients(
+        driver: WebDriver, actions: ActionChains, client_id: str
+    ) -> None:
+        logger.info(f"Searching for {client_id} on TA")
+        sleep(2)
+
+        logger.debug("Trying to escape random popups")
+        actions.send_keys(Keys.ESCAPE)
+        actions.perform()
+
+        logger.debug("Entering client ID")
+        client_id_label = find_element(
+            driver, By.XPATH, "//label[text()='Account Number']"
+        )
+        client_id_field = client_id_label.find_element(
+            By.XPATH, "./following-sibling::input"
+        )
+        client_id_field.send_keys(client_id)
+
+        logger.debug("Clicking search")
+        click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
+
+    def _go_to_client_loop(
+        driver: WebDriver, actions: ActionChains, client_id: str
+    ) -> str:
+        driver.get("https://portal.therapyappointment.com")
+        sleep(1)
+        logger.debug("Navigating to Clients section")
+        click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
+
+        for attempt in range(3):
+            try:
+                _search_clients(driver, actions, client_id)
+                break
+            except Exception as e:
+                if attempt == 2:
+                    logger.exception(f"Failed to search after 3 attempts: {e}")
+                    raise e
+                else:
+                    logger.warning(f"Failed to search: {e}, trying again")
+                    driver.refresh()
+
+        sleep(1)
+
+        logger.debug("Selecting client profile")
+
+        click_element(
+            driver,
+            By.CSS_SELECTOR,
+            "a[aria-description*='Press Enter to view the profile of",
+            max_attempts=1,
+        )
+
+        current_url = driver.current_url
+        logger.success(f"Navigated to client profile: {current_url}")
+        return current_url
+
+    for attempt in range(3):
+        try:
+            return _go_to_client_loop(driver, actions, client_id)
+        except Exception as e:
+            if attempt == 2:
+                logger.exception(f"Failed to go to client after 3 attempts: {e}")
+                return
+            else:
+                logger.warning(f"Failed to go to client: {e}, trying again")
+                driver.refresh()
+    return
+
+
+def check_if_opened_portal(driver: WebDriver) -> bool:
+    """Check if the TA portal has been opened by the client."""
+    try:
+        find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']")
+        return True
+    except NoSuchElementException:
+        return False
+
+
+def check_if_docs_signed(driver: WebDriver) -> bool:
+    """Check if the TA docs have been signed by the client."""
+    try:
+        find_element(
+            driver,
+            By.XPATH,
+            "//div[contains(normalize-space(text()), 'has completed registration')]",
+        )
+        return True
+    except NoSuchElementException:
+        return False
+
+
+def resend_portal_invite(
+    driver: WebDriver, actions: ActionChains, client_id: str
+) -> None:
+    """Resend the TA portal invite to the client."""
+    go_to_client(driver, actions, client_id)
+    click_element(
+        driver,
+        By.XPATH,
+        "//span[contains(normalize-space(text()), 'Resend Portal Invitation')]",
     )

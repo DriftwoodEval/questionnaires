@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 import requests
 from backoff import expo, on_exception, on_predicate
+from dateutil.relativedelta import relativedelta
 from loguru import logger
 from ratelimit import RateLimitException, limits
 
@@ -193,13 +194,13 @@ class OpenPhone:
             return False
 
 
-def build_message(
+def build_q_message(
     config: utils.Config,
     client: utils.ClientWithQuestionnaires,
     most_recent_q: utils.Questionnaire,
     distance: int,
 ) -> str | None:
-    """Builds the message to be sent to the client."""
+    """Builds the message to be sent to the client based on their most recent questionnaire."""
     link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
     if distance == 0:
         distance_phrase = "today"
@@ -221,12 +222,21 @@ def build_message(
     return message
 
 
-def should_send_reminder(
-    most_recent_q: utils.Questionnaire, last_reminded_distance: int
-) -> bool:
-    """Checks if a reminder should be sent to the client, based on the last reminder distance."""
-    reminded_count = most_recent_q["reminded"]
+def build_failure_message(
+    config: utils.Config, client: utils.FailedClientFromDB
+) -> str | None:
+    """Builds a message to be sent to the client based on their failure."""
+    message = None
+    if client.failure["reason"] == "portal not opened":
+        message = f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
+    elif client.failure["reason"] == "docs not signed":
+        message = f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
 
+    return message
+
+
+def should_send_reminder(reminded_count: int, last_reminded_distance: int) -> bool:
+    """Checks if a reminder should be sent to the client, based on the last reminder distance."""
     reminder_schedule = {
         0: 0,  # Initial message (same day)
         1: 7,  # First follow-up (1 week later)
@@ -254,19 +264,151 @@ def main():
         "completed": [],
         "api_failure": None,
     }
-    clients, _ = utils.get_previous_clients(config)
+    clients, failed_clients = utils.get_previous_clients(config, True)
     if clients is None:
         logger.critical("Failed to get previous clients")
         return
 
     clients = utils.validate_questionnaires(clients)
     email_info["completed"] = utils.check_questionnaires(driver, config, clients)
+    driver.quit()
 
-    clients, _ = utils.get_previous_clients(config)
+    driver, actions = utils.initialize_selenium()
+
+    utils.login_ta(driver, actions, services)
+
+    two_years_ago = date.today() - relativedelta(years=2)
+    five_years_ago = date.today() - relativedelta(years=5)
+
+    for client_id, client in failed_clients.items():
+        if client.failure["reason"] == "portal not opened":
+            utils.go_to_client(driver, actions, str(client_id))
+            if not utils.check_if_opened_portal(driver):
+                utils.update_failure_in_db(
+                    config, client_id, "portal not opened", resolved=True
+                )
+
+        elif client.failure["reason"] == "docs not signed":
+            utils.go_to_client(driver, actions, str(client_id))
+            if not utils.check_if_docs_signed(driver):
+                utils.update_failure_in_db(
+                    config, client_id, "docs not signed", resolved=True
+                )
+
+        elif client.failure["reason"] == "too young for asd" and client.dob is not None:
+            if client.dob < two_years_ago:
+                utils.update_failure_in_db(
+                    config, client_id, "too young for asd", resolved=True
+                )
+
+        elif (
+            client.failure["reason"] == "too young for adhd" and client.dob is not None
+        ):
+            if client.dob < five_years_ago:
+                utils.update_failure_in_db(
+                    config, client_id, "too young for adhd", resolved=True
+                )
+
+    clients, failed_clients = utils.get_previous_clients(config)
+
+    numbers_sent = []
+
+    if failed_clients:
+        for _, client in failed_clients.items():
+            if client.failure["reason"] in ["portal not opened", "docs not signed"]:
+                if client.note and "app.pandadoc.com" in str(client.note):
+                    logger.info(
+                        f"Client {client.fullName} likely doesn't speak English, skipping"
+                    )
+                    continue
+
+                last_reminded = client.failure["lastReminded"]
+                if last_reminded is not None:
+                    last_reminded_distance = utils.check_distance(last_reminded)
+                else:
+                    last_reminded_distance = 0
+
+                logger.info(
+                    f"Client {client.fullName} has issue {client.failure['reason']}"
+                )
+
+                if not client.phoneNumber:
+                    logger.warning(f"Client {client.fullName} has no phone number")
+                    # TODO: Include reasons for failures in email
+                    email_info["failed"].append(client)
+                    continue
+
+                already_messaged_today = (
+                    client.phoneNumber in numbers_sent
+                    and utils.format_phone_number(client.phoneNumber)
+                    != utils.format_phone_number(
+                        services["openphone"]["users"][config.name.lower()]["phone"]
+                    )
+                )
+
+                if already_messaged_today:
+                    logger.warning(
+                        f"Already messaged {client.fullName} at {client.phoneNumber} today"
+                    )
+
+                if client.failure["reminded"] == 3 and last_reminded_distance > 3:
+                    email_info["call"].append(client)
+                    client.failure["reminded"] += 1
+                    client.failure["lastReminded"] = date.today()
+
+                elif (
+                    client.failure["reminded"] < 3
+                    and not already_messaged_today
+                    and client.phoneNumber
+                ):
+                    if should_send_reminder(
+                        client.failure["reminded"], last_reminded_distance
+                    ):
+                        logger.info(f"Sending reminder TO {client.fullName}")
+                        if client.failure["reason"] == "portal not opened":
+                            utils.resend_portal_invite(driver, actions, str(client.id))
+
+                        message = build_failure_message(config, client)
+                        # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                        if not message:
+                            logger.error(
+                                f"Failed to build message for {client.fullName}"
+                            )
+                            continue
+
+                        try:
+                            message_sent = openphone.send_text_and_ensure(
+                                message, client.phoneNumber
+                            )
+
+                            if message_sent:
+                                numbers_sent.append(client.phoneNumber)
+                                client.failure["reminded"] += 1
+                                client.failure["lastReminded"] = date.today()
+                            else:
+                                logger.error(
+                                    f"Failed to send message to {client.fullName}"
+                                )
+                                email_info["failed"].append(client)
+                        except NotEnoughCreditsError:
+                            logger.critical(
+                                "Aborting all further message sends due to insufficient credits."
+                            )
+                            email_info["api_failure"] = (
+                                "OpenPhone API needs more credits to send messages."
+                            )
+                            break
+
+                utils.update_failure_in_db(
+                    config,
+                    client.id,
+                    client.failure["reason"],
+                    reminded=client.failure["reminded"],
+                    last_reminded=client.failure["lastReminded"],
+                )
 
     if clients:
         clients = utils.validate_questionnaires(clients)
-        numbers_sent = []
         for _, client in clients.items():
             done = utils.all_questionnaires_done(client)
 
@@ -321,9 +463,13 @@ def main():
                     and not already_messaged_today
                     and client.phoneNumber
                 ):
-                    if should_send_reminder(most_recent_q, last_reminded_distance):
+                    if should_send_reminder(
+                        most_recent_q["reminded"], last_reminded_distance
+                    ):
                         logger.info(f"Sending reminder TO {client.fullName}")
-                        message = build_message(config, client, most_recent_q, distance)
+                        message = build_q_message(
+                            config, client, most_recent_q, distance
+                        )
                         # Redundant failsafe to super ensure we don't text people a message that just says "None"
                         if not message:
                             logger.error(
@@ -363,18 +509,19 @@ def main():
                     utils.update_punch_by_column(config, str(client.id), "DA", "done")
             utils.update_questionnaires_in_db(config, [client])
 
-        # TODO: Can we send an incomplete email, even with exception?
-        admin_email_text, admin_email_html = utils.build_admin_email(email_info)
-        if admin_email_text != "":
-            utils.send_gmail(
-                admin_email_text,
-                f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
-                ",".join(config.qreceive_emails),
-                config.automated_email,
-                html=admin_email_html,
-            )
     else:
         logger.info("No clients to check")
+
+    # TODO: Can we send an incomplete email, even with exception?
+    admin_email_text, admin_email_html = utils.build_admin_email(email_info)
+    if admin_email_text != "":
+        utils.send_gmail(
+            admin_email_text,
+            f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
+            ",".join(config.qreceive_emails),
+            config.automated_email,
+            html=admin_email_html,
+        )
 
 
 if __name__ == "__main__":
