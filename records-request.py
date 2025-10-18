@@ -4,13 +4,13 @@ import time
 from base64 import b64decode
 from datetime import date
 from pathlib import Path
-from PyPDF2 import PdfReader
 
 import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
 from nameparser import HumanName
+from PyPDF2 import PdfReader
 from selenium import webdriver
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
@@ -224,43 +224,58 @@ class TherapyAppointmentBot:
         creds = utils.google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
-        filename = f"{client_data['fullname'].title()} {client_data['birthdate']} Receiving.pdf"
-        receive = self.file_exists(service, filename, self.config.records_folder_id)
-        filename = (
-            f"{client_data['fullname'].title()} {client_data['birthdate']} Sending.pdf"
-        )
-        send = self.file_exists(service, filename, self.config.records_folder_id)
-        if receive or send:
-            logger.info("Files already exist, skipping download.")
-            return True
 
         logger.info("Navigating to Docs & Forms...")
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        receiving_stream, receiving_filename, receiving_school = self.save_document_as_pdf(
-            "Receiving Consent to Release of Information", client_data
+        receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
+            self.save_document_as_pdf(
+                "Receiving Consent to Release of Information", client_data
+            )
         )
-        sending_stream, sending_filename, sending_school = self.save_document_as_pdf(
-            "Sending Consent to Release of Information", client_data
+        sending_stream, sending_filename, sending_school, sending_drive_file = (
+            self.save_document_as_pdf(
+                "Sending Consent to Release of Information", client_data
+            )
         )
 
         if sending_school != receiving_school:
-            logger.warning(sending_school, "is not the same as", receiving_school)
-            raise(Exception("District on receive does not match district on send"))
+            logger.warning(
+                f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
+            )
+            raise (Exception("District on receive does not match district on send"))
         else:
             try:
                 school_address = school_contacts[sending_school]
             except KeyError:
-                raise(Exception(f"{sending_school} has no email address assigned."))
+                raise (Exception(f"{sending_school} has no email address assigned."))
 
         message_text = f"Re: Student: {client_data['fullname']}\nDate of Birth: {client_data['birthdate'][:2]}/{client_data['birthdate'][2:4]}/{client_data['birthdate'][4:]}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
         utils.send_gmail(
-            message_text=message_text, subject=f"Re: Student: {client_data['fullname']}",
-            to_addr=school_address,from_addr="records@driftwoodeval.com",
-            pdf_stream0=receiving_stream, filename0=receiving_filename,
-            pdf_stream1=sending_stream, filename1=sending_filename
+            message_text=message_text,
+            subject=f"Re: Student: {client_data['fullname']}",
+            to_addr=school_address,
+            from_addr="records@driftwoodeval.com",
+            pdf_stream0=receiving_stream,
+            filename0=receiving_filename,
+            pdf_stream1=sending_stream,
+            filename1=sending_filename,
+        )
 
+        utils.move_file_in_drive(
+            service,
+            receiving_drive_file["id"],
+            self.config.sent_records_folder_id,
+        )
+        utils.move_file_in_drive(
+            service,
+            sending_drive_file["id"],
+            self.config.sent_records_folder_id,
+        )
+
+        utils.update_punch_list(
+            self.config, client_data["id"], "Records Requested?", "TRUE"
         )
 
         clients_button = self.driver.find_element(
@@ -269,7 +284,9 @@ class TherapyAppointmentBot:
         clients_button.click()
         return False
 
-    def upload_pdf_from_driver(self, filename, folder_id):
+    def upload_pdf_from_driver(
+        self, filename: str, folder_id: str
+    ) -> tuple[io.BytesIO, str, str, dict]:
         """Prints page as PDF (in memory) and uploads to Drive."""
         pdf_options = PrintOptions()
         pdf_options.orientation = "portrait"
@@ -296,9 +313,10 @@ class TherapyAppointmentBot:
             .execute()
         )
 
-        return pdf_stream, filename, school
-    
-    def extract_school_district_name(self, pdf_stream: str):
+        return pdf_stream, filename, school, uploaded_file
+
+    def extract_school_district_name(self, pdf_stream: io.BytesIO) -> str:
+        """Use regex to extract the school district name from the PDF."""
         reader = PdfReader(pdf_stream)
 
         # Collect all text from the PDF
@@ -311,11 +329,20 @@ class TherapyAppointmentBot:
         if match:
             return match.group(1).strip()
         else:
-            return None
+            return "Not Found"
 
-    def save_document_as_pdf(self, link_text: str, client: dict):
+    def save_document_as_pdf(
+        self, link_text: str, client: dict
+    ) -> tuple[io.BytesIO, str, str, dict]:
         """Helper function to find, print, and save a single document."""
         logger.info(f"Opening {link_text}...")
+
+        # Default values
+        stream = io.BytesIO()
+        stream_name = ""
+        school = "Not Found"
+        drive_file = {}
+
         try:
             docs_button = self.wait.until(
                 EC.element_to_be_clickable((By.LINK_TEXT, "Docs & Forms"))
@@ -340,14 +367,16 @@ class TherapyAppointmentBot:
             )
 
             logger.info(f"Saving {filename}...")
-            stream, stream_name, school = self.upload_pdf_from_driver(filename, self.config.records_folder_id)
+            stream, stream_name, school, drive_file = self.upload_pdf_from_driver(
+                filename, self.config.records_folder_id
+            )
 
         except TimeoutException:
             logger.error(f"Could not find or load document: {link_text}")
         finally:
             # Go back to the Docs & Forms list
             self.driver.back()
-            return stream, stream_name, school
+            return stream, stream_name, school, drive_file
 
     def file_exists(self, service, filename, folder_id):
         """Helper function to check if a file exists in Drive."""
@@ -368,8 +397,7 @@ def main():
     """Main function to run the automation script."""
     services, config = utils.load_config()
 
-    # REPLACE THIS CODE WITH CONTACTS LIST
-    school_contacts = {"Dorchester": "maddy@driftwoodeval.com"}
+    school_contacts = config.records_emails
 
     clients_to_process = get_clients_to_request(config)
 
@@ -387,52 +415,51 @@ def main():
     with TherapyAppointmentBot(services, config) as bot:
         bot.login()
         for _, client in clients_to_process.iterrows():
-            # Intentionally left in for testing
-            if client["Client Name"] == "Testman Testson Jr.":
-                client_id = client["Client ID"]
-                client_name = client["Client Name"]
-                asdAdhd = client["For"]
+            client_id = client["Client ID"]
+            client_name = client["Client Name"]
+            asdAdhd = client["For"]
 
-                if bot.go_to_client(client_id):
-                    try:
-                        client_data = bot.extract_client_data()
-                        bot.check_if_opened_portal()
-                        bot.check_if_docs_signed()
-                        skipped = bot.download_consent_forms(client_data, school_contacts)
-                        append_to_csv_file(Path(SUCCESS_FILE), client_name)
-                        if not skipped:
-                            new_success_count += 1
-                    except Exception as e:
-                        logger.error(
-                            f"An error occurred while processing {client_name}: {e}"
-                        )
-                        utils.add_simple_to_failure_sheet(
-                            config,
-                            client_id,
-                            asdAdhd,
-                            "Records Request",
-                            str(e),
-                            str(today),
-                            client_name,
-                        )
-                        new_failure_count += 1
-                else:
+            if bot.go_to_client(client_id):
+                try:
+                    client_data = bot.extract_client_data()
+                    client_data["id"] = client_id
+
+                    bot.check_if_opened_portal()
+                    bot.check_if_docs_signed()
+                    skipped = bot.download_consent_forms(client_data, school_contacts)
+                    append_to_csv_file(Path(SUCCESS_FILE), client_name)
+                    if not skipped:
+                        new_success_count += 1
+
+                except Exception as e:
+                    logger.error(
+                        f"An error occurred while processing {client_name}: {e}"
+                    )
                     utils.add_simple_to_failure_sheet(
                         config,
                         client_id,
                         asdAdhd,
                         "Records Request",
-                        "Client not found",
+                        str(e),
                         str(today),
                         client_name,
                     )
                     new_failure_count += 1
+            else:
+                utils.add_simple_to_failure_sheet(
+                    config,
+                    client_id,
+                    asdAdhd,
+                    "Records Request",
+                    "Client not found",
+                    str(today),
+                    client_name,
+                )
+                new_failure_count += 1
 
     logger.info(
         f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
     )
-
-
 
 
 if __name__ == "__main__":

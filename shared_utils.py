@@ -1,8 +1,8 @@
 import base64
 import hashlib
+import io
 import os
 import re
-import io
 import time
 from datetime import date
 from email.message import EmailMessage
@@ -102,6 +102,8 @@ class Config(BaseModel):
     database_url: str
     excluded_ta: list[str]
     records_folder_id: str
+    sent_records_folder_id: str
+    records_emails: dict[str, str]
 
 
 class Questionnaire(TypedDict):
@@ -917,16 +919,10 @@ def send_gmail(
             pdf_bytes0 = pdf_stream0.getvalue()
             pdf_bytes1 = pdf_stream1.getvalue()
             message.add_attachment(
-            pdf_bytes0,
-            maintype="application",
-            subtype="pdf",
-            filename=filename0
+                pdf_bytes0, maintype="application", subtype="pdf", filename=filename0
             )
             message.add_attachment(
-            pdf_bytes1,
-            maintype="application",
-            subtype="pdf",
-            filename=filename1
+                pdf_bytes1, maintype="application", subtype="pdf", filename=filename1
             )
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
@@ -1264,3 +1260,22 @@ def add_simple_to_failure_sheet(
 
     except Exception as e:
         logger.exception(e)
+
+
+def move_file_in_drive(service, file_id: str, dest_folder_id: str):
+    """Move a file from one folder to another in Google Drive."""
+    # Retrieve the existing parents to remove
+    file = service.files().get(fileId=file_id, fields="parents").execute()
+    previous_parents = ",".join(file.get("parents"))
+
+    # Move the file by updating its parents
+    file = (
+        service.files()
+        .update(
+            fileId=file_id,
+            addParents=dest_folder_id,
+            removeParents=previous_parents,
+            fields="id, parents",
+        )
+        .execute()
+    )
