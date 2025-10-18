@@ -2,6 +2,7 @@ import base64
 import hashlib
 import os
 import re
+import io
 import time
 from datetime import date
 from email.message import EmailMessage
@@ -878,6 +879,10 @@ def send_gmail(
     from_addr: str,
     cc_addr: str | None = None,
     html: str | None = None,
+    pdf_stream0: io.BytesIO | None = None,
+    filename0: str | None = None,
+    pdf_stream1: io.BytesIO | None = None,
+    filename1: str | None = None,
 ):
     """Send an email using the Gmail API.
 
@@ -888,6 +893,10 @@ def send_gmail(
         from_addr (str): The sender's email address
         cc_addr (str | None): The CC recipient's email address, can be a comma-separated list (optional)
         html (str | None): The HTML version of the message (optional)
+        pdf_stream0 (io.BytesIO | None): Possible pdf attachment taken from memory (optional)
+        filename0 (str | None): Name of pdf0 taken from memory (optional)
+        pdf_stream1 (io.BytesIO | None): Possible pdf attachment taken from memory (optional)
+        filename1 (str | None): Name of pdf1 taken from memory (optional)
     """
     creds = google_authenticate()
 
@@ -904,6 +913,21 @@ def send_gmail(
 
         if html:
             message.add_alternative(html, subtype="html")
+        if pdf_stream0 and pdf_stream1 and filename0 and filename1:
+            pdf_bytes0 = pdf_stream0.getvalue()
+            pdf_bytes1 = pdf_stream1.getvalue()
+            message.add_attachment(
+            pdf_bytes0,
+            maintype="application",
+            subtype="pdf",
+            filename=filename0
+            )
+            message.add_attachment(
+            pdf_bytes1,
+            maintype="application",
+            subtype="pdf",
+            filename=filename1
+            )
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 

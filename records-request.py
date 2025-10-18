@@ -1,8 +1,10 @@
 import io
+import re
 import time
 from base64 import b64decode
 from datetime import date
 from pathlib import Path
+from PyPDF2 import PdfReader
 
 import pandas as pd
 from googleapiclient.discovery import build
@@ -217,7 +219,7 @@ class TherapyAppointmentBot:
         except NoSuchElementException:
             raise Exception("Docs not signed.")
 
-    def download_consent_forms(self, client_data: dict):
+    def download_consent_forms(self, client_data: dict, school_contacts: dict):
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
         creds = utils.google_authenticate()
 
@@ -230,22 +232,38 @@ class TherapyAppointmentBot:
         send = self.file_exists(service, filename, self.config.records_folder_id)
         if receive or send:
             logger.info("Files already exist, skipping download.")
-            return
+            return True
 
         logger.info("Navigating to Docs & Forms...")
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        self.save_document_as_pdf(
+        receiving_stream, receiving_filename, receiving_school = self.save_document_as_pdf(
             "Receiving Consent to Release of Information", client_data
         )
-        self.save_document_as_pdf(
+        sending_stream, sending_filename, sending_school = self.save_document_as_pdf(
             "Sending Consent to Release of Information", client_data
+        )
+
+        if sending_school != receiving_school:
+            logger.warning(sending_school, "is not the same as", receiving_school)
+        elif sending_school in school_contacts:
+            school_address = school_contacts[sending_school]
+
+        message_text = f"Re: Student: {client_data['fullname']}\nDate of Birth: {client_data['birthdate'][:2]}/{client_data['birthdate'][2:4]}/{client_data['birthdate'][4:]}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
+
+        utils.send_gmail(
+            message_text=message_text, subject=f"Re: Student: {client_data['fullname']}",
+            to_addr=school_address,from_addr="records@driftwoodeval.com",
+            pdf_stream0=receiving_stream, filename0=receiving_filename,
+            pdf_stream1=sending_stream, filename1=sending_filename
+
         )
 
         clients_button = self.driver.find_element(
             By.XPATH, "//*[contains(text(), 'Clients')]"
         )
         clients_button.click()
+        return False
 
     def upload_pdf_from_driver(self, filename, folder_id):
         """Prints page as PDF (in memory) and uploads to Drive."""
@@ -256,6 +274,8 @@ class TherapyAppointmentBot:
 
         pdf_bytes = b64decode(pdf_base64)
         pdf_stream = io.BytesIO(pdf_bytes)
+
+        school = self.extract_school_district_name(pdf_stream)
 
         creds = utils.google_authenticate()
 
@@ -272,7 +292,22 @@ class TherapyAppointmentBot:
             .execute()
         )
 
-        return uploaded_file
+        return pdf_stream, filename, school
+    
+    def extract_school_district_name(self, pdf_stream: str):
+        reader = PdfReader(pdf_stream)
+
+        # Collect all text from the PDF
+        full_text = ""
+        for page in reader.pages:
+            full_text += page.extract_text() or ""
+
+        # Search for the line containing "School District"
+        match = re.search(r"School District\r?\n(.+)", full_text)
+        if match:
+            return match.group(1).strip()
+        else:
+            return None
 
     def save_document_as_pdf(self, link_text: str, client: dict):
         """Helper function to find, print, and save a single document."""
@@ -301,13 +336,14 @@ class TherapyAppointmentBot:
             )
 
             logger.info(f"Saving {filename}...")
-            self.upload_pdf_from_driver(filename, self.config.records_folder_id)
+            stream, stream_name, school = self.upload_pdf_from_driver(filename, self.config.records_folder_id)
 
         except TimeoutException:
             logger.error(f"Could not find or load document: {link_text}")
         finally:
             # Go back to the Docs & Forms list
             self.driver.back()
+            return stream, stream_name, school
 
     def file_exists(self, service, filename, folder_id):
         """Helper function to check if a file exists in Drive."""
@@ -327,6 +363,9 @@ class TherapyAppointmentBot:
 def main():
     """Main function to run the automation script."""
     services, config = utils.load_config()
+
+    # REPLACE THIS CODE WITH CONTACTS LIST
+    school_contacts = {"Dorchester 2": "maddy@driftwoodeval.com"}
 
     clients_to_process = get_clients_to_request(config)
 
@@ -353,9 +392,10 @@ def main():
                     client_data = bot.extract_client_data()
                     bot.check_if_opened_portal()
                     bot.check_if_docs_signed()
-                    bot.download_consent_forms(client_data)
+                    skipped = bot.download_consent_forms(client_data, school_contacts)
                     append_to_csv_file(Path(SUCCESS_FILE), client_name)
-                    new_success_count += 1
+                    if not skipped:
+                        new_success_count += 1
                 except Exception as e:
                     logger.error(
                         f"An error occurred while processing {client_name}: {e}"
@@ -383,8 +423,10 @@ def main():
                 new_failure_count += 1
 
     logger.info(
-        f"Process complete. Success: {new_success_count}, Failed: {new_failure_count}"
+        f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
     )
+
+
 
 
 if __name__ == "__main__":
