@@ -246,8 +246,12 @@ class TherapyAppointmentBot:
 
         if sending_school != receiving_school:
             logger.warning(sending_school, "is not the same as", receiving_school)
-        elif sending_school in school_contacts:
-            school_address = school_contacts[sending_school]
+            raise(Exception("District on receive does not match district on send"))
+        else:
+            try:
+                school_address = school_contacts[sending_school]
+            except KeyError:
+                raise(Exception(f"{sending_school} has no email address assigned."))
 
         message_text = f"Re: Student: {client_data['fullname']}\nDate of Birth: {client_data['birthdate'][:2]}/{client_data['birthdate'][2:4]}/{client_data['birthdate'][4:]}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
@@ -365,7 +369,7 @@ def main():
     services, config = utils.load_config()
 
     # REPLACE THIS CODE WITH CONTACTS LIST
-    school_contacts = {"Dorchester 2": "maddy@driftwoodeval.com"}
+    school_contacts = {"Dorchester": "maddy@driftwoodeval.com"}
 
     clients_to_process = get_clients_to_request(config)
 
@@ -383,44 +387,46 @@ def main():
     with TherapyAppointmentBot(services, config) as bot:
         bot.login()
         for _, client in clients_to_process.iterrows():
-            client_id = client["Client ID"]
-            client_name = client["Client Name"]
-            asdAdhd = client["For"]
+            # Intentionally left in for testing
+            if client["Client Name"] == "Testman Testson Jr.":
+                client_id = client["Client ID"]
+                client_name = client["Client Name"]
+                asdAdhd = client["For"]
 
-            if bot.go_to_client(client_id):
-                try:
-                    client_data = bot.extract_client_data()
-                    bot.check_if_opened_portal()
-                    bot.check_if_docs_signed()
-                    skipped = bot.download_consent_forms(client_data, school_contacts)
-                    append_to_csv_file(Path(SUCCESS_FILE), client_name)
-                    if not skipped:
-                        new_success_count += 1
-                except Exception as e:
-                    logger.error(
-                        f"An error occurred while processing {client_name}: {e}"
-                    )
+                if bot.go_to_client(client_id):
+                    try:
+                        client_data = bot.extract_client_data()
+                        bot.check_if_opened_portal()
+                        bot.check_if_docs_signed()
+                        skipped = bot.download_consent_forms(client_data, school_contacts)
+                        append_to_csv_file(Path(SUCCESS_FILE), client_name)
+                        if not skipped:
+                            new_success_count += 1
+                    except Exception as e:
+                        logger.error(
+                            f"An error occurred while processing {client_name}: {e}"
+                        )
+                        utils.add_simple_to_failure_sheet(
+                            config,
+                            client_id,
+                            asdAdhd,
+                            "Records Request",
+                            str(e),
+                            str(today),
+                            client_name,
+                        )
+                        new_failure_count += 1
+                else:
                     utils.add_simple_to_failure_sheet(
                         config,
                         client_id,
                         asdAdhd,
                         "Records Request",
-                        str(e),
+                        "Client not found",
                         str(today),
                         client_name,
                     )
                     new_failure_count += 1
-            else:
-                utils.add_simple_to_failure_sheet(
-                    config,
-                    client_id,
-                    asdAdhd,
-                    "Records Request",
-                    "Client not found",
-                    str(today),
-                    client_name,
-                )
-                new_failure_count += 1
 
     logger.info(
         f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
