@@ -78,42 +78,6 @@ def rearrange_dob(dob: str) -> str:
     return f"{month}/{day}/{year}"
 
 
-def login_ta(
-    driver: WebDriver,
-    actions: ActionChains,
-    services: utils.Services,
-    admin: bool = False,
-) -> None:
-    """Log in to TherapyAppointment.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
-        services (utils.Services): The configuration object containing the TherapyAppointment credentials.
-        admin (bool, optional): Whether to log in as an admin user. Defaults to False.
-    """
-    logger.info("Logging in to TherapyAppointment")
-
-    logger.debug("Going to login page")
-    driver.get("https://portal.therapyappointment.com")
-
-    logger.debug("Entering username")
-    username_field = utils.find_element(driver, By.NAME, "user_username")
-    username_field.send_keys(
-        services["therapyappointment"]["admin_username" if admin else "username"]
-    )
-
-    logger.debug("Entering password")
-    password_field = utils.find_element(driver, By.NAME, "user_password")
-    password_field.send_keys(
-        services["therapyappointment"]["admin_password" if admin else "password"]
-    )
-
-    logger.debug("Submitting login form")
-    actions.send_keys(Keys.ENTER)
-    actions.perform()
-
-
 def login_wps(
     driver: WebDriver, actions: ActionChains, services: utils.Services
 ) -> None:
@@ -1625,81 +1589,6 @@ def gen_caars_2(
     return link, accounts_created
 
 
-def go_to_client(
-    driver: WebDriver, actions: ActionChains, client_id: str
-) -> str | None:
-    """Navigates to the given client in TA and returns the client's URL."""
-
-    def _search_clients(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> None:
-        logger.info(f"Searching for {client_id} on TA")
-        sleep(2)
-
-        logger.debug("Trying to escape random popups")
-        actions.send_keys(Keys.ESCAPE)
-        actions.perform()
-
-        logger.debug("Entering client ID")
-        client_id_label = utils.find_element(
-            driver, By.XPATH, "//label[text()='Account Number']"
-        )
-        client_id_field = client_id_label.find_element(
-            By.XPATH, "./following-sibling::input"
-        )
-        client_id_field.send_keys(client_id)
-
-        logger.debug("Clicking search")
-        utils.click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
-
-    def _go_to_client_loop(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> str:
-        driver.get("https://portal.therapyappointment.com")
-        sleep(1)
-        logger.debug("Navigating to Clients section")
-        utils.click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
-
-        for attempt in range(3):
-            try:
-                _search_clients(driver, actions, client_id)
-                break
-            except Exception as e:
-                if attempt == 2:
-                    logger.exception(f"Failed to search after 3 attempts: {e}")
-                    raise e
-                else:
-                    logger.warning(f"Failed to search: {e}, trying again")
-                    driver.refresh()
-
-        sleep(1)
-
-        logger.debug("Selecting client profile")
-
-        utils.click_element(
-            driver,
-            By.CSS_SELECTOR,
-            "a[aria-description*='Press Enter to view the profile of",
-            max_attempts=1,
-        )
-
-        current_url = driver.current_url
-        logger.success(f"Navigated to client profile: {current_url}")
-        return current_url
-
-    for attempt in range(3):
-        try:
-            return _go_to_client_loop(driver, actions, client_id)
-        except Exception as e:
-            if attempt == 2:
-                logger.exception(f"Failed to go to client after 3 attempts: {e}")
-                return
-            else:
-                logger.warning(f"Failed to go to client: {e}, trying again")
-                driver.refresh()
-    return
-
-
 def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     """Extracts client data from TherapyAppointment client profile page.
 
@@ -1773,28 +1662,6 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
         "age": age,
         "phone_number": phone_number,
     }
-
-
-def check_if_opened_portal(driver: WebDriver) -> bool:
-    """Check if the TA portal has been opened by the client."""
-    try:
-        utils.find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']")
-        return True
-    except NoSuchElementException:
-        return False
-
-
-def check_if_docs_signed(driver: WebDriver) -> bool:
-    """Check if the TA docs have been signed by the client."""
-    try:
-        utils.find_element(
-            driver,
-            By.XPATH,
-            "//div[contains(normalize-space(text()), 'has completed registration')]",
-        )
-        return True
-    except NoSuchElementException:
-        return False
 
 
 def format_ta_message(questionnaires: list[dict]) -> str:
@@ -1972,12 +1839,6 @@ def check_client_failed(
         if previously_failed:
             error = prev_failed_clients.get(client_id_to_use, {}).get("error", None)
             error = str(error).lower()
-            if (
-                error == "too young"
-                or error == "portal not opened"
-                or error == "docs not signed"
-            ):
-                return (False, error)
             if daeval == "DA":
                 return (True, error)
             elif daeval == "EVAL" and prev_daeval == "DA":
@@ -2049,7 +1910,7 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    for login in [login_ta, login_wps, login_qglobal, login_mhs]:
+    for login in [utils.login_ta, login_wps, login_qglobal, login_mhs]:
         while True:
             try:
                 login(driver, actions, services)
@@ -2070,19 +1931,21 @@ def main():
         if prev_failed_clients != {}:
             previously_failed, error = check_client_failed(prev_failed_clients, client)
             if previously_failed and error is not None:
-                logger.error(
-                    f"Client {client['Client Name']} has already failed to send"
-                )
-                utils.add_simple_to_failure_sheet(
-                    config,
-                    client["Client ID"],
-                    client["For"],
-                    client["daeval"],
-                    error,
-                    datetime.today().strftime("%Y/%m/%d"),
-                    client["Client Name"],
-                )
-                continue
+                client["Previous Error"] = error
+                if error not in ["too young", "portal not opened", "docs not signed"]:
+                    logger.error(
+                        f"Client {client['Client Name']} has already failed to send"
+                    )
+                    utils.add_simple_to_failure_sheet(
+                        config,
+                        client["Client ID"],
+                        client["For"],
+                        client["daeval"],
+                        error,
+                        datetime.today().strftime("%Y/%m/%d"),
+                        client["Client Name"],
+                    )
+                    continue
 
         if client["Language"] != "" and client["Language"] != "English":
             logger.error(f"Client {client['Client Name']} doesn't speak English")
@@ -2090,7 +1953,7 @@ def main():
             continue
 
         try:
-            client_url = go_to_client(driver, actions, client["Client ID"])
+            client_url = utils.go_to_client(driver, actions, client["Client ID"])
 
             if not client_url:
                 logger.error("Client URL not found")
@@ -2098,16 +1961,45 @@ def main():
                     config, format_failed_client(client, "Unable to find client")
                 )
                 continue
-            if not check_if_opened_portal(driver):
+            if not utils.check_if_opened_portal(driver):
                 utils.add_failure(
                     config, format_failed_client(client, "Portal not opened")
                 )
+                utils.add_failure_to_db(
+                    config,
+                    client["Client ID"],
+                    "portal not opened",
+                    datetime.today(),
+                )
                 continue
-            if not check_if_docs_signed(driver):
+            else:
+                if client["Previous Error"] == "portal not opened":
+                    utils.update_failure_in_db(
+                        config,
+                        client["Client ID"],
+                        client["Previous Error"],
+                        resolved=True,
+                    )
+
+            if not utils.check_if_docs_signed(driver):
                 utils.add_failure(
                     config, format_failed_client(client, "Docs not signed")
                 )
+                utils.add_failure_to_db(
+                    config,
+                    client["Client ID"],
+                    "docs not signed",
+                    datetime.today(),
+                )
                 continue
+            else:
+                if client["Previous Error"] == "docs not signed":
+                    utils.update_failure_in_db(
+                        config,
+                        client["Client ID"],
+                        client["Previous Error"],
+                        resolved=True,
+                    )
 
             client_info = extract_client_data(driver)
             client["Date of Birth"] = client_info["birthdate"]
@@ -2268,4 +2160,3 @@ def main():
 if __name__ == "__main__":
     logger.add("logs/qsend.log", rotation="500 MB")
     main()
-
