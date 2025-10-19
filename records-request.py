@@ -330,7 +330,7 @@ class TherapyAppointmentBot:
             match = match.group(1).strip()
         else:
             match = re.search(r"Other\r?\n(.+)", full_text)
-            match = match.group(1).strip()[:-15]
+            match = match.group(1)[:-15].strip()
         if match:
             return match
         else:
