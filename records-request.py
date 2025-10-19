@@ -325,14 +325,18 @@ class TherapyAppointmentBot:
             full_text += page.extract_text() or ""
 
         # Search for the line containing "School District"
-        if "to receive educational records from" in full_text or "\nSchool District" in full_text:
+        if "\nSchool District" in full_text:
+            print(full_text)
             match = re.search(r"School District\r?\n(.+)", full_text)
             match = match.group(1).strip()
+        elif "to receive educational records from:" in full_text:
+            match = re.search(r"First, Last\r?\n(.+)", full_text)
+            match = match.group(1)[:-15].strip()
         else:
             match = re.search(r"Other\r?\n(.+)", full_text)
             match = match.group(1)[:-15].strip()
         if match:
-            return match
+            return match.lower()
         else:
             return "Not Found"
 
