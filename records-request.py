@@ -219,11 +219,27 @@ class TherapyAppointmentBot:
         except NoSuchElementException:
             raise Exception("Docs not signed.")
 
-    def download_consent_forms(self, client_data: dict, school_contacts: dict):
+    def download_consent_forms(self, client_data: dict, school_contacts: dict) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
         creds = utils.google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
+        check_filename = f"{client_data['fullname'].title()} {client_data['birthdate']} Receiving.pdf"
+        prev_receive = self.file_exists(
+            service, check_filename, self.config.records_folder_id
+        )
+        check_filename = (
+            f"{client_data['fullname'].title()} {client_data['birthdate']} Sending.pdf"
+        )
+        prev_send = self.file_exists(
+            service, check_filename, self.config.records_folder_id
+        )
+
+        if prev_receive or prev_send:
+            logger.warning(
+                f"Files already exist for {client_data['fullname']}, skipping download."
+            )
+            return True
 
         logger.info("Navigating to Docs & Forms...")
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -328,15 +344,15 @@ class TherapyAppointmentBot:
         if "\nSchool District" in full_text:
             match = re.search(r"School District\r?\n(.+)", full_text)
             if match is not None:
-            match = match.group(1).strip()
+                match = match.group(1).strip()
         elif "to receive educational records from:" in full_text:
             match = re.search(r"First, Last\r?\n(.+)", full_text)
             if match is not None:
-            match = match.group(1)[:-15].strip()
+                match = match.group(1)[:-15].strip()
         else:
             match = re.search(r"Other\r?\n(.+)", full_text)
             if match is not None:
-            match = match.group(1)[:-15].strip()
+                match = match.group(1)[:-15].strip()
         if match:
             return match.lower()
         else:
