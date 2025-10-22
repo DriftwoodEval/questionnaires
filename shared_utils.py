@@ -1225,7 +1225,7 @@ def add_qfailed_to_failure_sheet(
 
         sheet.values().append(
             spreadsheetId=config.failed_sheet_id,
-            range="clients!A1:Z",
+            range="questionnaires!A1:Z",
             body=body,
             valueInputOption="USER_ENTERED",
         ).execute()
@@ -1238,7 +1238,7 @@ def add_simple_to_failure_sheet(
     config: Config,
     client_id: str,
     asdAdhd: str,
-    daEval: str,
+    type: str,
     error: str,
     failedDate: str,
     fullName: str,
@@ -1249,14 +1249,22 @@ def add_simple_to_failure_sheet(
     try:
         service = build("sheets", "v4", credentials=creds)
         sheet = service.spreadsheets()
-        body = {"values": [[client_id, asdAdhd, daEval, error, failedDate, fullName]]}
+        body = {"values": [[client_id, asdAdhd, type, error, failedDate, fullName]]}
 
-        sheet.values().append(
-            spreadsheetId=config.failed_sheet_id,
-            range="clients!A1:Z",
-            body=body,
-            valueInputOption="USER_ENTERED",
-        ).execute()
+        if type == "Records Request":
+            sheet.values().append(
+                spreadsheetId=config.failed_sheet_id,
+                range="records!A1:Z",
+                body=body,
+                valueInputOption="USER_ENTERED",
+            ).execute()
+        else:
+            sheet.values().append(
+                spreadsheetId=config.failed_sheet_id,
+                range="questionnaires!A1:Z",
+                body=body,
+                valueInputOption="USER_ENTERED",
+            ).execute()
 
     except Exception as e:
         logger.exception(e)
