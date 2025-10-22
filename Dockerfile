@@ -31,19 +31,9 @@ RUN uv sync --frozen
 # ---
 FROM base AS qreceive
 
-COPY shared_utils.py qreceive.py ./
+COPY qreceive.py utils ./
 
 ENV TZ=America/New_York \
     CRON_SCHEDULE="0 13 * * *"
 
 ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
-
-# ---
-# FROM base AS qmail
-
-# COPY shared_utils.py qmail.py ./
-
-# ENV TZ=America/New_York \
-# CRON_SCHEDULE="0 13 * * *"
-
-# ENTRYPOINT ["/app/entrypoint-qmail.sh"]

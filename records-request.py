@@ -26,7 +26,15 @@ from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-import shared_utils as utils
+from utils.google import (
+    get_punch_list,
+    google_authenticate,
+    move_file_in_drive,
+    send_gmail,
+    update_punch_list,
+)
+from utils.misc import add_failure, load_config
+from utils.types import Config, Services
 
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")
@@ -34,7 +42,7 @@ OUTPUT_DIR = Path("School Records Requests")
 WAIT_TIMEOUT = 15  # seconds
 
 
-def get_clients_to_request(config: utils.Config) -> pd.DataFrame | None:
+def get_clients_to_request(config: Config) -> pd.DataFrame | None:
     """Gets a list of clients from the punch list who need to have their records requested.
 
     The list is filtered to only include clients who have a "TRUE" value in the "Records Needed" column, but not in the "Records Requested?" or "Records Reviewed?" columns.
@@ -42,7 +50,7 @@ def get_clients_to_request(config: utils.Config) -> pd.DataFrame | None:
     Returns:
         pandas.DataFrame | None: A DataFrame containing the punch list data, or None if the punch list is empty.
     """
-    punch_list = utils.get_punch_list(config)
+    punch_list = get_punch_list(config)
 
     if punch_list is None:
         logger.critical("Punch list is empty")
@@ -72,7 +80,7 @@ def append_to_csv_file(filepath: Path, data: str):
 class TherapyAppointmentBot:
     """A bot to automate downloading client documents from TherapyAppointment."""
 
-    def __init__(self, services: utils.Services, config: utils.Config):
+    def __init__(self, services: Services, config: Config):
         """Initializes the TherapyAppointmentBot."""
         self.taconfig = services["therapyappointment"]
         self.config = config
@@ -222,7 +230,7 @@ class TherapyAppointmentBot:
 
     def download_consent_forms(self, client_data: dict, school_contacts: dict) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
-        creds = utils.google_authenticate()
+        creds = google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
         check_filename = f"{client_data['fullname'].title()} {client_data['birthdate']} Receiving.pdf"
@@ -269,7 +277,7 @@ class TherapyAppointmentBot:
 
         message_text = f"Re: Student: {client_data['fullname']}\nDate of Birth: {client_data['birthdate'][:2]}/{client_data['birthdate'][2:4]}/{client_data['birthdate'][4:]}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
-        utils.send_gmail(
+        send_gmail(
             message_text=message_text,
             subject=f"Re: Student: {client_data['fullname']}",
             to_addr=school_address,
@@ -280,20 +288,18 @@ class TherapyAppointmentBot:
             filename1=sending_filename,
         )
 
-        utils.move_file_in_drive(
+        move_file_in_drive(
             service,
             receiving_drive_file["id"],
             self.config.sent_records_folder_id,
         )
-        utils.move_file_in_drive(
+        move_file_in_drive(
             service,
             sending_drive_file["id"],
             self.config.sent_records_folder_id,
         )
 
-        utils.update_punch_list(
-            self.config, client_data["id"], "Records Requested?", "TRUE"
-        )
+        update_punch_list(self.config, client_data["id"], "Records Requested?", "TRUE")
 
         clients_button = self.driver.find_element(
             By.XPATH, "//*[contains(text(), 'Clients')]"
@@ -315,7 +321,7 @@ class TherapyAppointmentBot:
 
         school = self.extract_school_district_name(pdf_stream)
 
-        creds = utils.google_authenticate()
+        creds = google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
         file_metadata = {
@@ -423,7 +429,7 @@ class TherapyAppointmentBot:
 
 def main():
     """Main function to run the automation script."""
-    services, config = utils.load_config()
+    services, config = load_config()
 
     school_contacts = config.records_emails
 
@@ -463,25 +469,25 @@ def main():
                     logger.error(
                         f"An error occurred while processing {client_name}: {e}"
                     )
-                    utils.add_simple_to_failure_sheet(
+                    add_failure(
                         config,
                         client_id,
-                        asdAdhd,
-                        "Records Request",
                         str(e),
-                        str(today),
+                        today,
                         client_name,
+                        asdAdhd,
+                        "Records",
                     )
                     new_failure_count += 1
             else:
-                utils.add_simple_to_failure_sheet(
+                add_failure(
                     config,
                     client_id,
-                    asdAdhd,
-                    "Records Request",
                     "Client not found",
-                    str(today),
+                    today,
                     client_name,
+                    asdAdhd,
+                    "Records",
                 )
                 new_failure_count += 1
 

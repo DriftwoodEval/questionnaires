@@ -1,186 +1,55 @@
 from datetime import date, datetime, timedelta
+from typing import Optional, Union
 
-import requests
-from backoff import expo, on_exception, on_predicate
 from dateutil.relativedelta import relativedelta
 from loguru import logger
-from ratelimit import RateLimitException, limits
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.remote.webdriver import WebDriver
 
-import shared_utils as utils
+from utils.database import (
+    get_previous_clients,
+    update_failure_in_db,
+    update_questionnaires_in_db,
+)
+from utils.google import build_admin_email, send_gmail, update_punch_by_column
+from utils.misc import check_distance, load_config
+from utils.openphone import NotEnoughCreditsError, OpenPhone
+from utils.questionnaires import (
+    all_questionnaires_done,
+    check_if_ignoring,
+    check_questionnaires,
+    get_most_recent_not_done,
+)
+from utils.selenium import (
+    check_if_docs_signed,
+    check_if_opened_portal,
+    go_to_client,
+    initialize_selenium,
+    login_ta,
+    resend_portal_invite,
+)
+from utils.types import (
+    AdminEmailInfo,
+    ClientWithQuestionnaires,
+    Config,
+    FailedClientFromDB,
+    Questionnaire,
+    Services,
+    validate_questionnaires,
+)
 
 logger.add("logs/qreceive.log", rotation="500 MB")
 
-services, config = utils.load_config()
-
-
-def log_backoff(details):
-    """Logging function for backoff library."""
-    logger.debug(
-        "Backing off {wait:0.1f} seconds after {tries} tries "
-        "calling function {target} with args {args} and kwargs "
-        "{kwargs}".format(**details)
-    )
-
-
-def log_giveup(details):
-    """Logging function for giving up with backoff library."""
-    logger.error(
-        "Gave up after {tries} tries "
-        "calling function {target} with args {args} and kwargs "
-        "{kwargs}".format(**details)
-    )
-
-
-class LimitedRequest:
-    """Custom request class with rate limiting."""
-
-    @on_exception(
-        expo,
-        RateLimitException,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
-    )
-    @limits(calls=10, period=1)
-    def get(self, url: str, params=None, headers=None, **kwargs) -> requests.Response:
-        """Custom get request with rate limiting."""
-        return requests.get(url, params, headers=headers, **kwargs)
-
-    @on_exception(
-        expo,
-        RateLimitException,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
-    )
-    @limits(calls=10, period=1)
-    def post(self, url: str, data=None, headers=None, **kwargs) -> requests.Response:
-        """Custom post request with rate limiting."""
-        return requests.post(url, data, headers=headers, **kwargs)
-
-
-class NotEnoughCreditsError(requests.HTTPError):
-    """Custom exception for when not enough credits are available."""
-
-    def __init__(self, *args, **kwargs):
-        """Initializes the NotEnoughCreditsError exception."""
-        default_message = (
-            "The organization does not have enough prepaid credits to send the message."
-        )
-
-        # If the user provides a custom message, use it; otherwise, use the default.
-        if not args:
-            args = (default_message,)
-
-        super().__init__(*args, **kwargs)
-
-
-class OpenPhone:
-    """Custom class for interacting with the OpenPhone API."""
-
-    def __init__(self, config: utils.Config, services: utils.Services):
-        self.config = config
-        self.services = services
-        self.main_number = services["openphone"]["main_number"]
-        self.default_user = services["openphone"]["users"][config.name.lower()]["id"]
-        self.limited_request = LimitedRequest()
-
-    @on_exception(
-        expo,
-        (ConnectionError, requests.HTTPError),
-        factor=2,
-        base=2,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
-    )
-    def get_text_info(self, message_id: str) -> dict:
-        """Retrieves information about a text message, retrying exponentially on failure."""
-        url = f"https://api.openphone.com/v1/messages/{message_id}"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": services["openphone"]["key"],
-        }
-        response = self.limited_request.get(url, headers=headers)
-
-        if response is None:
-            raise ConnectionError("Failed to retrieve response from OpenPhone API")
-
-        if response.status_code >= 400:
-            raise requests.HTTPError("API response: {}".format(response.status_code))
-
-        response_data = response.json().get("data")
-        return response_data
-
-    @on_predicate(
-        expo,
-        factor=2,
-        base=2,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
-    )
-    def check_text_delivered(self, message_id: str) -> bool:
-        """Checks if a text message has been delivered, retrying exponentially on failure."""
-        message_info = self.get_text_info(message_id)
-        message_status = message_info["status"]
-        return message_status == "delivered"
-
-    def send_text(
-        self,
-        message: str,
-        to_number: str,
-        from_number: str | None = None,
-        user_blame: str | None = None,
-    ) -> dict | None:
-        """Sends a text message, retrying exponentially on failure."""
-        if from_number is None:
-            from_number = self.main_number
-        if user_blame is None:
-            user_blame = self.default_user
-
-        to_number = "+1" + "".join(filter(str.isdigit, to_number))
-        url = "https://api.openphone.com/v1/messages"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": services["openphone"]["key"],
-        }
-        data = {
-            "content": message,
-            "from": from_number,
-            "to": [to_number],
-            "userId": user_blame,
-        }
-        try:
-            logger.info(f"Attempting to send message '{message}' to {to_number}")
-            response = self.limited_request.post(url, headers=headers, json=data)
-
-            if response is None:
-                raise ConnectionError("Failed to retrieve response from OpenPhone API")
-
-            if response.status_code == 402:  # Payment Required
-                raise NotEnoughCreditsError()
-
-            if response.status_code >= 400:
-                raise requests.HTTPError(
-                    "API response: {}".format(response.status_code)
-                )
-
-            response_data = response.json().get("data")
-            return response_data
-        except Exception as e:
-            logger.exception(f"Failed to get message info: {e}")
-            return None
-
 
 def build_q_message(
-    config: utils.Config,
-    client: utils.ClientWithQuestionnaires,
-    most_recent_q: utils.Questionnaire,
+    config: Config,
+    client: ClientWithQuestionnaires,
+    most_recent_q: Questionnaire,
     distance: int,
-) -> str | None:
+) -> Optional[str]:
     """Builds the message to be sent to the client based on their most recent questionnaire."""
     link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
+
     if distance == 0:
         distance_phrase = "today"
     elif distance == -1:
@@ -201,9 +70,7 @@ def build_q_message(
     return message
 
 
-def build_failure_message(
-    config: utils.Config, client: utils.FailedClientFromDB
-) -> str | None:
+def build_failure_message(config: Config, client: FailedClientFromDB) -> Optional[str]:
     """Builds a message to be sent to the client based on their failure."""
     message = None
     if client.failure["reason"] == "portal not opened":
@@ -232,67 +99,76 @@ def should_send_reminder(reminded_count: int, last_reminded_distance: int) -> bo
         return False
 
 
+def check_failures(
+    config: Config,
+    services: Services,
+    driver: WebDriver,
+    actions: ActionChains,
+    failed_clients: dict[int, FailedClientFromDB],
+):
+    """Checks the failures of clients and updates them in the database."""
+    login_ta(driver, actions, services)
+
+    two_years_ago = date.today() - relativedelta(years=2)
+    five_years_ago = date.today() - relativedelta(years=5)
+
+    for client_id, client in failed_clients.items():
+        reason = client.failure["reason"]
+        is_resolved = False
+
+        if reason in ["portal not opened", "docs not signed"]:
+            go_to_client(driver, actions, str(client_id))
+            if reason == "portal not opened":
+                is_resolved = check_if_opened_portal(driver)
+            elif reason == "docs not signed":
+                is_resolved = check_if_docs_signed(driver)
+
+        elif reason == "too young for asd" and client.dob is not None:
+            is_resolved = client.dob < two_years_ago
+
+        elif reason == "too young for adhd" and client.dob is not None:
+            is_resolved = client.dob < five_years_ago
+
+        if is_resolved:
+            update_failure_in_db(config, client_id, reason, resolved=True)
+            logger.info(f"Resolved failure for client {client.fullName}")
+
+
+ClientType = Union[FailedClientFromDB, ClientWithQuestionnaires]
+
+
 def main():
     """Main function for qreceive.py."""
+    services, config = load_config()
     openphone = OpenPhone(config, services)
-    driver, actions = utils.initialize_selenium()
-    email_info: utils.AdminEmailInfo = {
+    driver, actions = initialize_selenium()
+    email_info: AdminEmailInfo = {
         "ignoring": [],
         "failed": [],
         "call": [],
         "completed": [],
         "errors": [],
     }
-    clients, failed_clients = utils.get_previous_clients(config, True)
+    clients, failed_clients = get_previous_clients(config, True)
     if clients is None:
         logger.critical("Failed to get previous clients")
         return
 
-    clients = utils.validate_questionnaires(clients)
-    email_info["completed"] = utils.check_questionnaires(driver, config, clients)
+    clients = validate_questionnaires(clients)
+    email_info["completed"] = check_questionnaires(driver, config, clients)
     driver.quit()
 
-    driver, actions = utils.initialize_selenium()
+    driver, actions = initialize_selenium()
 
-    utils.login_ta(driver, actions, services)
+    check_failures(config, services, driver, actions, failed_clients)
+    driver.quit()
 
-    two_years_ago = date.today() - relativedelta(years=2)
-    five_years_ago = date.today() - relativedelta(years=5)
+    driver, actions = initialize_selenium()
+    login_ta(driver, actions, services)
 
-    for client_id, client in failed_clients.items():
-        if client.failure["reason"] == "portal not opened":
-            utils.go_to_client(driver, actions, str(client_id))
-            if not utils.check_if_opened_portal(driver):
-                utils.update_failure_in_db(
-                    config, client_id, "portal not opened", resolved=True
-                )
+    clients, failed_clients = get_previous_clients(config)
 
-        elif client.failure["reason"] == "docs not signed":
-            utils.go_to_client(driver, actions, str(client_id))
-            if not utils.check_if_docs_signed(driver):
-                utils.update_failure_in_db(
-                    config, client_id, "docs not signed", resolved=True
-                )
-
-        elif client.failure["reason"] == "too young for asd" and client.dob is not None:
-            if client.dob < two_years_ago:
-                utils.update_failure_in_db(
-                    config, client_id, "too young for asd", resolved=True
-                )
-
-        elif (
-            client.failure["reason"] == "too young for adhd" and client.dob is not None
-        ):
-            if client.dob < five_years_ago:
-                utils.update_failure_in_db(
-                    config, client_id, "too young for adhd", resolved=True
-                )
-
-    clients, failed_clients = utils.get_previous_clients(config)
-
-    messages_sent: list[
-        tuple[utils.FailedClientFromDB | utils.ClientWithQuestionnaires, str]
-    ] = []
+    messages_sent: list[tuple[FailedClientFromDB | ClientWithQuestionnaires, str]] = []
     numbers_sent = []
 
     if failed_clients:
@@ -306,7 +182,7 @@ def main():
 
                 last_reminded = client.failure["lastReminded"]
                 if last_reminded is not None:
-                    last_reminded_distance = utils.check_distance(last_reminded)
+                    last_reminded_distance = check_distance(last_reminded)
                 else:
                     last_reminded_distance = 0
 
@@ -319,13 +195,7 @@ def main():
                     email_info["failed"].append((client, "No phone number"))
                     continue
 
-                already_messaged_today = (
-                    client.phoneNumber in numbers_sent
-                    and utils.format_phone_number(client.phoneNumber)
-                    != utils.format_phone_number(
-                        services["openphone"]["users"][config.name.lower()]["phone"]
-                    )
-                )
+                already_messaged_today = client.phoneNumber in numbers_sent
 
                 if already_messaged_today:
                     logger.warning(
@@ -347,7 +217,7 @@ def main():
                     ):
                         logger.info(f"Sending reminder TO {client.fullName}")
                         if client.failure["reason"] == "portal not opened":
-                            utils.resend_portal_invite(driver, actions, str(client.id))
+                            resend_portal_invite(driver, actions, str(client.id))
 
                         message = build_failure_message(config, client)
                         # Redundant failsafe to super ensure we don't text people a message that just says "None"
@@ -382,22 +252,22 @@ def main():
                             break
 
     if clients:
-        clients = utils.validate_questionnaires(clients)
+        clients = validate_questionnaires(clients)
         for _, client in clients.items():
-            done = utils.all_questionnaires_done(client)
+            done = all_questionnaires_done(client)
 
-            if utils.check_if_ignoring(client):
-                logger.warning(f"Client {client.fullName} is being ignored")
+            if check_if_ignoring(client):
+                logger.warning(f"Client {client.fullName} wants to/has rescheduled")
                 # TODO: Change how we hold onto email data? Revisit with Maddy
                 email_info["ignoring"].append(client)
                 continue
 
             if not done:
-                most_recent_q = utils.get_most_recent_not_done(client)
-                distance = utils.check_distance(most_recent_q["sent"])
+                most_recent_q = get_most_recent_not_done(client)
+                distance = check_distance(most_recent_q["sent"])
                 last_reminded = most_recent_q.get("lastReminded")
                 if last_reminded is not None:
-                    last_reminded_distance = utils.check_distance(last_reminded)
+                    last_reminded_distance = check_distance(last_reminded)
                 else:
                     last_reminded_distance = 0
 
@@ -410,13 +280,7 @@ def main():
                     email_info["failed"].append((client, "No phone number"))
                     continue
 
-                already_messaged_today = (
-                    client.phoneNumber in numbers_sent
-                    and utils.format_phone_number(client.phoneNumber)
-                    != utils.format_phone_number(
-                        services["openphone"]["users"][config.name.lower()]["phone"]
-                    )
-                )
+                already_messaged_today = client.phoneNumber in numbers_sent
 
                 if already_messaged_today:
                     logger.warning(
@@ -474,10 +338,10 @@ def main():
                             break
             elif client in email_info["completed"]:
                 if len(client.questionnaires) > 2:
-                    utils.update_punch_by_column(config, str(client.id), "DA", "done")
-                    utils.update_punch_by_column(config, str(client.id), "EVAL", "done")
+                    update_punch_by_column(config, str(client.id), "DA", "done")
+                    update_punch_by_column(config, str(client.id), "EVAL", "done")
                 else:
-                    utils.update_punch_by_column(config, str(client.id), "DA", "done")
+                    update_punch_by_column(config, str(client.id), "DA", "done")
 
     logger.info(f"Starting status check for {len(messages_sent)} messages.")
 
@@ -492,11 +356,11 @@ def main():
                     f"Successfully delivered message to {client.fullName} ({message_id})"
                 )
 
-                if isinstance(client, utils.FailedClientFromDB):
+                if isinstance(client, FailedClientFromDB):
                     client.failure["reminded"] += 1
                     client.failure["lastReminded"] = date.today()
                     clients_to_update_db.append(client)
-                elif isinstance(client, utils.ClientWithQuestionnaires):
+                elif isinstance(client, ClientWithQuestionnaires):
                     for q in client.questionnaires:
                         if q["status"] == "PENDING":
                             q["reminded"] += 1
@@ -516,21 +380,21 @@ def main():
             )
 
     for client in clients_to_update_db:
-        if isinstance(client, utils.FailedClientFromDB):
-            utils.update_failure_in_db(
+        if isinstance(client, FailedClientFromDB):
+            update_failure_in_db(
                 config,
                 client.id,
                 client.failure["reason"],
                 reminded=client.failure["reminded"],
                 last_reminded=client.failure["lastReminded"],
             )
-        elif isinstance(client, utils.ClientWithQuestionnaires):
-            utils.update_questionnaires_in_db(config, [client])
+        elif isinstance(client, ClientWithQuestionnaires):
+            update_questionnaires_in_db(config, [client])
 
     # TODO: Can we send an incomplete email, even with exception?
-    admin_email_text, admin_email_html = utils.build_admin_email(email_info)
+    admin_email_text, admin_email_html = build_admin_email(email_info)
     if admin_email_text != "":
-        utils.send_gmail(
+        send_gmail(
             admin_email_text,
             f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
             ",".join(config.qreceive_emails),
