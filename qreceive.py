@@ -172,27 +172,6 @@ class OpenPhone:
             logger.exception(f"Failed to get message info: {e}")
             return None
 
-    def send_text_and_ensure(
-        self,
-        message: str,
-        to_number: str,
-        from_number: str | None = None,
-        user_blame: str | None = None,
-    ) -> bool:
-        """Sends a text message and ensures it has been delivered."""
-        attempt_text = self.send_text(message, to_number, from_number, user_blame)
-        if not attempt_text:
-            logger.error(f"Possibly failed to send message {message} to {to_number}")
-            return False
-        message_id = attempt_text["id"]
-        delivered = self.check_text_delivered(message_id)
-        if delivered is True:
-            logger.success(f"Successfully sent message {message} to {to_number}")
-            return True
-        else:
-            logger.error(f"Failed to send message {message} to {to_number}")
-            return False
-
 
 def build_q_message(
     config: utils.Config,
@@ -311,6 +290,9 @@ def main():
 
     clients, failed_clients = utils.get_previous_clients(config)
 
+    messages_sent: list[
+        tuple[utils.FailedClientFromDB | utils.ClientWithQuestionnaires, str]
+    ] = []
     numbers_sent = []
 
     if failed_clients:
@@ -376,20 +358,19 @@ def main():
                             continue
 
                         try:
-                            message_sent = openphone.send_text_and_ensure(
+                            attempt_text = openphone.send_text(
                                 message, client.phoneNumber
                             )
 
-                            if message_sent:
+                            if attempt_text and "id" in attempt_text:
                                 numbers_sent.append(client.phoneNumber)
-                                client.failure["reminded"] += 1
-                                client.failure["lastReminded"] = date.today()
+                                messages_sent.append((client, attempt_text["id"]))
                             else:
                                 logger.error(
                                     f"Failed to send message to {client.fullName}"
                                 )
                                 email_info["failed"].append(
-                                    (client, "Did not deliver within timeout")
+                                    (client, "Failed to send text request")
                                 )
                         except NotEnoughCreditsError:
                             logger.critical(
@@ -399,14 +380,6 @@ def main():
                                 "OpenPhone API needs more credits to send messages."
                             )
                             break
-
-                utils.update_failure_in_db(
-                    config,
-                    client.id,
-                    client.failure["reason"],
-                    reminded=client.failure["reminded"],
-                    last_reminded=client.failure["lastReminded"],
-                )
 
     if clients:
         clients = utils.validate_questionnaires(clients)
@@ -477,22 +450,19 @@ def main():
                             continue
 
                         try:
-                            message_sent = openphone.send_text_and_ensure(
+                            attempt_text = openphone.send_text(
                                 message, client.phoneNumber
                             )
 
-                            if message_sent:
+                            if attempt_text and "id" in attempt_text:
                                 numbers_sent.append(client.phoneNumber)
-                                for q in client.questionnaires:
-                                    if q["status"] == "PENDING":
-                                        q["reminded"] += 1
-                                        q["lastReminded"] = date.today()
+                                messages_sent.append((client, attempt_text["id"]))
                             else:
                                 logger.error(
                                     f"Failed to send message to {client.fullName}"
                                 )
                                 email_info["failed"].append(
-                                    (client, "Did not deliver within timeout")
+                                    (client, "Failed to send text request")
                                 )
                         except NotEnoughCreditsError:
                             logger.critical(
@@ -508,10 +478,54 @@ def main():
                     utils.update_punch_by_column(config, str(client.id), "EVAL", "done")
                 else:
                     utils.update_punch_by_column(config, str(client.id), "DA", "done")
-            utils.update_questionnaires_in_db(config, [client])
 
-    else:
-        logger.info("No clients to check")
+    logger.info(f"Starting status check for {len(messages_sent)} messages.")
+
+    clients_to_update_db = []
+
+    for client, message_id in messages_sent:
+        try:
+            delivered = openphone.check_text_delivered(message_id)
+
+            if delivered:
+                logger.success(
+                    f"Successfully delivered message to {client.fullName} ({message_id})"
+                )
+
+                if isinstance(client, utils.FailedClientFromDB):
+                    client.failure["reminded"] += 1
+                    client.failure["lastReminded"] = date.today()
+                    clients_to_update_db.append(client)
+                elif isinstance(client, utils.ClientWithQuestionnaires):
+                    for q in client.questionnaires:
+                        if q["status"] == "PENDING":
+                            q["reminded"] += 1
+                            q["lastReminded"] = date.today()
+                    clients_to_update_db.append(client)
+            else:
+                logger.error(
+                    f"Failed to deliver message to {client.fullName} ({message_id})"
+                )
+                email_info["failed"].append((client, "Did not deliver within timeout"))
+        except Exception as e:
+            logger.error(
+                f"Error checking message status for {client.fullName} ({message_id}): {e}"
+            )
+            email_info["errors"].append(
+                f"Error checking message status for {client.fullName}: {e}"
+            )
+
+    for client in clients_to_update_db:
+        if isinstance(client, utils.FailedClientFromDB):
+            utils.update_failure_in_db(
+                config,
+                client.id,
+                client.failure["reason"],
+                reminded=client.failure["reminded"],
+                last_reminded=client.failure["lastReminded"],
+            )
+        elif isinstance(client, utils.ClientWithQuestionnaires):
+            utils.update_questionnaires_in_db(config, [client])
 
     # TODO: Can we send an incomplete email, even with exception?
     admin_email_text, admin_email_html = utils.build_admin_email(email_info)
