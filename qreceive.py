@@ -262,7 +262,7 @@ def main():
         "failed": [],
         "call": [],
         "completed": [],
-        "api_failure": None,
+        "errors": [],
     }
     clients, failed_clients = utils.get_previous_clients(config, True)
     if clients is None:
@@ -334,8 +334,7 @@ def main():
 
                 if not client.phoneNumber:
                     logger.warning(f"Client {client.fullName} has no phone number")
-                    # TODO: Include reasons for failures in email
-                    email_info["failed"].append(client)
+                    email_info["failed"].append((client, "No phone number"))
                     continue
 
                 already_messaged_today = (
@@ -389,12 +388,14 @@ def main():
                                 logger.error(
                                     f"Failed to send message to {client.fullName}"
                                 )
-                                email_info["failed"].append(client)
+                                email_info["failed"].append(
+                                    (client, "Did not deliver within timeout")
+                                )
                         except NotEnoughCreditsError:
                             logger.critical(
                                 "Aborting all further message sends due to insufficient credits."
                             )
-                            email_info["api_failure"] = (
+                            email_info["errors"].append(
                                 "OpenPhone API needs more credits to send messages."
                             )
                             break
@@ -433,8 +434,7 @@ def main():
 
                 if not client.phoneNumber:
                     logger.warning(f"Client {client.fullName} has no phone number")
-                    # TODO: Include reasons for failures in email
-                    email_info["failed"].append(client)
+                    email_info["failed"].append((client, "No phone number"))
                     continue
 
                 already_messaged_today = (
@@ -450,7 +450,6 @@ def main():
                         f"Already messaged {client.fullName} at {client.phoneNumber} today"
                     )
 
-                # TODO: For some reason this appears to work but doesn't register as the same variable as last_reminded distance above
                 if most_recent_q["reminded"] == 3 and last_reminded_distance >= 3:
                     email_info["call"].append(client)
                     for q in client.questionnaires:
@@ -492,12 +491,14 @@ def main():
                                 logger.error(
                                     f"Failed to send message to {client.fullName}"
                                 )
-                                email_info["failed"].append(client)
+                                email_info["failed"].append(
+                                    (client, "Did not deliver within timeout")
+                                )
                         except NotEnoughCreditsError:
                             logger.critical(
                                 "Aborting all further message sends due to insufficient credits."
                             )
-                            email_info["api_failure"] = (
+                            email_info["errors"].append(
                                 "OpenPhone API needs more credits to send messages."
                             )
                             break

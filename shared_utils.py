@@ -3,7 +3,6 @@ import hashlib
 import io
 import os
 import re
-import time
 from datetime import date
 from email.message import EmailMessage
 from time import sleep
@@ -30,6 +29,7 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
@@ -190,10 +190,10 @@ class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
     ignoring: list[ClientWithQuestionnaires]
-    failed: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
+    failed: list[tuple[Union[ClientWithQuestionnaires, FailedClientFromDB], str]]
     call: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
     completed: list[ClientWithQuestionnaires]
-    api_failure: Optional[str]
+    errors: list[str]
 
 
 def load_config() -> tuple[Services, Config]:
@@ -737,6 +737,19 @@ def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
     )
 
 
+def wait_for_page_load(driver: WebDriver, timeout: int = 15) -> bool:
+    """Waits for the page to reach 'complete' readyState."""
+    try:
+        WebDriverWait(driver, timeout).until(
+            lambda driver: driver.execute_script("return document.readyState")
+            == "complete"
+        )
+        return True
+    except TimeoutException:
+        logger.warning("Timeout waiting for document.readyState == 'complete'.")
+        return False
+
+
 def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
     """Check if a questionnaire linked by `q_link` is completed.
 
@@ -749,11 +762,8 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         bool: True if the questionnaire is completed, False otherwise.
 
     Raises:
-        Exception: If the questionnaire type does not match the URL.
+        Exception: If the questionnaire type does not match the URL's expected pattern.
     """
-    driver.get(q_link)
-    wait = WebDriverWait(driver, 15)
-
     url_patterns = {
         "ASRS (2-5 Years)": "/asrs_web/",
         "ASRS (6-18 Years)": "/asrs_web/",
@@ -762,66 +772,59 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         "DP-4": "respondent.wpspublish.com",
     }
 
-    try:
-        time.sleep(2)
+    completion_criteria = {
+        "mhs.com": "//*[contains(text(), 'Thank you for completing')] | "
+        "//*[contains(text(), 'This link has already been used')] | "
+        "//*[contains(text(), 'We have received your answers')]",
+        "pearsonassessments.com": "//*[contains(text(), 'Test Completed!')]",
+        "wpspublish.com": "//*[contains(text(), 'This assessment is not available at this time')]",
+    }
 
+    wait = WebDriverWait(driver, 15)
+
+    try:
+        driver.get(q_link)
+        if not wait_for_page_load(driver):
+            return False
         current_url = driver.current_url
         # logger.debug(f"Current URL: {current_url}")
 
         if q_type in url_patterns:
             expected_pattern = url_patterns[q_type]
+
             if expected_pattern not in current_url:
                 error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{current_url}'"
                 logger.error(error_msg)
                 raise Exception(error_msg)
             # logger.debug(f"URL validation passed for type '{q_type}'")
 
-        if "mhs.com" in q_link:
-            logger.info(f"Checking MHS completion for {q_link}")
-            wait.until(
-                EC.presence_of_element_located(
-                    (
-                        By.XPATH,
-                        "//*[contains(text(), 'Thank you for completing')] | //*[contains(text(), 'This link has already been used')] | //*[contains(text(), 'We have received your answers')]",
-                    )
-                )
-            )
-            return True
+        link_host = urlparse(q_link).netloc
 
-        elif "pearsonassessments.com" in q_link:
-            logger.info(f"Checking Pearson completion for {q_link}")
-            wait.until(
-                EC.presence_of_element_located(
-                    (
-                        By.XPATH,
-                        "//*[contains(text(), 'Test Completed!')]",
-                    )
-                )
-            )
-            return True
+        for host_substring, xpath in completion_criteria.items():
+            if host_substring in link_host:
+                logger.info(f"Checking {host_substring} completion for {q_link}")
+                wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                logger.info(f"Found completion criteria for {q_link}")
+                return True
 
-        elif "wpspublish" in q_link:
-            logger.info(f"Checking WPS completion for {q_link}")
-            wait.until(
-                EC.presence_of_element_located(
-                    (
-                        By.XPATH,
-                        "//*[contains(text(), 'This assessment is not available at this time')]",
-                    )
-                )
-            )
-            return True
+        logger.warning(f"Unknown or unsupported questionnaire host in link: {q_link}")
+        return False
 
-        else:
-            logger.warning(f"Unknown questionnaire link: {q_link}")
-            return False
+    except (TimeoutException, NoSuchElementException) as e:
+        logger.info(
+            f"Questionnaire at {q_link} is likely not completed (Timeout waiting for completion message)."
+        )
+        return False
 
-    except (TimeoutException, NoSuchElementException):
-        logger.info(f"Questionnaire at {q_link} is likely not completed")
+    except WebDriverException as e:
+        logger.error(f"WebDriver error checking questionnaire at {q_link}: {e}")
         return False
 
     except Exception as e:
-        logger.error(f"Error checking questionnaire at {q_link}: {e}")
+        logger.error(
+            f"Configuration or validation error checking questionnaire at {q_link}: {e}"
+        )
+        # TODO: This should probably be added to the email?
         return False
 
 
@@ -1072,10 +1075,16 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
     email_text = ""
     email_html = ""
 
-    if email_info["api_failure"]:
-        email_text += f"OpenPhone API Failure:\n{email_info['api_failure']}\n"
+    if email_info["errors"]:
+        email_text += (
+            "Errors:\n"
+            + "\n".join([f"- {error}" for error in email_info["errors"]])
+            + "\n"
+        )
         email_html += (
-            f"<b>OpenPhone API Failure:</b><br>{email_info['api_failure']}<br>"
+            "<h2>Errors</h2><ul><li>"
+            + "</li><li>".join(error for error in email_info["errors"])
+            + "</li></ul>"
         )
 
     if email_info["completed"]:
@@ -1103,12 +1112,16 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
     if email_info["failed"]:
         email_text += (
             "Failed to message:\n"
-            + "\n".join([f"- {client.fullName}" for client in email_info["failed"]])
+            + "\n".join(
+                [f"- {item[0].fullName} ({item[1]})" for item in email_info["failed"]]
+            )
             + "\n"
         )
         email_html += (
             "<h2>Failed to message</h2><ul><li>"
-            + "</li><li>".join(client.fullName for client in email_info["failed"])
+            + "</li><li>".join(
+                f"{item[0].fullName} ({item[1]})" for item in email_info["failed"]
+            )
             + "</li></ul>"
         )
     if email_info["call"]:
