@@ -14,6 +14,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.types import Services
@@ -55,77 +56,66 @@ def initialize_selenium(save_profile: bool = False) -> tuple[WebDriver, ActionCh
     return driver, actions
 
 
-def click_element(
-    driver: WebDriver,
-    by: str,
-    locator: str,
-    max_attempts: int = 3,
-    delay: int = 1,
-    refresh: bool = False,
-) -> None:
-    """Click on a web element located by the specified method within the given attempts.
-
-    Raises:
-        NoSuchElementException: If the element is not found after the specified
-            number of attempts.
-    """
-    for attempt in range(max_attempts):
-        try:
-            element = driver.find_element(by, locator)
-            element.click()
-            return
-        except (StaleElementReferenceException, NoSuchElementException) as e:
-            f"Attempt {attempt + 1}/{max_attempts} failed: {type(e).__name__}. Retrying in {delay} seconds..."
-            sleep(delay)
-            if refresh:
-                logger.info("Refreshing page")
-                driver.refresh()
-                sleep(delay)
-    raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
-
-
 def find_element(
     driver: WebDriver,
     by: str,
     locator: str,
-    max_attempts: int = 3,
-    delay: int = 1,
+    timeout: int = 5,
+    condition=EC.presence_of_element_located,
 ) -> WebElement:
-    """Find a web element with retries.
-
-    Raises:
-        NoSuchElementException: If the element is not found.
-    """
-    for attempt in range(max_attempts):
-        try:
-            element = driver.find_element(by, locator)
-            return element
-        except (StaleElementReferenceException, NoSuchElementException) as e:
-            logger.warning(
-                f"Attempt {attempt + 1}/{max_attempts} failed: {type(e).__name__}. Retrying in {delay} seconds..."
-            )
-            sleep(delay)
-
-    raise NoSuchElementException(f"Element not found after {max_attempts} attempts")
+    """Find a web element using an explicit wait."""
+    try:
+        element = WebDriverWait(driver, timeout).until(condition((by, locator)))
+        return element
+    except TimeoutException as e:
+        logger.warning(
+            f"Timeout ({timeout}s) waiting for element with {by}='{locator}'."
+        )
+        raise e
 
 
 def find_element_exists(
     driver: WebDriver,
     by: str,
     locator: str,
-    max_attempts: int = 3,
-    delay: int = 1,
+    timeout: int = 5,
 ) -> bool:
-    """Check if a web element exists with retries.
-
-    Returns:
-        bool: True if the element is found, False otherwise.
-    """
+    """Check if a web element exists using an explicit wait."""
     try:
-        find_element(driver, by, locator, max_attempts, delay)
+        find_element(driver, by, locator, timeout)
         return True
     except NoSuchElementException:
         return False
+
+
+def click_element(
+    driver: WebDriver,
+    by: str,
+    locator: str,
+    max_attempts: int = 3,
+    timeout: int = 5,
+    refresh: bool = False,
+) -> None:
+    """Click on a web element located by the specified method within the given attempts."""
+    for attempt in range(max_attempts):
+        try:
+            element = find_element(
+                driver, by, locator, timeout, condition=EC.element_to_be_clickable
+            )
+            element.click()
+            return
+        except StaleElementReferenceException:
+            f"Attempt {attempt + 1}/{max_attempts} failed: Stale element. Retrying..."
+            if refresh:
+                logger.info("Refreshing page")
+                driver.refresh()
+                sleep(1)
+        except (NoSuchElementException, TimeoutException):
+            if attempt == max_attempts - 1:
+                raise
+            else:
+                logger.warning(f"Click element failed: trying again after 1s.")
+                sleep(1)
 
 
 def wait_for_page_load(driver: WebDriver, timeout: int = 15) -> bool:
@@ -255,7 +245,7 @@ def go_to_client(
 def check_if_opened_portal(driver: WebDriver) -> bool:
     """Check if the TA portal has been opened by the client."""
     try:
-        find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']")
+        find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']", 3)
         return True
     except NoSuchElementException:
         return False
@@ -268,6 +258,7 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
             driver,
             By.XPATH,
             "//div[contains(normalize-space(text()), 'has completed registration')]",
+            3,
         )
         return True
     except NoSuchElementException:

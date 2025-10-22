@@ -215,7 +215,7 @@ class TherapyAppointmentBot:
             self.driver.find_element(By.CSS_SELECTOR, "input[aria-checked='true']")
             return True
         except NoSuchElementException:
-            raise Exception("Portal not opened.")
+            raise Exception("portal not opened")
 
     def check_if_docs_signed(self) -> bool:
         """Check if the TA docs have been signed by the client."""
@@ -226,7 +226,7 @@ class TherapyAppointmentBot:
             )
             return True
         except NoSuchElementException:
-            raise Exception("Docs not signed.")
+            raise Exception("docs not signed")
 
     def download_consent_forms(self, client_data: dict, school_contacts: dict) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""

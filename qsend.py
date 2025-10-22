@@ -9,6 +9,7 @@ from loguru import logger
 from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
+    TimeoutException,
 )
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
@@ -81,14 +82,7 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
 
 
 def rearrange_dob(dob: str) -> str:
-    """Rearrange a date of birth string from "YYYY-MM-DD" to "MM/DD/YYYY" format.
-
-    Args:
-        dob (str): The date of birth string in "YYYY-MM-DD" format.
-
-    Returns:
-        str: The rearranged date of birth string in "MM/DD/YYYY" format.
-    """
+    """Rearrange a date of birth string from "YYYY-MM-DD" to "MM/DD/YYYY" format."""
     year = dob[0:4]
     month = dob[5:7]
     day = dob[8:10]
@@ -96,13 +90,7 @@ def rearrange_dob(dob: str) -> str:
 
 
 def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> None:
-    """Log in to WPS.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
-        services (Services): The configuration object containing the WPS credentials.
-    """
+    """Log in to WPS."""
     logger.info("Logging in to WPS")
     driver.get("https://platform.wpspublish.com")
 
@@ -121,13 +109,7 @@ def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> N
 
 
 def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) -> None:
-    """Log in to QGlobal.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
-        services (Services): The configuration object containing the QGlobal credentials.
-    """
+    """Log in to QGlobal."""
     logger.info("Logging in to QGlobal")
     driver.get("https://qglobal.pearsonassessments.com/")
 
@@ -153,13 +135,7 @@ def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) 
 
 
 def login_mhs(driver: WebDriver, actions: ActionChains, services: Services) -> None:
-    """Log in to MHS.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
-        services (Services): The configuration object containing the MHS credentials.
-    """
+    """Log in to MHS."""
     logger.info("Logging in to MHS")
     driver.get("https://assess.mhs.com/Account/Login.aspx")
 
@@ -243,7 +219,7 @@ def check_for_qglobal_account(
             f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
         )
         return True
-    except NoSuchElementException:
+    except TimeoutException:
         return False
 
 
@@ -430,7 +406,11 @@ def add_client_to_mhs(
             )
             age_error_style = age_error.get_attribute("style")
             error = age_error_style != "display: none;"
-        except (NoSuchElementException, StaleElementReferenceException):
+        except (
+            NoSuchElementException,
+            StaleElementReferenceException,
+            TimeoutException,
+        ):
             error = False
         if error:
             logger.warning("Age does not match previous client, updating age")
@@ -546,7 +526,7 @@ def add_client_to_mhs(
             By.XPATH,
             "//span[contains(text(), 'A client with the same ID already exists')]",
         )
-    except NoSuchElementException:
+    except TimeoutException:
         logger.success("Added to MHS")
         return True
     return _add_to_existing(driver, actions, client, questionnaire)
@@ -1946,7 +1926,7 @@ def main():
                 client["TA First Name"] = client_info["firstname"]
                 client["TA Last Name"] = client_info["lastname"]
 
-            except NoSuchElementException as e:
+            except (NoSuchElementException, TimeoutException) as e:
                 logger.exception(f"Element not found: {e}")
                 add_failure(
                     config,
