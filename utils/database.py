@@ -16,7 +16,6 @@ from utils.types import (
 
 def get_db(config: Config):
     """Connect to the database and return a connection object."""
-    # TODO: Send email if unable to connect
     db_url = urlparse(config.database_url)
     connection = pymysql.connect(
         host=db_url.hostname,

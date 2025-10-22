@@ -149,260 +149,279 @@ def main():
         "completed": [],
         "errors": [],
     }
-    clients, failed_clients = get_previous_clients(config, True)
-    if clients is None:
-        logger.critical("Failed to get previous clients")
-        return
 
-    clients = validate_questionnaires(clients)
-    email_info["completed"], email_info["errors"] = check_questionnaires(
-        driver, config, clients
-    )
-    driver.quit()
+    try:
+        # Check on questionnaires and update DB
+        clients, failed_clients = get_previous_clients(config, True)
+        if clients is None:
+            logger.critical("Failed to get previous clients")
+            return
 
-    driver, actions = initialize_selenium()
-
-    check_failures(config, services, driver, actions, failed_clients)
-    driver.quit()
-
-    driver, actions = initialize_selenium()
-    login_ta(driver, actions, services)
-
-    clients, failed_clients = get_previous_clients(config)
-
-    messages_sent: list[tuple[FailedClientFromDB | ClientWithQuestionnaires, str]] = []
-    numbers_sent = []
-
-    if failed_clients:
-        for _, client in failed_clients.items():
-            if client.failure["reason"] in ["portal not opened", "docs not signed"]:
-                if client.note and "app.pandadoc.com" in str(client.note):
-                    logger.info(
-                        f"Client {client.fullName} likely doesn't speak English, skipping"
-                    )
-                    continue
-
-                last_reminded = client.failure["lastReminded"]
-                if last_reminded is not None:
-                    last_reminded_distance = check_distance(last_reminded)
-                else:
-                    last_reminded_distance = 0
-
-                logger.info(
-                    f"Client {client.fullName} has issue {client.failure['reason']}"
-                )
-
-                if not client.phoneNumber:
-                    logger.warning(f"Client {client.fullName} has no phone number")
-                    email_info["failed"].append((client, "No phone number"))
-                    continue
-
-                already_messaged_today = client.phoneNumber in numbers_sent
-
-                if already_messaged_today:
-                    logger.warning(
-                        f"Already messaged {client.fullName} at {client.phoneNumber} today"
-                    )
-
-                if client.failure["reminded"] == 3 and last_reminded_distance > 3:
-                    email_info["call"].append(client)
-                    client.failure["reminded"] += 1
-                    client.failure["lastReminded"] = date.today()
-
-                elif (
-                    client.failure["reminded"] < 3
-                    and not already_messaged_today
-                    and client.phoneNumber
-                ):
-                    if should_send_reminder(
-                        client.failure["reminded"], last_reminded_distance
-                    ):
-                        logger.info(f"Sending reminder TO {client.fullName}")
-                        if client.failure["reason"] == "portal not opened":
-                            resend_portal_invite(driver, actions, str(client.id))
-
-                        message = build_failure_message(config, client)
-                        # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                        if not message:
-                            logger.error(
-                                f"Failed to build message for {client.fullName}"
-                            )
-                            continue
-
-                        try:
-                            attempt_text = openphone.send_text(
-                                message, client.phoneNumber
-                            )
-
-                            if attempt_text and "id" in attempt_text:
-                                numbers_sent.append(client.phoneNumber)
-                                messages_sent.append((client, attempt_text["id"]))
-                            else:
-                                logger.error(
-                                    f"Failed to send message to {client.fullName}"
-                                )
-                                email_info["failed"].append(
-                                    (client, "Failed to send text request")
-                                )
-                        except NotEnoughCreditsError:
-                            logger.critical(
-                                "Aborting all further message sends due to insufficient credits."
-                            )
-                            email_info["errors"].append(
-                                "OpenPhone API needs more credits to send messages."
-                            )
-                            break
-
-    if clients:
         clients = validate_questionnaires(clients)
-        for _, client in clients.items():
-            done = all_questionnaires_done(client)
+        email_info["completed"], email_info["errors"] = check_questionnaires(
+            driver, config, clients
+        )
+        driver.quit()
 
-            if check_if_ignoring(client):
-                logger.warning(f"Client {client.fullName} wants to/has rescheduled")
-                # TODO: Change how we hold onto email data? Revisit with Maddy
-                email_info["ignoring"].append(client)
-                continue
+        # Check failures and update in DB
+        driver, actions = initialize_selenium()
+        check_failures(config, services, driver, actions, failed_clients)
+        driver.quit()
 
-            if not done:
-                most_recent_q = get_most_recent_not_done(client)
-                distance = check_distance(most_recent_q["sent"])
-                last_reminded = most_recent_q.get("lastReminded")
-                if last_reminded is not None:
-                    last_reminded_distance = check_distance(last_reminded)
-                else:
-                    last_reminded_distance = 0
+        # Send reminders for failures and questionnaires
 
-                logger.info(
-                    f"{client.fullName} had questionnaire sent on {most_recent_q['sent']} and isn't done"
-                )
+        driver, actions = initialize_selenium()
+        login_ta(driver, actions, services)
 
-                if not client.phoneNumber:
-                    logger.warning(f"Client {client.fullName} has no phone number")
-                    email_info["failed"].append((client, "No phone number"))
-                    continue
+        clients, failed_clients = get_previous_clients(config)
 
-                already_messaged_today = client.phoneNumber in numbers_sent
+        messages_sent: list[
+            tuple[FailedClientFromDB | ClientWithQuestionnaires, str]
+        ] = []
+        numbers_sent = []
 
-                if already_messaged_today:
-                    logger.warning(
-                        f"Already messaged {client.fullName} at {client.phoneNumber} today"
+        if failed_clients:
+            for _, client in failed_clients.items():
+                if client.failure["reason"] in ["portal not opened", "docs not signed"]:
+                    if client.note and "app.pandadoc.com" in str(client.note):
+                        logger.info(
+                            f"Client {client.fullName} likely doesn't speak English, skipping"
+                        )
+                        continue
+
+                    last_reminded = client.failure["lastReminded"]
+                    if last_reminded is not None:
+                        last_reminded_distance = check_distance(last_reminded)
+                    else:
+                        last_reminded_distance = 0
+
+                    logger.info(
+                        f"Client {client.fullName} has issue {client.failure['reason']}"
                     )
 
-                if most_recent_q["reminded"] == 3 and last_reminded_distance >= 3:
-                    email_info["call"].append(client)
-                    for q in client.questionnaires:
-                        if q["status"] == "PENDING":
-                            q["reminded"] += 1
-                            q["lastReminded"] = date.today()
+                    if not client.phoneNumber:
+                        logger.warning(f"Client {client.fullName} has no phone number")
+                        email_info["failed"].append((client, "No phone number"))
+                        continue
 
-                elif (
-                    most_recent_q["reminded"] < 3
-                    and not already_messaged_today
-                    and client.phoneNumber
-                ):
-                    if should_send_reminder(
-                        most_recent_q["reminded"], last_reminded_distance
-                    ):
-                        logger.info(f"Sending reminder TO {client.fullName}")
-                        message = build_q_message(
-                            config, client, most_recent_q, distance
+                    already_messaged_today = client.phoneNumber in numbers_sent
+
+                    if already_messaged_today:
+                        logger.warning(
+                            f"Already messaged {client.fullName} at {client.phoneNumber} today"
                         )
-                        # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                        if not message:
-                            logger.error(
-                                f"Failed to build message for {client.fullName}"
-                            )
-                            continue
 
-                        try:
-                            attempt_text = openphone.send_text(
-                                message, client.phoneNumber
-                            )
+                    if client.failure["reminded"] == 3 and last_reminded_distance > 3:
+                        email_info["call"].append(client)
+                        client.failure["reminded"] += 1
+                        client.failure["lastReminded"] = date.today()
 
-                            if attempt_text and "id" in attempt_text:
-                                numbers_sent.append(client.phoneNumber)
-                                messages_sent.append((client, attempt_text["id"]))
-                            else:
+                    elif (
+                        client.failure["reminded"] < 3
+                        and not already_messaged_today
+                        and client.phoneNumber
+                    ):
+                        if should_send_reminder(
+                            client.failure["reminded"], last_reminded_distance
+                        ):
+                            logger.info(f"Sending reminder TO {client.fullName}")
+                            if client.failure["reason"] == "portal not opened":
+                                resend_portal_invite(driver, actions, str(client.id))
+
+                            message = build_failure_message(config, client)
+                            # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                            if not message:
                                 logger.error(
-                                    f"Failed to send message to {client.fullName}"
+                                    f"Failed to build message for {client.fullName}"
                                 )
-                                email_info["failed"].append(
-                                    (client, "Failed to send text request")
+                                continue
+
+                            try:
+                                attempt_text = openphone.send_text(
+                                    message, client.phoneNumber
                                 )
-                        except NotEnoughCreditsError:
-                            logger.critical(
-                                "Aborting all further message sends due to insufficient credits."
+
+                                if attempt_text and "id" in attempt_text:
+                                    numbers_sent.append(client.phoneNumber)
+                                    messages_sent.append((client, attempt_text["id"]))
+                                else:
+                                    logger.error(
+                                        f"Failed to send message to {client.fullName}"
+                                    )
+                                    email_info["failed"].append(
+                                        (client, "Failed to send text request")
+                                    )
+                            except NotEnoughCreditsError:
+                                logger.critical(
+                                    "Aborting all further message sends due to insufficient credits."
+                                )
+                                email_info["errors"].append(
+                                    "OpenPhone API needs more credits to send messages."
+                                )
+                                break
+
+        if clients:
+            clients = validate_questionnaires(clients)
+            for _, client in clients.items():
+                done = all_questionnaires_done(client)
+
+                if check_if_ignoring(client):
+                    logger.warning(f"Client {client.fullName} is being ignored.")
+                    email_info["ignoring"].append(client)
+                    continue
+
+                if not done:
+                    most_recent_q = get_most_recent_not_done(client)
+                    distance = check_distance(most_recent_q["sent"])
+                    last_reminded = most_recent_q.get("lastReminded")
+                    if last_reminded is not None:
+                        last_reminded_distance = check_distance(last_reminded)
+                    else:
+                        last_reminded_distance = 0
+
+                    logger.info(
+                        f"{client.fullName} had questionnaire sent on {most_recent_q['sent']} and isn't done"
+                    )
+
+                    if not client.phoneNumber:
+                        logger.warning(f"Client {client.fullName} has no phone number")
+                        email_info["failed"].append((client, "No phone number"))
+                        continue
+
+                    already_messaged_today = client.phoneNumber in numbers_sent
+
+                    if already_messaged_today:
+                        logger.warning(
+                            f"Already messaged {client.fullName} at {client.phoneNumber} today"
+                        )
+
+                    if most_recent_q["reminded"] == 3 and last_reminded_distance >= 3:
+                        email_info["call"].append(client)
+                        for q in client.questionnaires:
+                            if q["status"] == "PENDING":
+                                q["reminded"] += 1
+                                q["lastReminded"] = date.today()
+
+                    elif (
+                        most_recent_q["reminded"] < 3
+                        and not already_messaged_today
+                        and client.phoneNumber
+                    ):
+                        if should_send_reminder(
+                            most_recent_q["reminded"], last_reminded_distance
+                        ):
+                            logger.info(f"Sending reminder TO {client.fullName}")
+                            message = build_q_message(
+                                config, client, most_recent_q, distance
                             )
-                            email_info["errors"].append(
-                                "OpenPhone API needs more credits to send messages."
-                            )
-                            break
-            elif client in email_info["completed"]:
-                if len(client.questionnaires) > 2:
-                    update_punch_by_column(config, str(client.id), "DA", "done")
-                    update_punch_by_column(config, str(client.id), "EVAL", "done")
+                            # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                            if not message:
+                                logger.error(
+                                    f"Failed to build message for {client.fullName}"
+                                )
+                                continue
+
+                            try:
+                                attempt_text = openphone.send_text(
+                                    message, client.phoneNumber
+                                )
+
+                                if attempt_text and "id" in attempt_text:
+                                    numbers_sent.append(client.phoneNumber)
+                                    messages_sent.append((client, attempt_text["id"]))
+                                else:
+                                    logger.error(
+                                        f"Failed to send message to {client.fullName}"
+                                    )
+                                    email_info["failed"].append(
+                                        (client, "Failed to send text request")
+                                    )
+                            except NotEnoughCreditsError:
+                                logger.critical(
+                                    "Aborting all further message sends due to insufficient credits."
+                                )
+                                email_info["errors"].append(
+                                    "OpenPhone API needs more credits to send messages."
+                                )
+                                break
+                elif client in email_info["completed"]:
+                    if len(client.questionnaires) > 2:
+                        update_punch_by_column(config, str(client.id), "DA", "done")
+                        update_punch_by_column(config, str(client.id), "EVAL", "done")
+                    else:
+                        update_punch_by_column(config, str(client.id), "DA", "done")
+
+        # Check message status
+        logger.info(f"Starting status check for {len(messages_sent)} messages.")
+
+        clients_to_update_db = []
+
+        for client, message_id in messages_sent:
+            try:
+                delivered = openphone.check_text_delivered(message_id)
+
+                if delivered:
+                    logger.success(
+                        f"Successfully delivered message to {client.fullName} ({message_id})"
+                    )
+
+                    if isinstance(client, FailedClientFromDB):
+                        client.failure["reminded"] += 1
+                        client.failure["lastReminded"] = date.today()
+                        clients_to_update_db.append(client)
+                    elif isinstance(client, ClientWithQuestionnaires):
+                        for q in client.questionnaires:
+                            if q["status"] == "PENDING":
+                                q["reminded"] += 1
+                                q["lastReminded"] = date.today()
+                        clients_to_update_db.append(client)
                 else:
-                    update_punch_by_column(config, str(client.id), "DA", "done")
-
-    logger.info(f"Starting status check for {len(messages_sent)} messages.")
-
-    clients_to_update_db = []
-
-    for client, message_id in messages_sent:
-        try:
-            delivered = openphone.check_text_delivered(message_id)
-
-            if delivered:
-                logger.success(
-                    f"Successfully delivered message to {client.fullName} ({message_id})"
-                )
-
-                if isinstance(client, FailedClientFromDB):
-                    client.failure["reminded"] += 1
-                    client.failure["lastReminded"] = date.today()
-                    clients_to_update_db.append(client)
-                elif isinstance(client, ClientWithQuestionnaires):
-                    for q in client.questionnaires:
-                        if q["status"] == "PENDING":
-                            q["reminded"] += 1
-                            q["lastReminded"] = date.today()
-                    clients_to_update_db.append(client)
-            else:
+                    logger.error(
+                        f"Failed to deliver message to {client.fullName} ({message_id})"
+                    )
+                    email_info["failed"].append(
+                        (client, "Did not deliver within timeout")
+                    )
+            except Exception as e:
                 logger.error(
-                    f"Failed to deliver message to {client.fullName} ({message_id})"
+                    f"Error checking message status for {client.fullName} ({message_id}): {e}"
                 )
-                email_info["failed"].append((client, "Did not deliver within timeout"))
-        except Exception as e:
-            logger.error(
-                f"Error checking message status for {client.fullName} ({message_id}): {e}"
-            )
-            email_info["errors"].append(
-                f"Error checking message status for {client.fullName}: {e}"
-            )
+                email_info["errors"].append(
+                    f"Error checking message status for {client.fullName}: {e}"
+                )
 
-    for client in clients_to_update_db:
-        if isinstance(client, FailedClientFromDB):
-            update_failure_in_db(
-                config,
-                client.id,
-                client.failure["reason"],
-                reminded=client.failure["reminded"],
-                last_reminded=client.failure["lastReminded"],
-            )
-        elif isinstance(client, ClientWithQuestionnaires):
-            update_questionnaires_in_db(config, [client])
+        # Update DB
+        for client in clients_to_update_db:
+            if isinstance(client, FailedClientFromDB):
+                update_failure_in_db(
+                    config,
+                    client.id,
+                    client.failure["reason"],
+                    reminded=client.failure["reminded"],
+                    last_reminded=client.failure["lastReminded"],
+                )
+            elif isinstance(client, ClientWithQuestionnaires):
+                update_questionnaires_in_db(config, [client])
 
-    # TODO: Can we send an incomplete email, even with exception?
-    admin_email_text, admin_email_html = build_admin_email(email_info)
-    if admin_email_text != "":
-        send_gmail(
-            admin_email_text,
-            f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
-            ",".join(config.qreceive_emails),
-            config.automated_email,
-            html=admin_email_html,
-        )
+    except Exception as e:
+        error_message = f"An unhandled exception occurred during the run: {e}"
+        logger.exception(error_message)
+        email_info["errors"].append(error_message)
+        raise
+
+    finally:
+        admin_email_text, admin_email_html = build_admin_email(email_info)
+        if admin_email_text != "":
+            try:
+                send_gmail(
+                    admin_email_text,
+                    f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
+                    ",".join(config.qreceive_emails),
+                    config.automated_email,
+                    html=admin_email_html,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send the admin email: {e}")
 
 
 if __name__ == "__main__":
