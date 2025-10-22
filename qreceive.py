@@ -155,7 +155,9 @@ def main():
         return
 
     clients = validate_questionnaires(clients)
-    email_info["completed"] = check_questionnaires(driver, config, clients)
+    email_info["completed"], email_info["errors"] = check_questionnaires(
+        driver, config, clients
+    )
     driver.quit()
 
     driver, actions = initialize_selenium()

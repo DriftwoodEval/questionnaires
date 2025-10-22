@@ -1,3 +1,4 @@
+from typing import Tuple
 from urllib.parse import urlparse
 
 from loguru import logger
@@ -124,15 +125,17 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         logger.error(
             f"Configuration or validation error checking questionnaire at {q_link}: {e}"
         )
-        # TODO: This should probably be added to the email?
-        return False
+        raise
 
 
 def check_questionnaires(
     driver: WebDriver,
     config: Config,
     clients: dict[int, ClientWithQuestionnaires],
-) -> list[ClientWithQuestionnaires]:
+) -> Tuple[
+    list[ClientWithQuestionnaires],
+    list[str],
+]:
     """Check if all questionnaires for the given clients are completed. This function will navigate to each questionnaire link and look for specific text on the page based on the URL.
 
     Args:
@@ -144,51 +147,57 @@ def check_questionnaires(
         list[ClientWithQuestionnaires]: A list of clients whose questionnaires are all completed.
     """
     if not clients:
-        return []
+        return [], []
     completed_clients = []
     updated_clients = []
+    error_clients: list[str] = []
     for id in clients:
         client = clients[id]
         if all_questionnaires_done(client):
             logger.info(f"{client.fullName} has already completed their questionnaires")
             continue
         client_updated = False
-        for questionnaire in client.questionnaires:
-            if questionnaire["status"] == "COMPLETED":
+        try:
+            for questionnaire in client.questionnaires:
+                if questionnaire["status"] == "COMPLETED":
+                    logger.info(
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
+                    )
+                    continue
                 logger.info(
-                    f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
+                    f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
                 )
-                continue
-            logger.info(
-                f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
-            )
-            if check_q_done(
-                driver, questionnaire["link"], questionnaire["questionnaireType"]
-            ):
-                questionnaire["status"] = "COMPLETED"
-                logger.info(
-                    f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
-                )
-                client_updated = True
-            else:
-                questionnaire["status"] = "PENDING"
-                logger.warning(
-                    f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
-                )
-                logger.warning(
-                    f"At least one questionnaire is not done for {client.fullName}"
-                )
-                break
+                if check_q_done(
+                    driver, questionnaire["link"], questionnaire["questionnaireType"]
+                ):
+                    questionnaire["status"] = "COMPLETED"
+                    logger.info(
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                    )
+                    client_updated = True
+                else:
+                    questionnaire["status"] = "PENDING"
+                    logger.warning(
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                    )
+                    logger.warning(
+                        f"At least one questionnaire is not done for {client.fullName}"
+                    )
+                    break
 
-        if client_updated:
-            updated_clients.append(client)
+            if client_updated:
+                updated_clients.append(client)
 
-        if all_questionnaires_done(client):
-            completed_clients.append(client)
+            if all_questionnaires_done(client):
+                completed_clients.append(client)
+
+        except Exception as e:
+            logger.error(f"Error checking questionnaires for {client.fullName}: {e}")
+            error_clients.append(f"{client.fullName}: {e}")
 
     if updated_clients:
         update_questionnaires_in_db(config, updated_clients)
-    return completed_clients
+    return completed_clients, error_clients
 
 
 def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire:
