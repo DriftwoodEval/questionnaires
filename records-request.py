@@ -52,6 +52,7 @@ def get_clients_to_request(config: utils.Config) -> pd.DataFrame | None:
         (punch_list["Records Needed"] == "TRUE")
         & (punch_list["Records Requested?"] != "TRUE")
         & (punch_list["Records Reviewed?"] != "TRUE")
+        & (punch_list["For"] != "ADHD")
     ]
 
     return punch_list
