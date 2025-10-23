@@ -112,7 +112,7 @@ class Questionnaire(TypedDict):
     questionnaireType: str
     link: str
     sent: date
-    status: Literal["COMPLETED", "PENDING", "RESCHEDULED"]
+    status: Literal["COMPLETED", "PENDING", "IGNORING"]
     reminded: int
     lastReminded: Optional[date]
 
@@ -165,7 +165,7 @@ class ClientWithQuestionnaires(_ClientBase):
 class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
-    reschedule: list[ClientWithQuestionnaires]
+    ignoring: list[ClientWithQuestionnaires]
     failed: list[ClientWithQuestionnaires]
     call: list[ClientWithQuestionnaires]
     completed: list[ClientWithQuestionnaires]
@@ -473,7 +473,7 @@ def put_questionnaire_in_db(
     link: str,
     type: str,
     sent_date,
-    status: Literal["COMPLETED", "PENDING", "RESCHEDULED"],
+    status: Literal["COMPLETED", "PENDING", "IGNORING"],
 ):
     """Insert a questionnaire into the database.
 
@@ -483,7 +483,7 @@ def put_questionnaire_in_db(
         link (str): The link of the questionnaire.
         type (str): The type of the questionnaire.
         sent_date: The date the questionnaire was sent.
-        status (Literal["COMPLETED", "PENDING", "RESCHEDULED"]): The status of the questionnaire.
+        status (Literal["COMPLETED", "PENDING", "IGNORING"]): The status of the questionnaire.
 
     Returns:
         None
@@ -602,19 +602,17 @@ def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
     )
 
 
-def check_if_rescheduled(client: ClientWithQuestionnaires) -> bool:
-    """Check if any questionnaire for the given client has been rescheduled.
+def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
+    """Check if any questionnaire for the given client is being ignored.
 
     Args:
         client (ClientWithQuestionnaires): The client to check.
 
     Returns:
-        bool: True if any questionnaire has been rescheduled, False otherwise.
+        bool: True if any questionnaire has been ignored, False otherwise.
     """
     return any(
-        q["status"] == "RESCHEDULED"
-        for q in client.questionnaires
-        if isinstance(q, dict)
+        q["status"] == "IGNORING" for q in client.questionnaires if isinstance(q, dict)
     )
 
 
@@ -970,15 +968,15 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             + "</li><li>".join(client.fullName for client in email_info["completed"])
             + "</li></ul>"
         )
-    if email_info["reschedule"]:
+    if email_info["ignoring"]:
         email_text += (
-            "Check on rescheduled:\n"
-            + "\n".join([f"- {client.fullName}" for client in email_info["reschedule"]])
+            "Check on ignoring:\n"
+            + "\n".join([f"- {client.fullName}" for client in email_info["ignoring"]])
             + "\n"
         )
         email_html += (
-            "<h2>Check on rescheduled</h2><ul><li>"
-            + "</li><li>".join(client.fullName for client in email_info["reschedule"])
+            "<h2>Check on ignoring</h2><ul><li>"
+            + "</li><li>".join(client.fullName for client in email_info["ignoring"])
             + "</li></ul>"
         )
     if email_info["failed"]:

@@ -248,7 +248,7 @@ def main():
     openphone = OpenPhone(config, services)
     driver, actions = utils.initialize_selenium()
     email_info: utils.AdminEmailInfo = {
-        "reschedule": [],
+        "ignoring": [],
         "failed": [],
         "call": [],
         "completed": [],
@@ -270,10 +270,10 @@ def main():
         for _, client in clients.items():
             done = utils.all_questionnaires_done(client)
 
-            if utils.check_if_rescheduled(client):
-                logger.warning(f"Client {client.fullName} wants to/has rescheduled")
+            if utils.check_if_ignoring(client):
+                logger.warning(f"Client {client.fullName} is being ignored")
                 # TODO: Change how we hold onto email data? Revisit with Maddy
-                email_info["reschedule"].append(client)
+                email_info["ignoring"].append(client)
                 continue
 
             if not done:
