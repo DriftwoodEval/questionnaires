@@ -26,6 +26,7 @@ from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from utils.database import get_previous_clients
 from utils.google import (
     get_punch_list,
     google_authenticate,
@@ -34,7 +35,7 @@ from utils.google import (
     update_punch_list,
 )
 from utils.misc import add_failure, load_config
-from utils.types import Config, Services
+from utils.types import ClientFromDB, Config, Services
 
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")
@@ -180,35 +181,6 @@ class TherapyAppointmentBot:
             logger.warning(f"Could not find a search element for: {client_id}")
             return False
 
-    def extract_client_data(self) -> dict:
-        """Extracts and returns client data from their TherapyAppointment page."""
-        logger.info("Extracting client data...")
-        # Wait for the name to ensure the page is loaded
-        name_element = self.wait.until(
-            EC.visibility_of_element_located((By.CLASS_NAME, "text-h4"))
-        )
-        name = HumanName(name_element.text)
-
-        birthdate = (
-            self.driver.find_element(
-                By.XPATH, "//div[contains(normalize-space(text()), 'DOB ')]"
-            )
-            .text.split()[-1]
-            .replace("/", "")
-        )
-
-        keepcharacters = (" ", ".", "_")
-        safe_fullname = "".join(
-            c for c in f"{name.first} {name.last}" if c.isalnum() or c in keepcharacters
-        ).rstrip()
-
-        data = {
-            "fullname": safe_fullname,
-            "birthdate": birthdate,
-        }
-        logger.info(f"Client data extracted: {data}")
-        return data
-
     def check_if_opened_portal(self) -> bool:
         """Check if the TA portal has been opened by the client."""
         try:
@@ -228,25 +200,30 @@ class TherapyAppointmentBot:
         except NoSuchElementException:
             raise Exception("docs not signed")
 
-    def download_consent_forms(self, client_data: dict, school_contacts: dict) -> bool:
+    def download_consent_forms(
+        self, client: ClientFromDB, school_contacts: dict
+    ) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
+        if not client.dob:
+            logger.warning(
+                f"Client {client.firstName} {client.lastName} has no DOB, skipping download."
+            )
+            return True
         creds = google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
-        check_filename = f"{client_data['fullname'].title()} {client_data['birthdate']} Receiving.pdf"
+        check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Receiving.pdf"
         prev_receive = self.file_exists(
             service, check_filename, self.config.records_folder_id
         )
-        check_filename = (
-            f"{client_data['fullname'].title()} {client_data['birthdate']} Sending.pdf"
-        )
+        check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Sending.pdf"
         prev_send = self.file_exists(
             service, check_filename, self.config.records_folder_id
         )
 
         if prev_receive or prev_send:
             logger.warning(
-                f"Files already exist for {client_data['fullname']}, skipping download."
+                f"Files already exist for {client.firstName} {client.lastName}, skipping download."
             )
             return True
 
@@ -255,12 +232,12 @@ class TherapyAppointmentBot:
 
         receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
             self.save_document_as_pdf(
-                "Receiving Consent to Release of Information", client_data
+                "Receiving Consent to Release of Information", client
             )
         )
         sending_stream, sending_filename, sending_school, sending_drive_file = (
             self.save_document_as_pdf(
-                "Sending Consent to Release of Information", client_data
+                "Sending Consent to Release of Information", client
             )
         )
 
@@ -275,11 +252,11 @@ class TherapyAppointmentBot:
             except KeyError:
                 raise (Exception(f"{sending_school} has no email address assigned."))
 
-        message_text = f"Re: Student: {client_data['fullname']}\nDate of Birth: {client_data['birthdate'][:2]}/{client_data['birthdate'][2:4]}/{client_data['birthdate'][4:]}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
+        message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
         send_gmail(
             message_text=message_text,
-            subject=f"Re: Student: {client_data['fullname']}",
+            subject=f"Re: Student: {client.firstName} {client.lastName}",
             to_addr=school_address,
             from_addr="records@driftwoodeval.com",
             pdf_stream0=receiving_stream,
@@ -299,7 +276,7 @@ class TherapyAppointmentBot:
             self.config.sent_records_folder_id,
         )
 
-        update_punch_list(self.config, client_data["id"], "Records Requested?", "TRUE")
+        update_punch_list(self.config, str(client.id), "Records Requested?", "TRUE")
 
         clients_button = self.driver.find_element(
             By.XPATH, "//*[contains(text(), 'Clients')]"
@@ -366,9 +343,13 @@ class TherapyAppointmentBot:
             return "Not Found"
 
     def save_document_as_pdf(
-        self, link_text: str, client: dict
+        self, link_text: str, client: ClientFromDB
     ) -> tuple[io.BytesIO, str, str, dict]:
         """Helper function to find, print, and save a single document."""
+        if not client.dob:
+            logger.warning(f"{client.firstName} {client.lastName} has no DOB.")
+            raise (Exception(f"{client.firstName} {client.lastName} has no DOB."))
+
         logger.info(f"Opening {link_text}...")
 
         # Default values
@@ -396,9 +377,7 @@ class TherapyAppointmentBot:
 
             doc_type = link_text.split(" ")[0]
 
-            filename = (
-                f"{client['fullname'].title()} {client['birthdate']} {doc_type}.pdf"
-            )
+            filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} {doc_type}.pdf"
 
             logger.info(f"Saving {filename}...")
             stream, stream_name, school, drive_file = self.upload_pdf_from_driver(
@@ -439,12 +418,13 @@ def main():
         logger.critical("No clients found.")
         return
 
-    today = date.today()
-
     logger.info(f"Found {len(clients_to_process)} new clients to process.")
 
+    today = date.today()
     new_success_count = 0
     new_failure_count = 0
+
+    prev_clients, _ = get_previous_clients(config)
 
     with TherapyAppointmentBot(services, config) as bot:
         bot.login()
@@ -455,12 +435,11 @@ def main():
 
             if bot.go_to_client(client_id):
                 try:
-                    client_data = bot.extract_client_data()
-                    client_data["id"] = client_id
+                    client = prev_clients[client_id]
 
                     bot.check_if_opened_portal()
                     bot.check_if_docs_signed()
-                    skipped = bot.download_consent_forms(client_data, school_contacts)
+                    skipped = bot.download_consent_forms(client, school_contacts)
                     append_to_csv_file(Path(SUCCESS_FILE), client_name)
                     if not skipped:
                         new_success_count += 1
