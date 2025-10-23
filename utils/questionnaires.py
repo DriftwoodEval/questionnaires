@@ -179,10 +179,6 @@ def check_questionnaires(
                     logger.warning(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
-                    logger.warning(
-                        f"At least one questionnaire is not done for {client.fullName}"
-                    )
-                    break
 
             if client_updated:
                 updated_clients.append(client)
