@@ -389,7 +389,9 @@ class TherapyAppointmentBot:
         finally:
             # Go back to the Docs & Forms list
             self.driver.back()
-            return stream, stream_name, school, drive_file
+
+        return stream, stream_name, school, drive_file
+
 
     def file_exists(self, service, filename, folder_id):
         """Helper function to check if a file exists in Drive."""
@@ -449,24 +451,24 @@ def main():
                         f"An error occurred while processing {client_name}: {e}"
                     )
                     add_failure(
-                        config,
-                        client_id,
-                        str(e),
-                        today,
-                        client_name,
-                        asdAdhd,
-                        "Records",
+                        config=config,
+                        client_id=client_id,
+                        error=str(e),
+                        failed_date=today,
+                        full_name=client_name,
+                        asd_adhd=asdAdhd,
+                        type="Records",
                     )
                     new_failure_count += 1
             else:
                 add_failure(
-                    config,
-                    client_id,
-                    "Client not found",
-                    today,
-                    client_name,
-                    asdAdhd,
-                    "Records",
+                    config=config,
+                    client_id=client_id,
+                    error="Client not found",
+                    failed_date=today,
+                    full_name=client_name,
+                    asd_adhd=asdAdhd,
+                    type="Records",
                 )
                 new_failure_count += 1
 

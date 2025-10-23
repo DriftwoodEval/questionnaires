@@ -95,7 +95,6 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
             if expected_pattern not in current_url:
                 error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{current_url}'"
-                logger.error(error_msg)
                 raise Exception(error_msg)
             # logger.debug(f"URL validation passed for type '{q_type}'")
 
@@ -123,7 +122,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
     except Exception as e:
         logger.error(
-            f"Configuration or validation error checking questionnaire at {q_link}: {e}"
+            f"{q_link}: {e}"
         )
         raise
 

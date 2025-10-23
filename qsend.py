@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from time import sleep, strftime, strptime
 from typing import Union
 
@@ -1818,6 +1818,8 @@ def main():
                 logger.warning(f"Login failed: {e}, trying again")
                 sleep(1)
 
+    today = date.today()
+
     for _, client in clients.iterrows():
         if client["Client Name"] == "Johnny Smonny":
             logger.info(f"Starting loop for {client['Client Name']}")
@@ -1837,13 +1839,13 @@ def main():
                             f"Client {client['Client Name']} has already failed to send"
                         )
                         add_failure(
-                            config,
-                            client["Client ID"],
-                            error.lower(),
-                            datetime.today(),
-                            client["Client Name"],
-                            client["For"],
-                            client["daeval"],
+                            config=config,
+                            client_id=client["Client ID"],
+                            error=error.lower(),
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            type=client["daeval"],
                         )
 
                         continue
@@ -1851,13 +1853,13 @@ def main():
             if client["Language"] != "" and client["Language"] != "English":
                 logger.error(f"Client {client['Client Name']} doesn't speak English")
                 add_failure(
-                    config,
-                    client["Client ID"],
-                    client["Language"].lower(),
-                    datetime.today(),
-                    client["Client Name"],
-                    client["For"],
-                    client["daeval"],
+                    config=config,
+                    client_id=client["Client ID"],
+                    error=client["Language"].lower(),
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    type=client["daeval"],
                 )
                 continue
 
@@ -1867,54 +1869,54 @@ def main():
                 if not client_url:
                     logger.error("Client URL not found")
                     add_failure(
-                        config,
-                        client["Client ID"],
-                        "unable to find client",
-                        datetime.today(),
-                        client["Client Name"],
-                        client["For"],
-                        client["daeval"],
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="unable to find client",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        type=client["daeval"],
                     )
                     continue
                 if not check_if_opened_portal(driver):
                     add_failure(
-                        config,
-                        client["Client ID"],
-                        "portal not opened",
-                        datetime.today(),
-                        client["Client Name"],
-                        client["For"],
-                        client["daeval"],
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="portal not opened",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        type=client["daeval"],
                     )
                     continue
                 else:
                     if client.get("Previous Error") == "portal not opened":
                         update_failure_in_db(
-                            config,
-                            client["Client ID"],
-                            client["daeval"],
-                            client["Previous Error"],
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason=client["Previous Error"],
+                            da_eval=client["daeval"],
                             resolved=True,
                         )
 
                 if not check_if_docs_signed(driver):
                     add_failure(
-                        config,
-                        client["Client ID"],
-                        "docs not signed",
-                        datetime.today(),
-                        client["Client Name"],
-                        client["For"],
-                        client["daeval"],
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="docs not signed",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        type=client["daeval"],
                     )
                     continue
                 else:
                     if client.get("Previous Error") == "docs not signed":
                         update_failure_in_db(
-                            config,
-                            client["Client ID"],
-                            client["daeval"],
-                            client["Previous Error"],
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason=client["Previous Error"],
+                            da_eval=client["daeval"],
                             resolved=True,
                         )
 
@@ -1929,20 +1931,16 @@ def main():
             except (NoSuchElementException, TimeoutException) as e:
                 logger.exception(f"Element not found: {e}")
                 add_failure(
-                    config,
-                    client["Client ID"],
-                    "unable to find client",
-                    datetime.today(),
-                    client["Client Name"],
-                    client["For"],
-                    client["daeval"],
+                    config=config,
+                    client_id=client["Client ID"],
+                    error="unable to find client",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    type=client["daeval"],
                 )
                 continue
 
-            write_file(
-                "./put/records.txt",
-                f"{client['Client Name']} {client['Client ID']} {datetime.today().strftime('%Y/%m/%d')}",
-            )
 
             try:
                 accounts_created = {}
@@ -1963,13 +1961,13 @@ def main():
                 if str(questionnaires_needed) == "Too young":
                     logger.error(f"Client {client['Client Name']} is too young")
                     add_failure(
-                        config,
-                        client["Client ID"],
-                        "too young",
-                        datetime.today(),
-                        client["Client Name"],
-                        client["For"],
-                        client["daeval"],
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="too young",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        type=client["daeval"],
                     )
                     continue
 
@@ -1978,13 +1976,13 @@ def main():
                         f"Client {client['Client Name']} has unknown questionnaire needs"
                     )
                     add_failure(
-                        config,
-                        client["Client ID"],
-                        "unknown questionnaire needs",
-                        datetime.today(),
-                        client["Client Name"],
-                        client["For"],
-                        client["daeval"],
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="unknown questionnaire needs",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        type=client["daeval"],
                     )
                     continue
 
@@ -2007,14 +2005,14 @@ def main():
                                 f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
                             )
                             add_failure(
-                                config,
-                                client["Client ID"],
-                                f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
-                                datetime.today(),
-                                client["Client Name"],
-                                client["For"],
-                                client["daeval"],
-                                questionnaires_needed
+                                config=config,
+                                client_id=client["Client ID"],
+                                error=f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
+                                failed_date=today,
+                                full_name=client["Client Name"],
+                                asd_adhd=client["For"],
+                                type=client["daeval"],
+                                questionnaires_needed=questionnaires_needed
                                 if type(questionnaires_needed) is list
                                 else [],
                             )
@@ -2041,17 +2039,17 @@ def main():
 
                         # TODO 🫠: see if generated questionnaires make it in
                         add_failure(
-                            config,
-                            client["Client ID"],
-                            f"Error assigning {questionnaire}: {e}",
-                            datetime.today(),
-                            client["Client Name"],
-                            client["For"],
-                            client["daeval"],
-                            questionnaires_needed
+                            config=config,
+                            client_id=client["Client ID"],
+                            error=f"Error assigning {questionnaire}: {e}",
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            type=client["daeval"],
+                            questionnaires_needed=questionnaires_needed
                             if type(questionnaires_needed) is list
                             else [],
-                            questionnaires,
+                            questionnaire_links_generated=questionnaires,
                         )
                         send = False
                         continue
@@ -2059,17 +2057,17 @@ def main():
                     if link is None or link == "":
                         logger.error(f"No link grabbed for {questionnaire}")
                         add_failure(
-                            config,
-                            client["Client ID"],
-                            f"No link grabbed for {questionnaire}",
-                            datetime.today(),
-                            client["Client Name"],
-                            client["For"],
-                            client["daeval"],
-                            questionnaires_needed
+                            config=config,
+                            client_id=client["Client ID"],
+                            error=f"No link grabbed for {questionnaire}",
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            type=client["daeval"],
+                            questionnaires_needed=questionnaires_needed
                             if type(questionnaires_needed) is list
                             else [],
-                            questionnaires,
+                            questionnaire_links_generated=questionnaires,
                         )
                         send = False
                         continue
@@ -2105,13 +2103,13 @@ def main():
             except Exception as e:
                 logger.exception(e)
                 add_failure(
-                    config,
-                    client["Client ID"],
-                    str(e),
-                    datetime.today(),
-                    client["Client Name"],
-                    client["For"],
-                    client["daeval"],
+                    config=config,
+                    client_id=client["Client ID"],
+                    error=str(e),
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    type=client["daeval"],
                 )
 
 
