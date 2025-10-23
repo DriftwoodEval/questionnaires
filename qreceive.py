@@ -168,10 +168,8 @@ def main():
         check_failures(config, services, driver, actions, failed_clients)
         driver.quit()
 
-        # Send reminders for failures and questionnaires
-        driver, actions = initialize_selenium()
-        login_ta(driver, actions, services)
 
+        # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config)
 
         messages_sent: list[
