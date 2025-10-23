@@ -169,7 +169,6 @@ def main():
         driver.quit()
 
         # Send reminders for failures and questionnaires
-
         driver, actions = initialize_selenium()
         login_ta(driver, actions, services)
 
@@ -268,6 +267,12 @@ def main():
                 if check_if_ignoring(client):
                     logger.warning(f"Client {client.fullName} is being ignored.")
                     email_info["ignoring"].append(client)
+                    continue
+
+                if any(client.fullName in error for error in email_info["errors"]):
+                    logger.warning(
+                        f"Client {client.fullName} has an error, skipping"
+                    )
                     continue
 
                 if not done:
