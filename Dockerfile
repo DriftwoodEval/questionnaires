@@ -31,7 +31,8 @@ RUN uv sync --frozen
 # ---
 FROM base AS qreceive
 
-COPY qreceive.py utils ./
+COPY qreceive.py ./
+COPY utils ./utils/
 
 ENV TZ=America/New_York \
     CRON_SCHEDULE="0 13 * * *"
