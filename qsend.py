@@ -1844,7 +1844,7 @@ def main():
                         failed_date=today,
                         full_name=client["Client Name"],
                         asd_adhd=client["For"],
-                        type=client["daeval"],
+                        daeval=client["daeval"],
                     )
 
                     continue
@@ -1858,7 +1858,7 @@ def main():
                 failed_date=today,
                 full_name=client["Client Name"],
                 asd_adhd=client["For"],
-                type=client["daeval"],
+                daeval=client["daeval"],
             )
             continue
 
@@ -1874,7 +1874,7 @@ def main():
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
-                    type=client["daeval"],
+                    daeval=client["daeval"],
                 )
                 continue
             if not check_if_opened_portal(driver):
@@ -1885,7 +1885,7 @@ def main():
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
-                    type=client["daeval"],
+                    daeval=client["daeval"],
                 )
                 continue
             else:
@@ -1906,7 +1906,7 @@ def main():
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
-                    type=client["daeval"],
+                    daeval=client["daeval"],
                 )
                 continue
             else:
@@ -1936,7 +1936,7 @@ def main():
                 failed_date=today,
                 full_name=client["Client Name"],
                 asd_adhd=client["For"],
-                type=client["daeval"],
+                daeval=client["daeval"],
             )
             continue
 
@@ -1966,7 +1966,7 @@ def main():
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
-                    type=client["daeval"],
+                    daeval=client["daeval"],
                 )
                 continue
 
@@ -1981,7 +1981,7 @@ def main():
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
-                    type=client["daeval"],
+                    daeval=client["daeval"],
                 )
                 continue
 
@@ -2010,7 +2010,7 @@ def main():
                             failed_date=today,
                             full_name=client["Client Name"],
                             asd_adhd=client["For"],
-                            type=client["daeval"],
+                            daeval=client["daeval"],
                             questionnaires_needed=questionnaires_needed
                             if type(questionnaires_needed) is list
                             else [],
@@ -2044,7 +2044,7 @@ def main():
                         failed_date=today,
                         full_name=client["Client Name"],
                         asd_adhd=client["For"],
-                        type=client["daeval"],
+                        daeval=client["daeval"],
                         questionnaires_needed=questionnaires_needed
                         if type(questionnaires_needed) is list
                         else [],
@@ -2062,7 +2062,7 @@ def main():
                         failed_date=today,
                         full_name=client["Client Name"],
                         asd_adhd=client["For"],
-                        type=client["daeval"],
+                        daeval=client["daeval"],
                         questionnaires_needed=questionnaires_needed
                         if type(questionnaires_needed) is list
                         else [],
@@ -2108,7 +2108,7 @@ def main():
                 failed_date=today,
                 full_name=client["Client Name"],
                 asd_adhd=client["For"],
-                type=client["daeval"],
+                daeval=client["daeval"],
             )
 
 
