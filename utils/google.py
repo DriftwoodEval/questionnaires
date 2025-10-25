@@ -412,7 +412,7 @@ def add_to_failure_sheet(
     failed_date: date,
     full_name: str,
     asd_adhd: Optional[str] = None,
-    type: Optional[str] = None,
+    daeval: Optional[str] = None,
     questionnaires_needed: Optional[list[str]] = None,
     questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
 ):
@@ -427,7 +427,7 @@ def add_to_failure_sheet(
                 [
                     client_id,
                     asd_adhd,
-                    type,
+                    daeval,
                     error,
                     str(failed_date),
                     full_name,
@@ -438,9 +438,9 @@ def add_to_failure_sheet(
 
         if questionnaire_links_generated:
             for link in questionnaire_links_generated:
-                body["values"][0].extend([str(link.get("type")), str(link.get("link"))])
+                body["values"][0].extend([str(link.get("qtype")), str(link.get("link"))])
 
-        if type == "Records":
+        if daeval == "Records":
             sheet.values().append(
                 spreadsheetId=config.failed_sheet_id,
                 range="records!A1:Z",

@@ -179,7 +179,7 @@ def put_questionnaire_in_db(
     config: Config,
     client_id: str,
     link: str,
-    type: str,
+    qtype: str,
     sent_date,
     status: Literal["COMPLETED", "PENDING", "RESCHEDULED"],
 ):
@@ -189,7 +189,7 @@ def put_questionnaire_in_db(
         config (Config): The configuration object.
         client_id (str): The client ID.
         link (str): The link of the questionnaire.
-        type (str): The type of the questionnaire.
+        qtype (str): The qtype of the questionnaire.
         sent_date: The date the questionnaire was sent.
         status (Literal["COMPLETED", "PENDING", "RESCHEDULED"]): The status of the questionnaire.
 
@@ -206,7 +206,7 @@ def put_questionnaire_in_db(
                 ) VALUES (%s, %s, %s, %s, %s)
             """
 
-            values = (int(client_id), link, type, sent_date, status)
+            values = (int(client_id), link, qtype, sent_date, status)
 
             cursor.execute(sql, values)
         db_connection.commit()

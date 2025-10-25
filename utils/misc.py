@@ -42,7 +42,7 @@ def add_failure(
     failed_date: date,
     full_name: str,
     asd_adhd: Optional[str] = None,
-    type: Optional[Literal["DA", "EVAL", "DA+EVAL", "Records"]] = None,
+    daeval: Optional[Literal["DA", "EVAL", "DA+EVAL", "Records"]] = None,
     questionnaires_needed: Optional[list[str]] = None,
     questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
 ) -> None:
@@ -54,13 +54,13 @@ def add_failure(
         failed_date,
         full_name,
         asd_adhd,
-        type,
+        daeval,
         questionnaires_needed,
         questionnaire_links_generated,
     )
 
-    if type != "Records":
-        add_failure_to_db(config, client_id, error, failed_date, type)
+    if daeval != "Records":
+        add_failure_to_db(config, client_id, error, failed_date, daeval)
 
 
 ### FORMATTING ###
