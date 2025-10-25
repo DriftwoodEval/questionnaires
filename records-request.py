@@ -141,8 +141,10 @@ class TherapyAppointmentBot:
             )
             client_id_field.send_keys(client_id)
 
-            search_button = self.driver.find_element(
-                By.CSS_SELECTOR, "button[aria-label='Search']"
+            search_button = self.wait.until(
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "button[aria-label='Search']")
+                )
             )
             search_button.click()
 
@@ -184,7 +186,10 @@ class TherapyAppointmentBot:
     def check_if_opened_portal(self) -> bool:
         """Check if the TA portal has been opened by the client."""
         try:
-            self.driver.find_element(By.CSS_SELECTOR, "input[aria-checked='true']")
+            self.wait.until(
+                EC.visibility_of_element_located,
+                (By.CSS_SELECTOR, "input[aria-checked='true']"),
+            )
             return True
         except NoSuchElementException:
             raise Exception("portal not opened")
@@ -192,9 +197,13 @@ class TherapyAppointmentBot:
     def check_if_docs_signed(self) -> bool:
         """Check if the TA docs have been signed by the client."""
         try:
-            self.driver.find_element(
-                By.XPATH,
-                "//div[contains(normalize-space(text()), 'has completed registration')]",
+            self.wait.until(
+                EC.visibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[contains(normalize-space(text()), 'has completed registration')]",
+                    )
+                )
             )
             return True
         except NoSuchElementException:
@@ -204,26 +213,26 @@ class TherapyAppointmentBot:
         self, client: ClientFromDB, school_contacts: dict
     ) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
-        if not client.dob:
+        if not client.get("dob"):
             logger.warning(
-                f"Client {client.firstName} {client.lastName} has no DOB, skipping download."
+                f"Client {client.get('firstName')} {client.get('lastName')} has no DOB, skipping download."
             )
             return True
         creds = google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
-        check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Receiving.pdf"
+        check_filename = f"{client.get('firstName')} {client.get('lastName')} {client.get('dob').strftime('%m%d%Y')} Receiving.pdf"
         prev_receive = self.file_exists(
             service, check_filename, self.config.records_folder_id
         )
-        check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Sending.pdf"
+        check_filename = f"{client.get('firstName')} {client.get('lastName')} {client.get('dob').strftime('%m%d%Y')} Sending.pdf"
         prev_send = self.file_exists(
             service, check_filename, self.config.records_folder_id
         )
 
         if prev_receive or prev_send:
             logger.warning(
-                f"Files already exist for {client.firstName} {client.lastName}, skipping download."
+                f"Files already exist for {client.get('firstName')} {client.get('lastName')}, skipping download."
             )
             return True
 
@@ -252,11 +261,11 @@ class TherapyAppointmentBot:
             except KeyError:
                 raise (Exception(f"{sending_school} has no email address assigned."))
 
-        message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
+        message_text = f"Re: Student: {client.get('firstName')} {client.get('lastName')}\nDate of Birth: {client.get('dob').strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
         send_gmail(
             message_text=message_text,
-            subject=f"Re: Student: {client.firstName} {client.lastName}",
+            subject=f"Re: Student: {client.get('firstName')} {client.get('lastName')}",
             to_addr=school_address,
             from_addr="records@driftwoodeval.com",
             pdf_stream0=receiving_stream,
@@ -346,9 +355,15 @@ class TherapyAppointmentBot:
         self, link_text: str, client: ClientFromDB
     ) -> tuple[io.BytesIO, str, str, dict]:
         """Helper function to find, print, and save a single document."""
-        if not client.dob:
-            logger.warning(f"{client.firstName} {client.lastName} has no DOB.")
-            raise (Exception(f"{client.firstName} {client.lastName} has no DOB."))
+        if not client.get("dob"):
+            logger.warning(
+                f"{client.get('firstName')} {client.get('lastName')} has no DOB."
+            )
+            raise (
+                Exception(
+                    f"{client.get('firstName')} {client.get('lastName')} has no DOB."
+                )
+            )
 
         logger.info(f"Opening {link_text}...")
 
@@ -377,7 +392,7 @@ class TherapyAppointmentBot:
 
             doc_type = link_text.split(" ")[0]
 
-            filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} {doc_type}.pdf"
+            filename = f"{client.get('firstName')} {client.get('lastName')} {client.get('dob').strftime('%m%d%Y')} {doc_type}.pdf"
 
             logger.info(f"Saving {filename}...")
             stream, stream_name, school, drive_file = self.upload_pdf_from_driver(
@@ -391,7 +406,6 @@ class TherapyAppointmentBot:
             self.driver.back()
 
         return stream, stream_name, school, drive_file
-
 
     def file_exists(self, service, filename, folder_id):
         """Helper function to check if a file exists in Drive."""
@@ -432,12 +446,12 @@ def main():
         bot.login()
         for _, client in clients_to_process.iterrows():
             client_id = client["Client ID"]
-            client_name = client["Client Name"]
             asdAdhd = client["For"]
 
             if bot.go_to_client(client_id):
                 try:
-                    client = prev_clients[client_id]
+                    client = prev_clients[int(client_id)]
+                    client_name = client["fullName"]
 
                     bot.check_if_opened_portal()
                     bot.check_if_docs_signed()
@@ -457,7 +471,7 @@ def main():
                         failed_date=today,
                         full_name=client_name,
                         asd_adhd=asdAdhd,
-                        type="Records",
+                        daeval="Records",
                     )
                     new_failure_count += 1
             else:
@@ -468,7 +482,7 @@ def main():
                     failed_date=today,
                     full_name=client_name,
                     asd_adhd=asdAdhd,
-                    type="Records",
+                    daeval="Records",
                 )
                 new_failure_count += 1
 
