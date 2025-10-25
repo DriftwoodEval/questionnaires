@@ -240,10 +240,10 @@ def add_client_to_qglobal(
         bool: True if the client was successfully added to QGlobal, False otherwise.
     """
     logger.info(
-        f"Attempting to add {client['TA First Name']} {client['TA Last Name']} to QGlobal"
+        f"Attempting to add {client.get["firstName"]} {client.get["lastName"]} to QGlobal"
     )
-    firstname = client["TA First Name"]
-    lastname = client["TA Last Name"]
+    firstname = client.get["firstName"]
+    lastname = client.get["lastName"]
     id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
@@ -451,10 +451,10 @@ def add_client_to_mhs(
         return _add_to_existing(driver, actions, client, questionnaire)
 
     logger.info(
-        f"Attempting to add {client['TA First Name']} {client['TA Last Name']} to MHS"
+        f"Attempting to add {client.get["firstName"]} {client.get["lastName"]} to MHS"
     )
-    firstname = client["TA First Name"]
-    lastname = client["TA Last Name"]
+    firstname = client.get["firstName"]
+    lastname = client.get["lastName"]
     id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
@@ -696,7 +696,7 @@ def assign_questionnaire(
             questionnaire and the updated accounts_created dictionary.
     """
     logger.info(
-        f"Assigning questionnaire '{questionnaire}' to client {client['TA First Name']} {client['TA Last Name']}"
+        f"Assigning questionnaire '{questionnaire}' to client {client.get["firstName"]} {client.get["lastName"]}"
     )
     mhs_url = "https://assess.mhs.com/MainPortal.aspx"
     qglobal_url = "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
@@ -776,10 +776,10 @@ def gen_dp4(
 ) -> str:
     """Generates a DP4 assessment for the given client and returns the link."""
     logger.info(
-        f"Generating DP4 for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating DP4 for {client.get["firstName"]} {client.get["lastName"]}"
     )
-    firstname = client["TA First Name"]
-    lastname = client["TA Last Name"]
+    firstname = client.get["firstName"]
+    lastname = client.get["lastName"]
     id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
@@ -932,7 +932,7 @@ def gen_conners_ec(
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners EC assessment for the given client and returns the link."""
     logger.info(
-        f"Generating Conners EC for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating Conners EC for {client.get["firstName"]} {client.get["lastName"]}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1000,7 +1000,7 @@ def gen_conners_4(
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners 4 assessment for the given client and returns the link."""
     logger.info(
-        f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating Conners 4 for {client.get["firstName"]} {client.get["lastName"]}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1063,7 +1063,7 @@ def gen_conners_4_self(
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners 4 Self assessment for the given client and returns the link."""
     logger.info(
-        f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating Conners 4 for {client.get["firstName"]} {client.get["lastName"]}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1132,7 +1132,7 @@ def gen_asrs_2_5(
 ) -> tuple[str, dict[str, bool]]:
     """Generates an ASRS 2-5 assessment for the given client and returns the link."""
     logger.info(
-        f"Generating ASRS (2-5 Years) for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating ASRS (2-5 Years) for {client.get["firstName"]} {client.get["lastName"]}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1205,7 +1205,7 @@ def gen_asrs_6_18(
 ) -> tuple[str, dict[str, bool]]:
     """Generates an ASRS 6-18 assessment for the given client and returns the link."""
     logger.info(
-        f"Generating ASRS (6-18 Years) for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating ASRS (6-18 Years) for {client.get["firstName"]} {client.get["lastName"]}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1305,7 +1305,7 @@ def gen_basc_preschool(
 ) -> str:
     """Generates a BASC Preschool assessment for the given client and returns the link."""
     logger.info(
-        f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating BASC Preschool for {client.get["firstName"]} {client.get["lastName"]}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1347,7 +1347,7 @@ def gen_basc_child(
 ) -> str:
     """Generates a BASC Child assessment for the given client and returns the link."""
     logger.info(
-        f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating BASC Child for {client.get["firstName"]} {client.get["lastName"]}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1389,7 +1389,7 @@ def gen_basc_adolescent(
 ) -> str:
     """Generates a BASC Adolescent assessment for the given client and returns the link."""
     logger.info(
-        f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating BASC Adolescent for {client.get["firstName"]} {client.get["lastName"]}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1431,7 +1431,7 @@ def gen_vineland(
 ) -> str:
     """Generates a Vineland assessment for the given client and returns the link."""
     logger.info(
-        f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating Vineland for {client.get["firstName"]} {client.get["lastName"]}"
     )
     search_qglobal(driver, actions, client)
     sleep(3)
@@ -1487,7 +1487,7 @@ def gen_caars_2(
 ) -> tuple[str, dict[str, bool]]:
     """Generates a CAARS 2 assessment for the given client and returns the link."""
     logger.info(
-        f"Generating CAARS 2 for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating CAARS 2 for {client.get["firstName"]} {client.get["lastName"]}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -1918,8 +1918,8 @@ def main():
             client["Age"] = relativedelta(datetime.now(), client_from_db["dob"]).years
             client["Gender"] = client_from_db["gender"]
             client["Phone Number"] = client_from_db["phoneNumber"]
-            client["TA First Name"] = client_from_db["preferredName"]
-            client["TA Last Name"] = client_from_db["lastName"]
+            client.get["firstName"] = client_from_db["preferredName"]
+            client.get["lastName"] = client_from_db["lastName"]
 
         except (NoSuchElementException, TimeoutException) as e:
             logger.exception(f"Element not found: {e}")
@@ -2074,8 +2074,8 @@ def main():
                     config,
                     client["Client ID"],
                     client["Date of Birth"],
-                    client["TA First Name"],
-                    client["TA Last Name"],
+                    client.get["firstName"],
+                    client.get["lastName"],
                     client["For"],
                     client["Gender"],
                     client["Phone Number"],
