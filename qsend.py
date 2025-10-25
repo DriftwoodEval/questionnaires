@@ -1741,14 +1741,14 @@ def check_client_failed(
             return (False, None)
 
         prev_failed_client = prev_failed_clients[client_id]
-
-        if prev_failed_client.failure["reminded"] >= 100:
+        print(prev_failed_client)
+        if prev_failed_client["failure"]["reminded"] >= 100:
             return (False, None)
 
-        prev_daeval = prev_failed_client.failure.get("daEval", None)
+        prev_daeval = prev_failed_client["failure"].get("daEval", None)
         daeval = client_info["daeval"]
 
-        error = prev_failed_client.failure.get("reason", None)
+        error = prev_failed_client["failure"].get("reason", None)
         error = str(error).lower()
         if daeval == "DA":
             return (True, error)
