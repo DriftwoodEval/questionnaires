@@ -22,6 +22,7 @@ from utils.database import (
     insert_basic_client,
     put_questionnaire_in_db,
     update_failure_in_db,
+    update_questionnaire_in_db,
 )
 from utils.google import get_punch_list, update_punch_by_column
 from utils.misc import add_failure, load_config
@@ -186,7 +187,7 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
     _search_helper(driver, client["Human Friendly ID"])
 
     logger.debug("Waiting for page to load")
-    sleep(15)
+    sleep(15) # This needs to be this long or we enter the client id in the search twice?
 
     logger.debug("Submitting search form")
     actions.send_keys(Keys.ENTER)
@@ -446,7 +447,7 @@ def add_client_to_mhs(
             return True
         return True
 
-    if "mhs" in accounts_created and accounts_created["mhs"]:
+    if accounts_created.get("mhs"):
         return _add_to_existing(driver, actions, client, questionnaire)
 
     logger.info(
@@ -533,7 +534,7 @@ def add_client_to_mhs(
 
 
 def get_questionnaires(
-    age: int, check: str, daeval: str, qglobal_exists: bool
+    age: int, check: str, daeval: str
 ) -> list[str] | str:
     """Get the list of questionnaires to send to a client based on age, appointment type, and prospective diagnosis.
 
@@ -588,36 +589,21 @@ def get_questionnaires(
             if age < 2:  # 1.5
                 return "Too young"
             elif age < 6:
-                qs = ["Conners EC", "DP4", "BASC Preschool"]
-                if qglobal_exists:
-                    qs.append("ASRS (2-5 Years)")
-                else:
-                    qs.append("Vineland")
+                qs = ["Conners EC", "DP4", "BASC Preschool", "Vineland"]
                 return qs
             elif age < 12:
-                qs = ["Conners 4", "BASC Child"]
-                if qglobal_exists:
-                    qs.append("ASRS (6-18 Years)")
-                else:
-                    qs.append("Vineland")
+                qs = ["Conners 4", "BASC Child", "Vineland"]
                 return qs
             elif age < 18:
                 qs = [
                     "Conners 4 Self",
                     "Conners 4",
                     "BASC Adolescent",
+                    "Vineland"
                 ]
-                if qglobal_exists:
-                    qs.append("ASRS (6-18 Years)")
-                else:
-                    qs.append("Vineland")
                 return qs
             elif age < 19:
-                qs = ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2"]
-                if qglobal_exists:
-                    qs.append("ASRS (6-18 Years)")
-                else:
-                    qs.append("Vineland")
+                qs = ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2", "Vineland"]
             elif age < 22:
                 return ["ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
             else:
@@ -731,26 +717,29 @@ def assign_questionnaire(
     elif questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        if not accounts_created["qglobal"]:
-            accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
-        else:
-            logger.debug("Client already added to QGlobal")
+        if not accounts_created.get("qglobal"):
+            if check_for_qglobal_account(driver, actions, client):
+                accounts_created["qglobal"] = True
+            else:
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         return gen_basc_preschool(driver, actions, config, client), accounts_created
     elif questionnaire == "BASC Child":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        if not accounts_created["qglobal"]:
-            accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
-        else:
-            logger.debug("Client already added to QGlobal")
+        if not accounts_created.get("qglobal"):
+            if check_for_qglobal_account(driver, actions, client):
+                accounts_created["qglobal"] = True
+            else:
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         return gen_basc_child(driver, actions, config, client), accounts_created
     elif questionnaire == "BASC Adolescent":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
-        if not accounts_created["qglobal"]:
-            accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
-        else:
-            logger.debug("Client already added to QGlobal")
+        if not accounts_created.get("qglobal"):
+            if check_for_qglobal_account(driver, actions, client):
+                accounts_created["qglobal"] = True
+            else:
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         return gen_basc_adolescent(driver, actions, config, client), accounts_created
     elif questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
@@ -763,6 +752,11 @@ def assign_questionnaire(
     elif questionnaire == "Vineland":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         driver.get(qglobal_url)
+        if not accounts_created.get("qglobal"):
+            if check_for_qglobal_account(driver, actions, client):
+                accounts_created["qglobal"] = True
+            else:
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
         return gen_vineland(driver, actions, config, client), accounts_created
     elif questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
@@ -1741,7 +1735,7 @@ def check_client_failed(
             return (False, None)
 
         prev_failed_client = prev_failed_clients[client_id]
-        
+
         if prev_failed_client["failure"]["reminded"] >= 100:
             return (False, None)
 
@@ -1776,8 +1770,8 @@ def check_client_previous(
     client_id = int(client_info["Client ID"])
 
     if client_id in prev_clients:
-        questionnaires = prev_clients[client_id].questionnaires
-        return questionnaires if questionnaires else None
+        questionnaires = prev_clients[client_id].get("questionnaires")
+        return questionnaires
 
 
 def main():
@@ -1919,13 +1913,13 @@ def main():
                         resolved=True,
                     )
 
-            client_info = extract_client_data(driver)
-            client["Date of Birth"] = client_info["birthdate"]
-            client["Age"] = client_info["age"]
-            client["Gender"] = client_info["gender"]
-            client["Phone Number"] = client_info["phone_number"]
-            client["TA First Name"] = client_info["firstname"]
-            client["TA Last Name"] = client_info["lastname"]
+            client_from_db = prev_clients.get(int(client["Client ID"]))
+            client["Date of Birth"] = client_from_db["dob"].strftime("%Y/%m/%d")
+            client["Age"] = relativedelta(datetime.now(), client_from_db["dob"]).years
+            client["Gender"] = client_from_db["gender"]
+            client["Phone Number"] = client_from_db["phoneNumber"]
+            client["TA First Name"] = client_from_db["preferredName"]
+            client["TA Last Name"] = client_from_db["lastName"]
 
         except (NoSuchElementException, TimeoutException) as e:
             logger.exception(f"Element not found: {e}")
@@ -1943,18 +1937,11 @@ def main():
 
         try:
             accounts_created = {}
-            if int(client["Age"]) < 19 and client["daeval"] != "DA":
-                accounts_created["qglobal"] = check_for_qglobal_account(
-                    driver, actions, client
-                )
-            else:
-                accounts_created["qglobal"] = False
 
             questionnaires_needed = get_questionnaires(
                 client["Age"],
                 client["For"],
                 client["daeval"],
-                accounts_created["qglobal"],
             )
 
             if str(questionnaires_needed) == "Too young":
@@ -2033,6 +2020,15 @@ def main():
                         questionnaire,
                         accounts_created,
                     )
+                    put_questionnaire_in_db(
+                        config,
+                        client["Client ID"],
+                        link,
+                        questionnaire,
+                        datetime.today().strftime("%Y-%m-%d"),
+                        "IGNORING",
+                    )
+
                 except Exception as e:  # noqa: E722
                     logger.exception(f"Error assigning {questionnaire}: {e}")
 
@@ -2088,10 +2084,9 @@ def main():
                     config, client["Client ID"], client["daeval"], "sent"
                 )
                 for questionnaire in questionnaires:
-                    put_questionnaire_in_db(
+                    update_questionnaire_in_db(
                         config,
                         client["Client ID"],
-                        questionnaire["link"],
                         questionnaire["type"],
                         datetime.today().strftime("%Y-%m-%d"),
                         "PENDING",

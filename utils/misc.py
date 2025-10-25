@@ -42,7 +42,7 @@ def add_failure(
     failed_date: date,
     full_name: str,
     asd_adhd: Optional[str] = None,
-    daeval: Optional[Literal["DA", "EVAL", "DA+EVAL", "Records"]] = None,
+    daeval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
     questionnaires_needed: Optional[list[str]] = None,
     questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
 ) -> None:

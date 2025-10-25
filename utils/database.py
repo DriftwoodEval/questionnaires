@@ -180,8 +180,8 @@ def put_questionnaire_in_db(
     client_id: str,
     link: str,
     qtype: str,
-    sent_date,
-    status: Literal["COMPLETED", "PENDING", "RESCHEDULED"],
+    sent_date: str,
+    status: Literal["PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER"],
 ):
     """Insert a questionnaire into the database.
 
@@ -211,6 +211,21 @@ def put_questionnaire_in_db(
             cursor.execute(sql, values)
         db_connection.commit()
 
+def update_questionnaire_in_db(config: Config, client_id: str, qtype: str, sent_date: str, status: Literal["PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER"]):
+    """Update a questionnaire in the database."""
+    db_connection = get_db(config)
+
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = """
+                UPDATE `emr_questionnaire`
+                SET status=%s
+                WHERE clientId=%s AND sent=%s AND questionnaireType=%s
+            """
+
+            values = (status, int(client_id), sent_date, qtype)
+            cursor.execute(sql, values)
+        db_connection.commit()
 
 def update_questionnaires_in_db(
     config: Config, clients: list[ClientWithQuestionnaires]
@@ -250,15 +265,13 @@ def add_failure_to_db(
     client_id: int,
     error: str,
     failed_date: date,
-    da_eval: Optional[Literal["DA", "EVAL", "DA+EVAL"]] = None,
+    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL"]] = None,
 ):
     """Adds the information given to the DB."""
-    if da_eval == "DAEVAL":
-        da_eval = "DA+EVAL"
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
-            sql = "INSERT INTO emr_failure (clientId, daEval, reason, failedDate) VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE clientId=clientId"
+            sql = "INSERT IGNORE INTO emr_failure (clientId, daEval, reason, failedDate) VALUES (%s, %s, %s, %s)"
             values = (client_id, da_eval, error, failed_date)
             cursor.execute(sql, values)
             db_connection.commit()
@@ -268,7 +281,7 @@ def update_failure_in_db(
     config: Config,
     client_id: int,
     reason: str,
-    da_eval: Optional[Literal["DA", "EVAL", "DA+EVAL"]] = None,
+    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL"]] = None,
     resolved: Optional[bool] = None,
     failed_date: Optional[date] = None,
     reminded: Optional[int] = None,
