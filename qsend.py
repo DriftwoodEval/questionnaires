@@ -1741,7 +1741,7 @@ def check_client_failed(
             return (False, None)
 
         prev_failed_client = prev_failed_clients[client_id]
-        print(prev_failed_client)
+        
         if prev_failed_client["failure"]["reminded"] >= 100:
             return (False, None)
 
