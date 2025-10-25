@@ -429,7 +429,7 @@ def add_to_failure_sheet(
                     asd_adhd,
                     type,
                     error,
-                    failed_date,
+                    str(failed_date),
                     full_name,
                     ", ".join(questionnaires_needed or []),
                 ]
