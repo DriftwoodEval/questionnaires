@@ -64,7 +64,7 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
     punch_list["daeval"] = punch_list.apply(
         # Use a lambda function to determine the value of the "daeval" column
         lambda client: (
-            "DA+EVAL"
+            "DAEVAL"
             if (
                 client["DA Qs Needed"] == "TRUE"
                 and client["DA Qs Sent"] != "TRUE"

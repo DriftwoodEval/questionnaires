@@ -253,6 +253,8 @@ def add_failure_to_db(
     da_eval: Optional[Literal["DA", "EVAL", "DA+EVAL"]] = None,
 ):
     """Adds the information given to the DB."""
+    if da_eval == "DAEVAL":
+        da_eval = "DA+EVAL"
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
