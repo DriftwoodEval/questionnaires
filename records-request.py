@@ -285,10 +285,6 @@ class TherapyAppointmentBot:
 
         update_punch_list(self.config, str(client.id), "Records Requested?", "TRUE")
 
-        clients_button = self.driver.find_element(
-            By.XPATH, "//*[contains(text(), 'Clients')]"
-        )
-        clients_button.click()
         return False
 
     def upload_pdf_from_driver(
