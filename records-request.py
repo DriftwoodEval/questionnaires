@@ -186,8 +186,11 @@ class TherapyAppointmentBot:
         try:
             self.wait.until(
                 EC.visibility_of_element_located(
-                    (By.CSS_SELECTOR, "input[aria-checked='true']")
-                ),
+                    (
+                        By.XPATH,
+                        "//div[contains(normalize-space(text()), 'Username:')]",
+                    )
+                )
             )
             return True
         except NoSuchElementException:

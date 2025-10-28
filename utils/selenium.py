@@ -245,7 +245,9 @@ def go_to_client(
 def check_if_opened_portal(driver: WebDriver) -> bool:
     """Check if the TA portal has been opened by the client."""
     try:
-        find_element(driver, By.CSS_SELECTOR, "input[aria-checked='true']", 3)
+        find_element(
+            driver, By.XPATH, "//div[contains(normalize-space(text()), 'Username:')]", 3
+        )
         return True
     except NoSuchElementException:
         return False
