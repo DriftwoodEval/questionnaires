@@ -275,6 +275,7 @@ class TherapyAppointmentBot:
             filename1=sending_filename,
         )
 
+        try:
         move_file_in_drive(
             service,
             receiving_drive_file["id"],
@@ -285,6 +286,9 @@ class TherapyAppointmentBot:
             sending_drive_file["id"],
             self.config.sent_records_folder_id,
         )
+        except Exception as e:
+            logger.error(f"Error moving files to sent folder: {e}")
+            return False
 
         update_punch_list(self.config, str(client.id), "Records Requested?", "TRUE")
 
