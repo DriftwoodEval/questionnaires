@@ -88,6 +88,7 @@ class TherapyAppointmentBot:
 
     def _initialize_driver(self) -> WebDriver:
         """Initializes the Chrome WebDriver."""
+        logger.debug("Initializing WebDriver...")
         chrome_options = Options()
         driver = webdriver.Chrome(options=chrome_options)
         return driver
@@ -98,7 +99,7 @@ class TherapyAppointmentBot:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Ensures the driver is closed properly on exit."""
-        logger.info("Closing WebDriver.")
+        logger.debug("Closing WebDriver.")
         if self.driver:
             self.driver.quit()
 
@@ -146,6 +147,7 @@ class TherapyAppointmentBot:
             )
             search_button.click()
 
+            logger.debug("Entering client's page...")
             client_link = self.wait.until(
                 EC.element_to_be_clickable(
                     (
@@ -183,6 +185,7 @@ class TherapyAppointmentBot:
 
     def check_if_opened_portal(self) -> bool:
         """Check if the TA portal has been opened by the client."""
+        logger.info("Checking if portal has been opened...")
         try:
             self.wait.until(
                 EC.visibility_of_element_located(
@@ -192,12 +195,14 @@ class TherapyAppointmentBot:
                     )
                 )
             )
+            logger.debug("Client has opened portal")
             return True
         except NoSuchElementException:
             raise Exception("portal not opened")
 
     def check_if_docs_signed(self) -> bool:
         """Check if the TA docs have been signed by the client."""
+        logger.info("Checking if docs have been signed...")
         try:
             self.wait.until(
                 EC.visibility_of_element_located(
@@ -207,6 +212,7 @@ class TherapyAppointmentBot:
                     )
                 )
             )
+            logger.debug("Docs have been signed")
             return True
         except NoSuchElementException:
             raise Exception("docs not signed")
@@ -223,6 +229,8 @@ class TherapyAppointmentBot:
         creds = google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
+
+        logger.debug("Checking if files already exist...")
         check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Receiving.pdf"
         prev_receive = self.file_exists(
             service, check_filename, self.config.records_folder_id
@@ -260,7 +268,11 @@ class TherapyAppointmentBot:
             try:
                 school_address = school_contacts[sending_school]
             except KeyError:
-                raise (Exception(f"{sending_school} has no email address assigned."))
+                raise (
+                    Exception(
+                        f"School found, {sending_school}, has no email address assigned."
+                    )
+                )
 
         message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
@@ -276,16 +288,16 @@ class TherapyAppointmentBot:
         )
 
         try:
-        move_file_in_drive(
-            service,
-            receiving_drive_file["id"],
-            self.config.sent_records_folder_id,
-        )
-        move_file_in_drive(
-            service,
-            sending_drive_file["id"],
-            self.config.sent_records_folder_id,
-        )
+            move_file_in_drive(
+                service,
+                receiving_drive_file["id"],
+                self.config.sent_records_folder_id,
+            )
+            move_file_in_drive(
+                service,
+                sending_drive_file["id"],
+                self.config.sent_records_folder_id,
+            )
         except Exception as e:
             logger.error(f"Error moving files to sent folder: {e}")
             return False
