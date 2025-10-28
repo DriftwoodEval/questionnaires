@@ -66,8 +66,14 @@ def get_previous_clients(
     # Create a dictionary of clients with their IDs as keys
     prev_clients = {}
     if clients:
-        for client in clients:
-            prev_clients[client["id"]] = {key: value for key, value in client.items()}
+        for client_data in clients:
+            try:
+                pydantic_client = ClientFromDB(**client_data)
+                prev_clients[pydantic_client.id] = pydantic_client
+            except Exception as e:
+                logger.error(
+                    f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}: {e}"
+                )
 
     return prev_clients, failed_prev_clients
 
@@ -211,7 +217,14 @@ def put_questionnaire_in_db(
             cursor.execute(sql, values)
         db_connection.commit()
 
-def update_questionnaire_in_db(config: Config, client_id: str, qtype: str, sent_date: str, status: Literal["PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER"]):
+
+def update_questionnaire_in_db(
+    config: Config,
+    client_id: str,
+    qtype: str,
+    sent_date: str,
+    status: Literal["PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER"],
+):
     """Update a questionnaire in the database."""
     db_connection = get_db(config)
 
@@ -226,6 +239,7 @@ def update_questionnaire_in_db(config: Config, client_id: str, qtype: str, sent_
             values = (status, int(client_id), sent_date, qtype)
             cursor.execute(sql, values)
         db_connection.commit()
+
 
 def update_questionnaires_in_db(
     config: Config, clients: list[ClientWithQuestionnaires]

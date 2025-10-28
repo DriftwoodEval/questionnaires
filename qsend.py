@@ -187,7 +187,9 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
     _search_helper(driver, client["Human Friendly ID"])
 
     logger.debug("Waiting for page to load")
-    sleep(15) # This needs to be this long or we enter the client id in the search twice?
+    sleep(
+        15
+    )  # This needs to be this long or we enter the client id in the search twice?
 
     logger.debug("Submitting search form")
     actions.send_keys(Keys.ENTER)
@@ -533,9 +535,7 @@ def add_client_to_mhs(
     return _add_to_existing(driver, actions, client, questionnaire)
 
 
-def get_questionnaires(
-    age: int, check: str, daeval: str
-) -> list[str] | str:
+def get_questionnaires(age: int, check: str, daeval: str) -> list[str] | str:
     """Get the list of questionnaires to send to a client based on age, appointment type, and prospective diagnosis.
 
     Returns a list of questionnaire names as strings or a string indicating the client is too young.
@@ -595,12 +595,7 @@ def get_questionnaires(
                 qs = ["Conners 4", "BASC Child", "Vineland"]
                 return qs
             elif age < 18:
-                qs = [
-                    "Conners 4 Self",
-                    "Conners 4",
-                    "BASC Adolescent",
-                    "Vineland"
-                ]
+                qs = ["Conners 4 Self", "Conners 4", "BASC Adolescent", "Vineland"]
                 return qs
             elif age < 19:
                 qs = ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2", "Vineland"]
@@ -721,7 +716,9 @@ def assign_questionnaire(
             if check_for_qglobal_account(driver, actions, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+                accounts_created["qglobal"] = add_client_to_qglobal(
+                    driver, actions, client
+                )
         return gen_basc_preschool(driver, actions, config, client), accounts_created
     elif questionnaire == "BASC Child":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
@@ -730,7 +727,9 @@ def assign_questionnaire(
             if check_for_qglobal_account(driver, actions, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+                accounts_created["qglobal"] = add_client_to_qglobal(
+                    driver, actions, client
+                )
         return gen_basc_child(driver, actions, config, client), accounts_created
     elif questionnaire == "BASC Adolescent":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
@@ -739,7 +738,9 @@ def assign_questionnaire(
             if check_for_qglobal_account(driver, actions, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+                accounts_created["qglobal"] = add_client_to_qglobal(
+                    driver, actions, client
+                )
         return gen_basc_adolescent(driver, actions, config, client), accounts_created
     elif questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
@@ -756,7 +757,9 @@ def assign_questionnaire(
             if check_for_qglobal_account(driver, actions, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, actions, client)
+                accounts_created["qglobal"] = add_client_to_qglobal(
+                    driver, actions, client
+                )
         return gen_vineland(driver, actions, config, client), accounts_created
     elif questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
@@ -1736,13 +1739,13 @@ def check_client_failed(
 
         prev_failed_client = prev_failed_clients[client_id]
 
-        if prev_failed_client["failure"]["reminded"] >= 100:
+        if prev_failed_client.failure["reminded"] >= 100:
             return (False, None)
 
-        prev_daeval = prev_failed_client["failure"].get("daEval", None)
+        prev_daeval = prev_failed_client.failure.get("daEval", None)
         daeval = client_info["daeval"]
 
-        error = prev_failed_client["failure"].get("reason", None)
+        error = prev_failed_client.failure.get("reason", None)
         error = str(error).lower()
         if daeval == "DA":
             return (True, error)
@@ -1770,7 +1773,7 @@ def check_client_previous(
     client_id = int(client_info["Client ID"])
 
     if client_id in prev_clients:
-        questionnaires = prev_clients[client_id].get("questionnaires")
+        questionnaires = prev_clients[client_id].questionnaires
         return questionnaires
 
 
@@ -1818,15 +1821,15 @@ def main():
         logger.info(f"Starting loop for {client['Client Name']}")
 
         if prev_failed_clients != {}:
-            previously_failed, error = check_client_failed(
-                prev_failed_clients, client
-            )
+            previously_failed, error = check_client_failed(prev_failed_clients, client)
             if previously_failed and error is not None:
                 client["Previous Error"] = error
                 if error not in [
                     "too young",
                     "portal not opened",
                     "docs not signed",
+                    "not in db",
+                    "no dob",
                 ]:
                     logger.error(
                         f"Client {client['Client Name']} has already failed to send"
@@ -1914,15 +1917,42 @@ def main():
                     )
 
             client_from_db = prev_clients.get(int(client["Client ID"]))
-            client["Date of Birth"] = client_from_db["dob"].strftime("%Y/%m/%d")
-            client["Age"] = relativedelta(datetime.now(), client_from_db["dob"]).years
-            client["Gender"] = client_from_db["gender"]
-            client["Phone Number"] = client_from_db["phoneNumber"]
-            if client_from_db["preferredName"] != None and client_from_db["preferredName"] != "":
-                client["TA First Name"] = client_from_db["preferredName"]
+            if not client_from_db:
+                logger.error(f"Client {client['Client Name']} not found in DB")
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error="not in db",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
+                )
+                continue
+            if not client_from_db.dob:
+                logger.error(f"Client {client['Client Name']} has no DOB")
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error="no dob",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
+                )
+                continue
+            client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
+            client["Age"] = relativedelta(datetime.now(), client_from_db.dob).years
+            client["Gender"] = client_from_db.gender
+            client["Phone Number"] = client_from_db.phoneNumber
+            if (
+                client_from_db.preferredName != None
+                and client_from_db.preferredName != ""
+            ):
+                client["TA First Name"] = client_from_db.preferredName
             else:
-                client["TA First Name"] = client_from_db["firstName"]
-            client["TA Last Name"] = client_from_db["lastName"]
+                client["TA First Name"] = client_from_db.firstName
+            client["TA Last Name"] = client_from_db.lastName
 
         except (NoSuchElementException, TimeoutException) as e:
             logger.exception(f"Element not found: {e}")
@@ -1936,7 +1966,6 @@ def main():
                 daeval=client["daeval"],
             )
             continue
-
 
         try:
             accounts_created = {}
@@ -1976,9 +2005,7 @@ def main():
                 continue
 
             if prev_clients != {}:
-                previous_questionnaires = check_client_previous(
-                    prev_clients, client
-                )
+                previous_questionnaires = check_client_previous(prev_clients, client)
 
                 if previous_questionnaires:
                     previous_questionnaire_types = [
