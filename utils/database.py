@@ -105,9 +105,15 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
                         client["note"] = note
 
     failed_clients = {}
-    for client in clients:
-        if "failure" in client and client["failure"]["reminded"] < 100:
-            failed_clients[client["id"]] = {key: value for key, value in client.items()}
+    for client_data in clients:
+        if "failure" in client_data and client_data["failure"]["reminded"] < 100:
+            try:
+                pydantic_client = FailedClientFromDB(**client_data)
+                failed_clients[pydantic_client.id] = pydantic_client
+            except Exception as e:
+                logger.error(
+                    f"Failed to create FailedClientFromDB for ID {client_data.get('id', 'Unknown')}: {e}"
+                )
     return failed_clients
 
 
