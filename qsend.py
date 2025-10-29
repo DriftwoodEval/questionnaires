@@ -1996,31 +1996,44 @@ def main():
                 previous_questionnaires = check_client_previous(prev_clients, client)
 
                 if previous_questionnaires:
-                    previous_questionnaire_types = [
-                        q["questionnaireType"] for q in previous_questionnaires
+                    previous_questionnaire_info = {
+                        q["questionnaireType"]: q["status"]
+                        for q in previous_questionnaires
+                    }
+
+                    questionnaires_to_remove = [
+                        q_type
+                        for q_type, status in previous_questionnaire_info.items()
+                        if q_type in questionnaires_needed
+                        and status in ["COMPLETED", "EXTERNAL"]
                     ]
-                    overlapping_questionnaires = [
-                        q
-                        for q in questionnaires_needed
-                        if q in previous_questionnaire_types
-                    ]
-                    if overlapping_questionnaires:
+
+                    questionnaires_needed = list(
+                        set(questionnaires_needed) - set(questionnaires_to_remove)
+                    )
+
+                    remaining_overlaps = []
+                    for q_type in questionnaires_needed:
+                        if q_type in previous_questionnaire_info:
+                            status = previous_questionnaire_info[q_type]
+                            if status not in ["COMPLETED", "EXTERNAL"]:
+                                remaining_overlaps.append(f"{q_type} - {status}")
+
+                    if remaining_overlaps:
                         logger.error(
-                            f"Client {client['Client Name']} needs questionnaires that have already been sent: {', '.join(overlapping_questionnaires)}"
+                            f"Client {client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
                         )
-                        add_failure(
-                            config=config,
-                            client_id=client["Client ID"],
-                            error=f"Overlapping questionnaires: {', '.join(overlapping_questionnaires)}",
-                            failed_date=today,
-                            full_name=client["Client Name"],
-                            asd_adhd=client["For"],
-                            daeval=client["daeval"],
-                            questionnaires_needed=questionnaires_needed
-                            if type(questionnaires_needed) is list
-                            else [],
-                        )
-                        continue
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error=f"Overlapping questionnaires: {', '.join(remaining_overlaps)}",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                        questionnaires_needed=questionnaires_needed,
+                    )
+                    continue
 
             logger.info(
                 f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
