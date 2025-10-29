@@ -221,11 +221,6 @@ class TherapyAppointmentBot:
         self, client: ClientFromDB, school_contacts: dict
     ) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
-        if not client.dob:
-            logger.warning(
-                f"Client {client.firstName} {client.lastName} has no DOB, skipping download."
-            )
-            return True
         creds = google_authenticate()
 
         service = build("drive", "v3", credentials=creds)
@@ -368,10 +363,6 @@ class TherapyAppointmentBot:
         self, link_text: str, client: ClientFromDB
     ) -> tuple[io.BytesIO, str, str, dict]:
         """Helper function to find, print, and save a single document."""
-        if not client.dob:
-            logger.warning(f"{client.firstName} {client.lastName} has no DOB.")
-            raise (Exception(f"{client.firstName} {client.lastName} has no DOB."))
-
         logger.info(f"Opening {link_text}...")
 
         # Default values

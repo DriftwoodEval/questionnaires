@@ -1929,18 +1929,6 @@ def main():
                     daeval=client["daeval"],
                 )
                 continue
-            if not client_from_db.dob:
-                logger.error(f"Client {client['Client Name']} has no DOB")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="no dob",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
             client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
             client["Age"] = relativedelta(datetime.now(), client_from_db.dob).years
             client["Gender"] = client_from_db.gender

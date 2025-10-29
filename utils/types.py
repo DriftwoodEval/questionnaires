@@ -110,7 +110,7 @@ class FailedClient(TypedDict):
 
 class _ClientBase(BaseModel):
     id: int
-    dob: Optional[date] = None
+    dob: date
     firstName: str
     lastName: str
     preferredName: Optional[str] = None
