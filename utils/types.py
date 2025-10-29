@@ -77,10 +77,18 @@ class Config(BaseModel):
 class Questionnaire(TypedDict):
     """A TypedDict containing information about a questionnaire."""
 
+    clientId: int
     questionnaireType: str
     link: str
     sent: date
-    status: Literal["COMPLETED", "PENDING", "RESCHEDULED"]
+    status: Literal[
+        "PENDING",
+        "COMPLETED",
+        "IGNORING",
+        "LANGUAGE",
+        "TEACHER",
+        "EXTERNAL",
+    ]
     reminded: int
     lastReminded: Optional[date]
 
@@ -90,6 +98,7 @@ class Failure(TypedDict):
 
     failedDate: date
     reason: str
+    daEval: Optional[Literal["DA", "EVAL", "DAEVAL"]]
     reminded: int
     lastReminded: Optional[date]
 
@@ -118,6 +127,7 @@ class _ClientBase(BaseModel):
     phoneNumber: Optional[str] = None
     gender: Optional[str] = None
     asdAdhd: Optional[str] = None
+    status: bool
 
 
 class ClientFromDB(_ClientBase):

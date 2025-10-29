@@ -187,7 +187,9 @@ def put_questionnaire_in_db(
     link: str,
     qtype: str,
     sent_date: str,
-    status: Literal["PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER"],
+    status: Literal[
+        "PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER", "EXTERNAL"
+    ],
 ):
     """Insert a questionnaire into the database.
 

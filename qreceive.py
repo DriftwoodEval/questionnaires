@@ -18,6 +18,7 @@ from utils.questionnaires import (
     all_questionnaires_done,
     check_if_ignoring,
     check_questionnaires,
+    filter_inactive_and_not_pending,
     get_most_recent_not_done,
 )
 from utils.selenium import (
@@ -158,6 +159,8 @@ def main():
             return
 
         clients = validate_questionnaires(clients)
+        clients = filter_inactive_and_not_pending(clients)
+
         email_info["completed"], email_info["errors"] = check_questionnaires(
             driver, config, clients
         )
@@ -167,7 +170,6 @@ def main():
         driver, actions = initialize_selenium()
         check_failures(config, services, driver, actions, failed_clients)
         driver.quit()
-
 
         # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config)
@@ -268,9 +270,7 @@ def main():
                     continue
 
                 if any(client.fullName in error for error in email_info["errors"]):
-                    logger.warning(
-                        f"Client {client.fullName} has an error, skipping"
-                    )
+                    logger.warning(f"Client {client.fullName} has an error, skipping")
                     continue
 
                 if not done:

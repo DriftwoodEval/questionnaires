@@ -35,17 +35,29 @@ def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
     )
 
 
+def filter_inactive_and_not_pending(
+    clients: dict[int, ClientWithQuestionnaires],
+) -> dict[int, ClientWithQuestionnaires]:
+    """Fitlers clients that are not active and have no pending questionnaires."""
+    filtered_clients = {
+        client.id: client
+        for client in clients.values()
+        if client.status is True
+        and any(
+            q.get("status") == "PENDING"
+            or q.get("status") == "IGNORING"
+            or q.get("status") == "RESCHEDULED"
+            for q in client.questionnaires
+            if isinstance(q, dict)
+        )
+    }
+    return filtered_clients
+
+
 def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
-    """Check if any questionnaire for the given client has been rescheduled.
-
-    Args:
-        client (ClientWithQuestionnaires): The client to check.
-
-    Returns:
-        bool: True if any questionnaire has been rescheduled, False otherwise.
-    """
+    """Check if any questionnaire for the given client is being ignored."""
     return any(
-        q["status"] == "RESCHEDULED" or q["status"] == "IGNORE"
+        q["status"] == "RESCHEDULED" or q["status"] == "IGNORING"
         for q in client.questionnaires
         if isinstance(q, dict)
     )
@@ -121,9 +133,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         return False
 
     except Exception as e:
-        logger.error(
-            f"{q_link}: {e}"
-        )
+        logger.error(f"{q_link}: {e}")
         raise
 
 
