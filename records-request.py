@@ -177,7 +177,7 @@ class TherapyAppointmentBot:
                 client_link.click()
             return True
         except TimeoutException:
-            logger.warning(f"Client not found or search failed for: {client_id}")
+            logger.exception(f"Client not found or search failed for: {client_id}")
             return False
         except NoSuchElementException:
             logger.warning(f"Could not find a search element for: {client_id}")
@@ -197,7 +197,7 @@ class TherapyAppointmentBot:
             )
             logger.debug("Client has opened portal")
             return True
-        except NoSuchElementException:
+        except (NoSuchElementException, TimeoutException):
             raise Exception("portal not opened")
 
     def check_if_docs_signed(self) -> bool:
@@ -214,7 +214,7 @@ class TherapyAppointmentBot:
             )
             logger.debug("Docs have been signed")
             return True
-        except NoSuchElementException:
+        except (NoSuchElementException, TimeoutException):
             raise Exception("docs not signed")
 
     def download_consent_forms(
