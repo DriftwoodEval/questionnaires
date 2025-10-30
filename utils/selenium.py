@@ -20,12 +20,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from utils.types import Services
 
 
-def initialize_selenium(save_profile: bool = False) -> tuple[WebDriver, ActionChains]:
+def initialize_selenium() -> tuple[WebDriver, ActionChains]:
     """Initialize a Selenium WebDriver with the given options.
-
-    Args:
-        save_profile (bool, optional): If true, save the browser profile to the
-            `./config/chrome_profile` directory. Defaults to False.
 
     Returns:
         tuple[WebDriver, ActionChains]: A tuple containing the initialized WebDriver
@@ -38,8 +34,6 @@ def initialize_selenium(save_profile: bool = False) -> tuple[WebDriver, ActionCh
         chrome_options.add_argument("--headless")
     # /dev/shm partition can be too small in VMs, causing Chrome to crash, make a temp dir instead
     chrome_options.add_argument("--disable-dev-shm-usage")
-    if save_profile:
-        chrome_options.add_argument("--user-data-dir=./config/chrome_profile")
     chrome_options.add_experimental_option(
         "prefs",
         {
