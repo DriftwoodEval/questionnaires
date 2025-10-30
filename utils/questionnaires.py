@@ -38,15 +38,13 @@ def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
 def filter_inactive_and_not_pending(
     clients: dict[int, ClientWithQuestionnaires],
 ) -> dict[int, ClientWithQuestionnaires]:
-    """Fitlers clients that are not active and have no pending questionnaires."""
+    """Filters clients that are not active and have no pending questionnaires."""
     filtered_clients = {
         client.id: client
         for client in clients.values()
         if client.status is True
         and any(
-            q.get("status") == "PENDING"
-            or q.get("status") == "IGNORING"
-            or q.get("status") == "RESCHEDULED"
+            q.get("status") in ["PENDING", "IGNORING", "RESCHEDULED"]
             for q in client.questionnaires
             if isinstance(q, dict)
         )

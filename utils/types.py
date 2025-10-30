@@ -176,7 +176,7 @@ class AdminEmailInfo(TypedDict):
 def validate_questionnaires(
     clients: dict[int, ClientFromDB],
 ) -> dict[int, ClientWithQuestionnaires]:
-    """Validate clients from the database and convert them to ClientWithQuestionnaires.
+    """Convert clients from the database to ClientWithQuestionnaires.
 
     Returns:
         A dictionary of validated clients, where the keys are the client IDs and the values
@@ -184,8 +184,9 @@ def validate_questionnaires(
     """
     validated = {}
     for client_id, client in clients.items():
+        client_dict = client.dict()
         try:
-            validated[client_id] = ClientWithQuestionnaires.model_validate(client)
+            validated[client_id] = ClientWithQuestionnaires.model_validate(client_dict)
         except ValueError:
             continue  # Skip invalid clients
     return validated
