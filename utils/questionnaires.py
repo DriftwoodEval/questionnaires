@@ -13,7 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.database import update_questionnaires_in_db
-from utils.selenium import wait_for_page_load
+from utils.selenium import wait_for_page_load, wait_for_url_stability
 from utils.types import (
     ClientWithQuestionnaires,
     Config,
@@ -95,16 +95,17 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
     try:
         driver.get(q_link)
+        final_url = wait_for_url_stability(driver)
+        # logger.debug(f"Final URL (possibly after redirects): {final_url}")
+
         if not wait_for_page_load(driver):
             return False
-        current_url = driver.current_url
-        # logger.debug(f"Current URL: {current_url}")
 
         if q_type in url_patterns:
             expected_pattern = url_patterns[q_type]
 
-            if expected_pattern not in current_url:
-                error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{current_url}'"
+            if expected_pattern not in final_url:
+                error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{final_url}'"
                 raise Exception(error_msg)
             # logger.debug(f"URL validation passed for type '{q_type}'")
 

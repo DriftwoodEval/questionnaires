@@ -438,7 +438,9 @@ def add_to_failure_sheet(
 
         if questionnaire_links_generated:
             for link in questionnaire_links_generated:
-                body["values"][0].extend([str(link.get("qtype")), str(link.get("link"))])
+                body["values"][0].extend(
+                    [str(link.get("qtype")), str(link.get("link"))]
+                )
 
         if daeval == "Records":
             sheet.values().append(

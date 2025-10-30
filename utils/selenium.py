@@ -1,5 +1,6 @@
 import os
 from time import sleep
+import time
 
 from loguru import logger
 from selenium import webdriver
@@ -123,6 +124,38 @@ def wait_for_page_load(driver: WebDriver, timeout: int = 15) -> bool:
     except TimeoutException:
         logger.warning("Timeout waiting for document.readyState == 'complete'.")
         return False
+
+
+def wait_for_url_stability(
+    driver: WebDriver, timeout: int = 10, check_interval: int = 1
+) -> str:
+    """Wait for the URL to stabilize (stop redirecting).
+
+    Args:
+        driver: The WebDriver instance.
+        timeout: Maximum time to wait for stability.
+        check_interval: Time between URL checks.
+
+    Returns:
+        The final stable URL.
+    """
+    end_time = time.time() + timeout
+    previous_url = driver.current_url
+
+    while time.time() < end_time:
+        time.sleep(check_interval)
+        current_url = driver.current_url
+
+        if current_url == previous_url:
+            # URL hasn't changed, wait one more interval to confirm
+            time.sleep(check_interval)
+            if driver.current_url == current_url:
+                return current_url
+
+        previous_url = current_url
+
+    # Timeout reached, return current URL
+    return driver.current_url
 
 
 def login_ta(
