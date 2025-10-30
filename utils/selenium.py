@@ -84,7 +84,7 @@ def find_element_exists(
     try:
         find_element(driver, by, locator, timeout)
         return True
-    except NoSuchElementException:
+    except (NoSuchElementException, TimeoutException):
         return False
 
 
@@ -249,7 +249,7 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
             driver, By.XPATH, "//div[contains(normalize-space(text()), 'Username:')]", 3
         )
         return True
-    except NoSuchElementException:
+    except (NoSuchElementException, TimeoutException):
         return False
 
 
@@ -263,7 +263,7 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
             3,
         )
         return True
-    except NoSuchElementException:
+    except (NoSuchElementException, TimeoutException):
         return False
 
 
