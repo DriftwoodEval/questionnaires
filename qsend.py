@@ -1830,6 +1830,7 @@ def main():
                     "docs not signed",
                     "not in db",
                     "no dob",
+                    "unable to find client",
                 ]:
                     logger.error(
                         f"Client {client['Client Name']} has already failed to send"

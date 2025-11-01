@@ -475,7 +475,7 @@ def main():
                 add_failure(
                     config=config,
                     client_id=client_id,
-                    error="Client not found",
+                    error="unable to find client",
                     failed_date=today,
                     full_name=client_name,
                     asd_adhd=asdAdhd,
