@@ -2051,6 +2051,26 @@ def main():
                         questionnaire,
                         accounts_created,
                     )
+
+                    if link is None or link == "":
+                        logger.error(f"No link grabbed for {questionnaire}")
+                        add_failure(
+                            config=config,
+                            client_id=client["Client ID"],
+                            error=f"No link grabbed for {questionnaire}",
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            daeval=client["daeval"],
+                            questionnaires_needed=questionnaires_needed
+                            if type(questionnaires_needed) is list
+                            else [],
+                            questionnaire_links_generated=questionnaires,
+                        )
+                        send = False
+                        continue
+
+                    questionnaires.append({"link": link, "type": questionnaire})
                     put_questionnaire_in_db(
                         config,
                         client["Client ID"],
@@ -2061,7 +2081,7 @@ def main():
                     )
 
                 except Exception as e:  # noqa: E722
-                    logger.exception(f"Error assigning {questionnaire}: {e}")
+                    logger.exception(f"Error assigning {questionnaire}")
 
                     # TODO 🫠: see if generated questionnaires make it in
                     add_failure(
@@ -2079,26 +2099,6 @@ def main():
                     )
                     send = False
                     continue
-
-                if link is None or link == "":
-                    logger.error(f"No link grabbed for {questionnaire}")
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error=f"No link grabbed for {questionnaire}",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                        questionnaires_needed=questionnaires_needed
-                        if type(questionnaires_needed) is list
-                        else [],
-                        questionnaire_links_generated=questionnaires,
-                    )
-                    send = False
-                    continue
-
-                questionnaires.append({"link": link, "type": questionnaire})
 
             if send:
                 insert_basic_client(
