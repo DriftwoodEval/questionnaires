@@ -1944,7 +1944,7 @@ def main():
             client["TA Last Name"] = client_from_db.lastName
 
         except (NoSuchElementException, TimeoutException) as e:
-            logger.exception(f"Element not found: {e}")
+            logger.exception(f"Element not found")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],
@@ -2088,7 +2088,7 @@ def main():
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
-                        error=f"Error assigning {questionnaire}: {e}",
+                        error=f"Error assigning {questionnaire}",
                         failed_date=today,
                         full_name=client["Client Name"],
                         asd_adhd=client["For"],
@@ -2127,7 +2127,7 @@ def main():
                 message = format_ta_message(questionnaires)
                 send_message_ta(driver, client_url, message)
         except Exception as e:
-            logger.exception(e)
+            logger.exception(f"Error for client {client['Client Name']}")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],

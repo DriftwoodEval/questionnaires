@@ -294,7 +294,7 @@ class TherapyAppointmentBot:
                 self.config.sent_records_folder_id,
             )
         except Exception as e:
-            logger.error(f"Error moving files to sent folder: {e}")
+            logger.exception(f"Error moving files to sent folder")
             return False
 
         update_punch_list(self.config, str(client.id), "Records Requested?", "TRUE")
@@ -458,8 +458,8 @@ def main():
                         new_success_count += 1
 
                 except Exception as e:
-                    logger.error(
-                        f"An error occurred while processing {client_name}: {e}"
+                    logger.exception(
+                        f"An error occurred while processing {client_name}"
                     )
                     add_failure(
                         config=config,
