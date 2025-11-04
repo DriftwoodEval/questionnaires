@@ -39,7 +39,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: qreceive
           push: true
           tags: ${{ steps.meta-qreceive.outputs.tags }}
           labels: ${{ steps.meta-qreceive.outputs.labels }}
