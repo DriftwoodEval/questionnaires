@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     make \
     libffi-dev \
     libgdal-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
