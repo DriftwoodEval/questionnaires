@@ -160,6 +160,6 @@ class OpenPhone:
 
             response_data = response.json().get("data")
             return response_data
-        except Exception as e:
-            logger.exception(f"Failed to get message info: {e}")
+        except Exception:
+            logger.exception(f"Failed to get message info")
             return None

@@ -70,9 +70,9 @@ def get_previous_clients(
             try:
                 pydantic_client = ClientFromDB(**client_data)
                 prev_clients[pydantic_client.id] = pydantic_client
-            except Exception as e:
-                logger.error(
-                    f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}: {e}"
+            except Exception:
+                logger.exception(
+                    f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}"
                 )
 
     return prev_clients, failed_prev_clients
@@ -110,9 +110,9 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
             try:
                 pydantic_client = FailedClientFromDB(**client_data)
                 failed_clients[pydantic_client.id] = pydantic_client
-            except Exception as e:
-                logger.error(
-                    f"Failed to create FailedClientFromDB for ID {client_data.get('id', 'Unknown')}: {e}"
+            except Exception:
+                logger.exception(
+                    f"Failed to create FailedClientFromDB for ID {client_data.get('id', 'Unknown')}"
                 )
     return failed_clients
 

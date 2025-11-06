@@ -1811,8 +1811,8 @@ def main():
                 login(driver, actions, services)
                 sleep(1)
                 break
-            except Exception as e:
-                logger.warning(f"Login failed: {e}, trying again")
+            except Exception:
+                logger.exception(f"Login failed, trying again")
                 sleep(1)
 
     today = date.today()
@@ -1943,7 +1943,7 @@ def main():
                 client["TA First Name"] = client_from_db.firstName
             client["TA Last Name"] = client_from_db.lastName
 
-        except (NoSuchElementException, TimeoutException) as e:
+        except (NoSuchElementException, TimeoutException):
             logger.exception(f"Element not found")
             add_failure(
                 config=config,

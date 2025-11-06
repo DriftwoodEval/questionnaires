@@ -1,6 +1,6 @@
 import os
-from time import sleep
 import time
+from time import sleep
 
 from loguru import logger
 from selenium import webdriver
@@ -105,9 +105,9 @@ def click_element(
                 logger.info("Refreshing page")
                 driver.refresh()
                 sleep(1)
-        except (NoSuchElementException, TimeoutException):
+        except (NoSuchElementException, TimeoutException) as e:
             if attempt == max_attempts - 1:
-                raise
+                raise e
             else:
                 logger.warning(f"Click element failed: trying again after 1s.")
                 sleep(1)
@@ -259,13 +259,14 @@ def go_to_client(
     for attempt in range(3):
         try:
             return _go_to_client_loop(driver, actions, client_id)
-        except Exception as e:
+        except Exception:
             if attempt == 2:
-                logger.exception(f"Failed to go to client after 3 attempts: {e}")
+                logger.exception(f"Failed to go to client after 3 attempts")
                 return
             else:
-                logger.warning(f"Failed to go to client: {e}, trying again")
+                logger.exception(f"Failed to go to client, trying again")
                 driver.refresh()
+                sleep(1)
     return
 
 

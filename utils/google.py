@@ -126,8 +126,8 @@ def send_gmail(
 
         logger.info(f"Sent email to {to_addr}: {subject}")
 
-    except HttpError as error:
-        logger.exception(error)
+    except HttpError:
+        logger.exception("Failed to send email")
         send_message = None
     return send_message
 
@@ -288,8 +288,8 @@ def get_punch_list(config: Config):
             )
 
             return df
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to download punch list")
 
 
 def col_index_to_a1(col_index):
@@ -366,8 +366,8 @@ def update_punch_list(
             logger.success(f"Updated {update_column} for {id_for_search} in Punch List")
         else:
             logger.error(f"Client {id_for_search} not found in Punch List")
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to update Punch List")
 
 
 def update_punch_by_column(
@@ -457,8 +457,8 @@ def add_to_failure_sheet(
                 valueInputOption="USER_ENTERED",
             ).execute()
 
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to add to failure sheet")
 
 
 def move_file_in_drive(service, file_id: str, dest_folder_id: str):

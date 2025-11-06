@@ -293,7 +293,7 @@ class TherapyAppointmentBot:
                 sending_drive_file["id"],
                 self.config.sent_records_folder_id,
             )
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error moving files to sent folder")
             return False
 

@@ -29,8 +29,8 @@ def load_config() -> tuple[Services, Config]:
         try:
             services = Services(**services)
             config = Config(**config)
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Invalid config info file")
             exit(1)
         return services, config
 

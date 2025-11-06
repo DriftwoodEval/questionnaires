@@ -386,8 +386,8 @@ def main():
                         (client, "Did not deliver within timeout")
                     )
             except Exception as e:
-                logger.error(
-                    f"Error checking message status for {client.fullName} ({message_id}): {e}"
+                logger.exception(
+                    f"Error checking message status for {client.fullName} ({message_id})"
                 )
                 email_info["errors"].append(
                     f"Error checking message status for {client.fullName}: {e}"
@@ -408,7 +408,7 @@ def main():
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"
-        logger.exception(error_message)
+        logger.exception("Unhandled exception occurred during the run")
         email_info["errors"].append(error_message)
         raise
 
@@ -423,8 +423,8 @@ def main():
                     config.automated_email,
                     html=admin_email_html,
                 )
-            except Exception as e:
-                logger.error(f"Failed to send the admin email: {e}")
+            except Exception:
+                logger.exception(f"Failed to send the admin email")
 
 
 if __name__ == "__main__":

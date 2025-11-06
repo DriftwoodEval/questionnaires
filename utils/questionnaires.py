@@ -121,18 +121,18 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         logger.warning(f"Unknown or unsupported questionnaire host in link: {q_link}")
         return False
 
-    except (TimeoutException, NoSuchElementException) as e:
+    except (TimeoutException, NoSuchElementException):
         logger.info(
             f"Questionnaire at {q_link} is likely not completed (Timeout waiting for completion message)."
         )
         return False
 
-    except WebDriverException as e:
-        logger.error(f"WebDriver error checking questionnaire at {q_link}: {e}")
+    except WebDriverException:
+        logger.exception(f"WebDriver error checking questionnaire at {q_link}")
         return False
 
-    except Exception as e:
-        logger.error(f"{q_link}: {e}")
+    except Exception:
+        logger.exception(f"{q_link}")
         raise
 
 
