@@ -265,8 +265,6 @@ def go_to_client(
                 return
             else:
                 logger.exception(f"Failed to go to client, trying again")
-                driver.refresh()
-                sleep(1)
     return
 
 
