@@ -194,7 +194,14 @@ def put_questionnaire_in_db(
     qtype: str,
     sent_date: str,
     status: Literal[
-        "PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER", "EXTERNAL"
+        "PENDING",
+        "COMPLETED",
+        "IGNORING",
+        "LANGUAGE",
+        "TEACHER",
+        "EXTERNAL",
+        "ARCHIVED",
+        "JUST_ADDED",
     ],
 ):
     """Insert a questionnaire into the database.
@@ -231,7 +238,16 @@ def update_questionnaire_in_db(
     client_id: str,
     qtype: str,
     sent_date: str,
-    status: Literal["PENDING", "COMPLETED", "IGNORING", "LANGUAGE", "TEACHER"],
+    status: Literal[
+        "PENDING",
+        "COMPLETED",
+        "IGNORING",
+        "LANGUAGE",
+        "TEACHER",
+        "EXTERNAL",
+        "ARCHIVED",
+        "JUST_ADDED",
+    ],
 ):
     """Update a questionnaire in the database."""
     db_connection = get_db(config)

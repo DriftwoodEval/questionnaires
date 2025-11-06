@@ -2078,7 +2078,7 @@ def main():
                         link,
                         questionnaire,
                         datetime.today().strftime("%Y-%m-%d"),
-                        "IGNORING",
+                        "JUST_ADDED",
                     )
 
                 except Exception as e:  # noqa: E722

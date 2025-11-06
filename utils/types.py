@@ -88,6 +88,8 @@ class Questionnaire(TypedDict):
         "LANGUAGE",
         "TEACHER",
         "EXTERNAL",
+        "ARCHIVED",
+        "JUST_ADDED",
     ]
     reminded: int
     lastReminded: Optional[date]
