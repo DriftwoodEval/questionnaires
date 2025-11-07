@@ -407,7 +407,7 @@ class TherapyAppointmentBot:
 
     def file_exists(self, service, filename, folder_id):
         """Helper function to check if a file exists in Drive."""
-        query = f"name = '{filename}' and '{folder_id}' in parents and trashed = false"
+        query = f"name = '{filename.replace("'", "\\'")}' and '{folder_id}' in parents and trashed = false"
         results = (
             service.files()
             .list(q=query, spaces="drive", fields="files(id, name)", pageSize=1)
