@@ -2024,17 +2024,17 @@ def main():
                         logger.error(
                             f"Client {client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
                         )
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error=f"Overlapping questionnaires: {', '.join(remaining_overlaps)}",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                        questionnaires_needed=questionnaires_needed,
-                    )
-                    continue
+                        add_failure(
+                            config=config,
+                            client_id=client["Client ID"],
+                            error=f"Overlapping questionnaires: {', '.join(remaining_overlaps)}",
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            daeval=client["daeval"],
+                            questionnaires_needed=questionnaires_needed,
+                        )
+                        continue
 
             logger.info(
                 f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
