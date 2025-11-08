@@ -51,6 +51,12 @@ def build_q_message(
     """Builds the message to be sent to the client based on their most recent questionnaire."""
     link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
 
+    if not most_recent_q["sent"]:
+        logger.warning(
+            f"Client {client.fullName}'s {most_recent_q['questionnaireType']} has no sent date, cannot build message"
+        )
+        return None
+
     if distance == 0:
         distance_phrase = "today"
     elif distance == -1:
@@ -275,6 +281,11 @@ def main():
 
                 if not done:
                     most_recent_q = get_most_recent_not_done(client)
+                    if not most_recent_q or not most_recent_q["sent"]:
+                        logger.warning(
+                            f"Client {client.fullName} has no pending questionnaires with dates, skipping"
+                        )
+                        continue
                     distance = check_distance(most_recent_q["sent"])
                     last_reminded = most_recent_q.get("lastReminded")
                     if last_reminded is not None:

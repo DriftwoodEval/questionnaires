@@ -1,4 +1,5 @@
-from typing import Tuple
+from datetime import date
+from typing import Optional, Tuple, cast
 from urllib.parse import urlparse
 
 from loguru import logger
@@ -172,6 +173,11 @@ def check_questionnaires(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
                     )
                     continue
+                if not questionnaire["link"]:
+                    logger.warning(
+                        f"No link found for {client.fullName}'s {questionnaire['questionnaireType']}"
+                    )
+                    continue
                 logger.info(
                     f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
                 )
@@ -204,7 +210,9 @@ def check_questionnaires(
     return completed_clients, error_clients
 
 
-def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire:
+def get_most_recent_not_done(
+    client: ClientWithQuestionnaires,
+) -> Optional[Questionnaire]:
     """Get the most recent questionnaire that is still PENDING from the given client by taking max of q["sent"].
 
     Args:
@@ -213,9 +221,15 @@ def get_most_recent_not_done(client: ClientWithQuestionnaires) -> Questionnaire:
     Returns:
         Questionnaire: The most recent questionnaire that is still PENDING.
     """
+    pending_and_sent = (
+        q
+        for q in client.questionnaires
+        if q["status"] == "PENDING" and q["sent"] is not None
+    )
+
     return max(
-        (q for q in client.questionnaires if q["status"] == "PENDING"),
-        key=lambda q: q["sent"],
+        pending_and_sent,
+        key=lambda q: cast(date, q["sent"]),
     )
 
 

@@ -79,8 +79,8 @@ class Questionnaire(TypedDict):
 
     clientId: int
     questionnaireType: str
-    link: str
-    sent: date
+    link: Optional[str]
+    sent: Optional[date]
     status: Literal[
         "PENDING",
         "COMPLETED",
@@ -186,7 +186,7 @@ def validate_questionnaires(
     """
     validated = {}
     for client_id, client in clients.items():
-        client_dict = client.dict()
+        client_dict = client.model_dump()
         try:
             validated[client_id] = ClientWithQuestionnaires.model_validate(client_dict)
         except ValueError:

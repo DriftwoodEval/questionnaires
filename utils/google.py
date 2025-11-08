@@ -198,7 +198,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             "Call:\n"
             + "\n".join(
                 [
-                    f"- {client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
+                    f"- {client.fullName} (sent on {most_recent_q['sent'] and most_recent_q['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
                     if isinstance(client, ClientWithQuestionnaires)
                     else f"- {client.fullName} ({client.failure['reason'].capitalize()} on {client.failure['failedDate'].strftime('%m/%d')}, reminded {str(client.failure['reminded']) + ' times'})"
                     for client in email_info["call"]
@@ -214,7 +214,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_html += (
             "<h2>Call</h2><ul><li>"
             + "</li><li>".join(
-                f"{client.fullName} (sent on {most_recent_q['sent'].strftime('%m/%d') if most_recent_q else 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
+                f"{client.fullName} (sent on {most_recent_q['sent'] and most_recent_q['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
                 if isinstance(client, ClientWithQuestionnaires)
                 else f"{client.fullName} ({client.failure['reason'].capitalize()} on {client.failure['failedDate'].strftime('%m/%d')}, reminded {str(client.failure['reminded']) + ' times'})"
                 for client in email_info["call"]
