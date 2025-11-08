@@ -5,6 +5,7 @@ from base64 import b64decode
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -55,10 +56,19 @@ def get_clients_to_request(config: Config) -> pd.DataFrame | None:
         logger.critical("Punch list is empty")
         return None
 
+    requested_date_converted = pd.to_datetime(
+        punch_list["Records Requested?"], errors="coerce"
+    )
+
+    requested_is_a_date = ~np.isnat(requested_date_converted)
+
+    exclude_requested_condition = (
+        punch_list["Records Requested?"] == "TRUE"
+    ) | requested_is_a_date
+
     punch_list = punch_list[
         (punch_list["Records Needed"] == "TRUE")
-        & (punch_list["Records Requested?"] != "TRUE")
-        & (punch_list["Records Reviewed?"] != "TRUE")
+        & (~exclude_requested_condition)
         & (punch_list["For"] != "ADHD")
     ]
 
@@ -297,7 +307,12 @@ class TherapyAppointmentBot:
             logger.exception(f"Error moving files to sent folder")
             return False
 
-        update_punch_list(self.config, str(client.id), "Records Requested?", "TRUE")
+        update_punch_list(
+            self.config,
+            str(client.id),
+            "Records Requested?",
+            date.today().strftime("%m/%d/%y"),
+        )
 
         return False
 
