@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal, Optional, TypedDict, Union
 
 from pydantic import (
@@ -48,6 +48,39 @@ class Services(TypedDict):
     wps: Service
 
 
+class PieceworkCosts(BaseModel):
+    """Cost configuration for different work types."""
+
+    DA: Optional[float] = None
+    EVAL: Optional[float] = None
+    DAEVAL: Optional[float] = None
+    REPORT: Optional[float] = None
+
+
+class PieceworkConfig(BaseModel):
+    """Piecework configuration including default and evaluator-specific costs."""
+
+    costs: dict[str, PieceworkCosts]
+
+    def get_unit_cost(self, evaluator_name: str, appointment_type: str) -> float:
+        """Get the unit cost for a specific evaluator and appointment type.
+
+        Falls back to default costs if evaluator-specific costs are not found.
+        """
+        if evaluator_name in self.costs:
+            evaluator_costs = self.costs[evaluator_name]
+            if hasattr(evaluator_costs, appointment_type):
+                return getattr(evaluator_costs, appointment_type)
+
+        if "default" in self.costs:
+            default_costs = self.costs["default"]
+            if hasattr(default_costs, appointment_type):
+                return getattr(default_costs, appointment_type)
+
+        # If no cost found, return 0
+        return 0.00
+
+
 class Config(BaseModel):
     """A Pydantic model representing the configuration of the application."""
 
@@ -72,6 +105,7 @@ class Config(BaseModel):
     records_folder_id: str
     sent_records_folder_id: str
     records_emails: dict[str, str]
+    piecework: PieceworkConfig
 
 
 class Questionnaire(TypedDict):
@@ -173,6 +207,22 @@ class AdminEmailInfo(TypedDict):
     call: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
     completed: list[ClientWithQuestionnaires]
     errors: list[str]
+
+
+class Appointment(TypedDict):
+    """A TypedDict containing information about an appointment from the database."""
+
+    id: str
+    evaluatorNpi: int
+    clientName: str
+    startTime: datetime
+    endTime: datetime
+    daEval: str
+    asdAdhd: str
+    cancelled: bool
+    placeholder: bool
+    locationKey: str
+    calendarEventId: str
 
 
 def validate_questionnaires(

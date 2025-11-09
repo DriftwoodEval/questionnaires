@@ -7,6 +7,7 @@ import pymysql.cursors
 from loguru import logger
 
 from utils.types import (
+    Appointment,
     ClientFromDB,
     ClientWithQuestionnaires,
     Config,
@@ -134,6 +135,59 @@ def get_evaluator_npi(config: Config, evaluator_email) -> Optional[str]:
             cursor.execute(sql, (evaluator_email))
             npi = cursor.fetchone()
             return npi["npi"] if npi else None
+
+
+def get_all_evaluators_info(config: Config) -> dict[int, dict]:
+    """Gets a map of NPI (int) to a dictionary containing all evaluator info."""
+    evaluators_info = {}
+    db_connection = get_db(config)
+
+    try:
+        with db_connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM emr_evaluator")
+            results = cursor.fetchall()
+
+            for row in results:
+                npi = row.get("npi")
+                if npi is not None:
+                    evaluators_info[npi] = row
+
+    except Exception:
+        logger.exception(f"Failed to get all evaluators info")
+
+    return evaluators_info
+
+
+def get_appointments(
+    config: Config, start_date: date, end_date: date
+) -> Optional[list[Appointment]]:
+    """Fetch appointments within the given date range and associated client names."""
+    try:
+        connection = get_db(config)
+        with connection:
+            with connection.cursor() as cursor:
+                sql = """
+                    SELECT
+                        a.*,
+                        c.fullName as clientName
+                    FROM
+                        emr_appointment a
+                    LEFT JOIN emr_client c ON a.clientId = c.id
+                    WHERE
+                        a.startTime >= %s AND a.endTime <= %s
+                """
+                cursor.execute(sql, (start_date, end_date))
+                results = cursor.fetchall()
+
+                appointments = []
+                for row in results:
+                    appointment = Appointment(**row)
+                    appointments.append(appointment)
+
+                return appointments
+    except Exception:
+        logger.exception("Failed to fetch appointments and associated client names.")
+        return
 
 
 def insert_basic_client(

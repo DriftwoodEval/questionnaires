@@ -21,6 +21,7 @@ config/*
 put/*
 logs/*
 School Records Requests/*
+piecework_output/*
 *.yaml
 *.yml
 *.csv
