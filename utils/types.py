@@ -61,24 +61,43 @@ class PieceworkConfig(BaseModel):
     """Piecework configuration including default and evaluator-specific costs."""
 
     costs: dict[str, PieceworkCosts]
+    name_map: dict[str, str]
 
     def get_unit_cost(self, evaluator_name: str, appointment_type: str) -> float:
         """Get the unit cost for a specific evaluator and appointment type.
 
         Falls back to default costs if evaluator-specific costs are not found.
         """
+        default_costs = self.costs["default"]
+
         if evaluator_name in self.costs:
             evaluator_costs = self.costs[evaluator_name]
             if hasattr(evaluator_costs, appointment_type):
-                return getattr(evaluator_costs, appointment_type)
+                cost = getattr(evaluator_costs, appointment_type)
+                if cost is None:
+                    if hasattr(default_costs, appointment_type):
+                        return getattr(default_costs, appointment_type)
+                return cost
 
-        if "default" in self.costs:
-            default_costs = self.costs["default"]
-            if hasattr(default_costs, appointment_type):
-                return getattr(default_costs, appointment_type)
+        if hasattr(default_costs, appointment_type):
+            cost = getattr(default_costs, appointment_type)
+            if cost is None:
+                return 0.00
+            return cost
 
-        # If no cost found, return 0
         return 0.00
+
+    def get_full_name(self, initials: str) -> str:
+        """Get full name from initials.
+
+        Args:
+            initials: The initials to look up (case-insensitive)
+
+        Returns:
+            Full name if found, otherwise returns the original initials
+        """
+        initials_lower = initials.lower()
+        return self.name_map.get(initials_lower, initials)
 
 
 class Config(BaseModel):
