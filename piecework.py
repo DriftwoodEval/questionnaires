@@ -8,6 +8,7 @@ from typing import Optional
 import inquirer
 import pandas as pd
 from loguru import logger
+from openpyxl.styles import Alignment, Font
 
 from utils.database import get_all_evaluators_info, get_appointments
 from utils.google import get_punch_list
@@ -95,6 +96,23 @@ def get_report_clients(config: Config) -> Optional[pd.DataFrame]:
         ]
     ].rename(columns={"Assigned to OR added to report writing folder": "Assigned To"})
 
+    rows_to_drop = []
+    for idx, row in result.iterrows():
+        assigned_to = row["Assigned To"]
+        if pd.isna(assigned_to) or not str(assigned_to).strip():
+            logger.error(
+                f"'{row['Client Name'].strip()}' (ID: {row['Client ID'].strip()}) has empty 'Assigned To' field"
+            )
+            rows_to_drop.append(idx)
+
+    if rows_to_drop:
+        result = result.drop(rows_to_drop)
+        logger.error(f"Dropped {len(rows_to_drop)} client(s) with no report writer")
+
+    if result.empty:
+        logger.error("No valid reports found after filtering out unassigned clients")
+        return None
+
     result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
     result["Writer Name"] = result["Initials"].apply(
         lambda initials: config.piecework.get_full_name(initials) if initials else ""
@@ -153,8 +171,8 @@ def get_work_counts(
 
     Returns a dict mapping evaluator name to appointment type counts.
     """
-    counts: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    worker_names: dict[int, str] = {}
+    counts: dict[int | str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    worker_names: dict[int | str, str] = {}
 
     for appointment in appointments:
         if appointment.get("cancelled"):
@@ -183,19 +201,24 @@ def get_work_counts(
         for _, row in report_clients.iterrows():
             writer_name = row.get("Writer Name", "")
             if writer_name:
-                if writer_name not in worker_names.values():
+                existing_npi = next(
+                    (npi for npi, name in worker_names.items() if name == writer_name),
+                    None,
+                )
+
+                if existing_npi is not None:
+                    counts[existing_npi]["REPORT"] = (
+                        counts[existing_npi].get("REPORT", 0) + 1
+                    )
+                else:
                     worker_names[writer_name] = writer_name
                     counts[writer_name]["REPORT"] = (
                         counts[writer_name].get("REPORT", 0) + 1
                     )
-                else:
-                    for npi, name in worker_names.items():
-                        if name == writer_name:
-                            counts[npi]["REPORT"] = counts[npi].get("REPORT", 0) + 1
 
     return {
-        worker_names.get(npi, f"Unknown Evaluator (NPI: {npi})"): dict(da_eval_counts)
-        for npi, da_eval_counts in counts.items()
+        worker_names.get(key, f"Unknown Worker (Key: {key})"): dict(da_eval_counts)
+        for key, da_eval_counts in counts.items()
     }
 
 
@@ -235,8 +258,8 @@ def prepare_summary_data(
                     "NAME": "",
                     "TYPE": app_type,
                     "COUNT": count,
-                    "UNIT": f"${unit_cost:.2f}",
-                    "COST": f"${total_cost:.2f}",
+                    "UNIT": unit_cost,
+                    "COST": total_cost,
                     "TOTAL PAY": "",
                 }
             )
@@ -248,7 +271,7 @@ def prepare_summary_data(
                 "COUNT": "",
                 "UNIT": "",
                 "COST": "",
-                "TOTAL PAY": f"${evaluator_total:.2f}",
+                "TOTAL PAY": evaluator_total,
             }
         )
 
@@ -291,12 +314,12 @@ def prepare_detail_data(
 
             detail_rows.append(
                 {
-                    "Worker": evaluator_name,
-                    "Client": appointment.get("clientName", "N/A"),
-                    "Start Time": appointment.get("startTime").strftime(
+                    "WORKER": evaluator_name,
+                    "CLIENT": appointment.get("clientName", "N/A"),
+                    "START TIME": appointment.get("startTime").strftime(
                         "%Y-%m-%d %I:%M %p"
                     ),
-                    "Type": str(da_eval),
+                    "TYPE": str(da_eval),
                 }
             )
 
@@ -307,15 +330,15 @@ def prepare_detail_data(
             if writer_name:
                 detail_rows.append(
                     {
-                        "Worker": writer_name,
-                        "Client": client_name,
-                        "Start Time": "N/A",
-                        "Type": "REPORT",
+                        "WORKER": writer_name,
+                        "CLIENT": client_name,
+                        "START TIME": "N/A",
+                        "TYPE": "REPORT",
                     }
                 )
 
     sorted_detail_rows = sorted(
-        detail_rows, key=lambda k: (k["Worker"], k["Start Time"])
+        detail_rows, key=lambda k: (k["WORKER"], k["START TIME"])
     )
 
     return sorted_detail_rows
@@ -344,8 +367,76 @@ def generate_excel_report(
     try:
         with pd.ExcelWriter(filename, engine="openpyxl") as writer:
             df_summary.to_excel(writer, sheet_name="Summary Counts", index=False)
-
             df_detail.to_excel(writer, sheet_name="Details", index=False)
+
+            workbook = writer.book
+            summary_sheet = writer.sheets["Summary Counts"]
+
+            for row_idx, row in enumerate(
+                summary_data, start=2
+            ):  # start=2 to skip header
+                if row.get("UNIT"):
+                    cell = summary_sheet.cell(row=row_idx, column=4)
+                    cell.number_format = '"$"#,##0.00'
+
+                if row.get("COST"):
+                    cell = summary_sheet.cell(row=row_idx, column=5)
+                    cell.number_format = '"$"#,##0.00'
+
+                if row.get("TOTAL PAY"):
+                    cell = summary_sheet.cell(row=row_idx, column=6)
+                    cell.number_format = '"$"#,##0.00'
+
+            # Find the last row with data
+            last_row = len(df_summary) + 1  # +1 for header row
+
+            summary_sheet.cell(row=last_row + 2, column=1, value="GRAND TOTAL")
+
+            formula = f"=SUM(F2:F{last_row})"
+
+            grand_total_cell = summary_sheet.cell(row=last_row + 2, column=6)
+            grand_total_cell.value = formula
+            grand_total_cell.number_format = '"$"#,##0.00'
+            grand_total_cell.font = Font(bold=True)
+            grand_total_cell.alignment = Alignment(horizontal="right")
+
+            label_cell = summary_sheet.cell(row=last_row + 2, column=1)
+            label_cell.font = Font(bold=True)
+
+            # Auto-fit columns for Summary Counts sheet
+            for column in summary_sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+
+                for cell in column:
+                    try:
+                        if cell.value:
+                            cell_length = len(str(cell.value))
+                            if cell_length > max_length:
+                                max_length = cell_length
+                    except:
+                        pass
+
+                adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
+                summary_sheet.column_dimensions[column_letter].width = adjusted_width
+
+            # Auto-fit columns for Details sheet
+            detail_sheet = writer.sheets["Details"]
+            for column in detail_sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+
+                for cell in column:
+                    try:
+                        if cell.value:
+                            cell_length = len(str(cell.value))
+                            if cell_length > max_length:
+                                max_length = cell_length
+                    except:
+                        pass
+
+                adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
+                detail_sheet.column_dimensions[column_letter].width = adjusted_width
 
         logger.success(f"Successfully generated Excel report file: {filename}")
 
