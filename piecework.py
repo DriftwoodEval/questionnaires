@@ -216,6 +216,9 @@ def get_work_counts(
                         counts[writer_name].get("REPORT", 0) + 1
                     )
 
+    total_work_count = sum(sum(counts.values()) for counts in counts.values())
+    logger.info(f"Total work piece count: {total_work_count}")
+
     return {
         worker_names.get(key, f"Unknown Worker (Key: {key})"): dict(da_eval_counts)
         for key, da_eval_counts in counts.items()
@@ -359,8 +362,6 @@ def generate_excel_report(
         / f"piecework_{start_date.strftime('%y-%m-%d')}_{end_date.strftime('%y-%m-%d')}.xlsx"
     )
 
-    logger.info(f"Preparing to write Excel report to {filename}...")
-
     df_summary = pd.DataFrame(summary_data)
     df_detail = pd.DataFrame(detail_data)
 
@@ -438,7 +439,7 @@ def generate_excel_report(
                 adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
                 detail_sheet.column_dimensions[column_letter].width = adjusted_width
 
-        logger.success(f"Successfully generated Excel report file: {filename}")
+        logger.success(f"Wrote Excel file: {filename}")
 
     except Exception:
         logger.exception(f"An error occurred while writing the Excel file {filename}.")
