@@ -26,7 +26,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.12.8"]
+dev = [
+    "icecream>=2.1.8",
+    "ruff>=0.12.8",
+]
 
 [tool.ruff.lint]
 select = ["D"]
