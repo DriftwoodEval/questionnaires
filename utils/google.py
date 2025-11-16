@@ -442,20 +442,12 @@ def add_to_failure_sheet(
             for q in questionnaires_generated:
                 body["values"][0].extend([str(q.get("type")), str(q.get("link"))])
 
-        if daeval == "Records":
-            sheet.values().append(
-                spreadsheetId=config.failed_sheet_id,
-                range="records!A1:Z",
-                body=body,
-                valueInputOption="USER_ENTERED",
-            ).execute()
-        else:
-            sheet.values().append(
-                spreadsheetId=config.failed_sheet_id,
-                range="questionnaires!A1:Z",
-                body=body,
-                valueInputOption="USER_ENTERED",
-            ).execute()
+        sheet.values().append(
+            spreadsheetId=config.failed_sheet_id,
+            range="failures!A1:Z",
+            body=body,
+            valueInputOption="USER_ENTERED",
+        ).execute()
 
     except Exception:
         logger.exception("Failed to add to failure sheet")
