@@ -227,10 +227,7 @@ def get_most_recent_not_done(
         if q["status"] == "PENDING" and q["sent"] is not None
     )
 
-    return max(
-        pending_and_sent,
-        key=lambda q: cast(date, q["sent"]),
-    )
+    return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
 
 
 def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
