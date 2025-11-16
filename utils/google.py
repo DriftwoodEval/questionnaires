@@ -416,7 +416,7 @@ def add_to_failure_sheet(
     asd_adhd: Optional[str] = None,
     daeval: Optional[str] = None,
     questionnaires_needed: Optional[list[str]] = None,
-    questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
+    questionnaires_generated: Optional[list[dict[str, str]]] = None,
 ):
     """Adds the given failed client to the failure sheet."""
     creds = google_authenticate()
@@ -438,11 +438,9 @@ def add_to_failure_sheet(
             ]
         }
 
-        if questionnaire_links_generated:
-            for link in questionnaire_links_generated:
-                body["values"][0].extend(
-                    [str(link.get("qtype")), str(link.get("link"))]
-                )
+        if questionnaires_generated:
+            for q in questionnaires_generated:
+                body["values"][0].extend([str(q.get("type")), str(q.get("link"))])
 
         if daeval == "Records":
             sheet.values().append(

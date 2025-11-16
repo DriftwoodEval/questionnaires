@@ -44,7 +44,7 @@ def add_failure(
     asd_adhd: Optional[str] = None,
     daeval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
     questionnaires_needed: Optional[list[str]] = None,
-    questionnaire_links_generated: Optional[list[dict[str, str]]] = None,
+    questionnaires_generated: Optional[list[dict[str, str]]] = None,
 ) -> None:
     """Add a client to the failure sheet and database."""
     add_to_failure_sheet(
@@ -56,7 +56,7 @@ def add_failure(
         asd_adhd,
         daeval,
         questionnaires_needed,
-        questionnaire_links_generated,
+        questionnaires_generated,
     )
 
     if daeval != "Records":

@@ -2066,7 +2066,7 @@ def main():
                             questionnaires_needed=questionnaires_needed
                             if type(questionnaires_needed) is list
                             else [],
-                            questionnaire_links_generated=questionnaires,
+                            questionnaires_generated=questionnaires,
                         )
                         send = False
                         continue
@@ -2096,7 +2096,7 @@ def main():
                         questionnaires_needed=questionnaires_needed
                         if type(questionnaires_needed) is list
                         else [],
-                        questionnaire_links_generated=questionnaires,
+                        questionnaires_generated=questionnaires,
                     )
                     send = False
                     continue
