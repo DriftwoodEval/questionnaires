@@ -53,7 +53,7 @@ def build_q_message(
 
     if not most_recent_q["sent"]:
         logger.warning(
-            f"Client {client.fullName}'s {most_recent_q['questionnaireType']} has no sent date, cannot build message"
+            f"{client.fullName}'s {most_recent_q['questionnaireType']} has no sent date, cannot build message"
         )
         return None
 
@@ -138,7 +138,7 @@ def check_failures(
 
         if is_resolved:
             update_failure_in_db(config, client_id, reason, resolved=True)
-            logger.info(f"Resolved failure for client {client.fullName}")
+            logger.info(f"Resolved failure for {client.fullName}")
 
 
 ClientType = Union[FailedClientFromDB, ClientWithQuestionnaires]
@@ -190,7 +190,7 @@ def main():
                 if client.failure["reason"] in ["portal not opened", "docs not signed"]:
                     if client.note and "app.pandadoc.com" in str(client.note):
                         logger.info(
-                            f"Client {client.fullName} likely doesn't speak English, skipping"
+                            f"{client.fullName} likely doesn't speak English, skipping"
                         )
                         continue
 
@@ -201,11 +201,11 @@ def main():
                         last_reminded_distance = 0
 
                     logger.info(
-                        f"Client {client.fullName} has issue {client.failure['reason']}"
+                        f"{client.fullName} has issue {client.failure['reason']}"
                     )
 
                     if not client.phoneNumber:
-                        logger.warning(f"Client {client.fullName} has no phone number")
+                        logger.warning(f"{client.fullName} has no phone number")
                         email_info["failed"].append((client, "No phone number"))
                         continue
 
@@ -271,19 +271,19 @@ def main():
                 done = all_questionnaires_done(client)
 
                 if check_if_ignoring(client):
-                    logger.warning(f"Client {client.fullName} is being ignored.")
+                    logger.warning(f"{client.fullName} is being ignored.")
                     email_info["ignoring"].append(client)
                     continue
 
                 if any(client.fullName in error for error in email_info["errors"]):
-                    logger.warning(f"Client {client.fullName} has an error, skipping")
+                    logger.warning(f"{client.fullName} has an error, skipping")
                     continue
 
                 if not done:
                     most_recent_q = get_most_recent_not_done(client)
                     if not most_recent_q or not most_recent_q["sent"]:
                         logger.warning(
-                            f"Client {client.fullName} has no pending questionnaires with dates, skipping"
+                            f"{client.fullName} has no pending questionnaires with dates, skipping"
                         )
                         continue
                     distance = check_distance(most_recent_q["sent"])
@@ -298,7 +298,7 @@ def main():
                     )
 
                     if not client.phoneNumber:
-                        logger.warning(f"Client {client.fullName} has no phone number")
+                        logger.warning(f"{client.fullName} has no phone number")
                         email_info["failed"].append((client, "No phone number"))
                         continue
 

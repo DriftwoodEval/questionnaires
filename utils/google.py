@@ -367,7 +367,7 @@ def update_punch_list(
             )
             logger.success(f"Updated {update_column} for {id_for_search} in Punch List")
         else:
-            logger.error(f"Client {id_for_search} not found in Punch List")
+            logger.error(f"{id_for_search} not found in Punch List")
     except Exception:
         logger.exception("Failed to update Punch List")
 

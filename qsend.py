@@ -691,7 +691,7 @@ def assign_questionnaire(
             questionnaire and the updated accounts_created dictionary.
     """
     logger.info(
-        f"Assigning questionnaire '{questionnaire}' to client {client['TA First Name']} {client['TA Last Name']}"
+        f"Assigning questionnaire '{questionnaire}' to {client['TA First Name']} {client['TA Last Name']}"
     )
     mhs_url = "https://assess.mhs.com/MainPortal.aspx"
     qglobal_url = "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
@@ -1832,9 +1832,7 @@ def main():
                     "no dob",
                     "unable to find client",
                 ]:
-                    logger.error(
-                        f"Client {client['Client Name']} has already failed to send"
-                    )
+                    logger.error(f"{client['Client Name']} has already failed to send")
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
@@ -1848,7 +1846,7 @@ def main():
                     continue
 
         if client["Language"] != "" and client["Language"] != "English":
-            logger.error(f"Client {client['Client Name']} doesn't speak English")
+            logger.error(f"{client['Client Name']} doesn't speak English")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],
@@ -1919,7 +1917,7 @@ def main():
 
             client_from_db = prev_clients.get(int(client["Client ID"]))
             if not client_from_db:
-                logger.error(f"Client {client['Client Name']} not found in DB")
+                logger.error(f"{client['Client Name']} not found in DB")
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
@@ -1966,7 +1964,7 @@ def main():
             )
 
             if str(questionnaires_needed) == "Too young":
-                logger.error(f"Client {client['Client Name']} is too young")
+                logger.error(f"{client['Client Name']} is too young")
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
@@ -1979,9 +1977,7 @@ def main():
                 continue
 
             if str(questionnaires_needed) == "Unknown":
-                logger.error(
-                    f"Client {client['Client Name']} has unknown questionnaire needs"
-                )
+                logger.error(f"{client['Client Name']} has unknown questionnaire needs")
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
@@ -2022,7 +2018,7 @@ def main():
 
                     if remaining_overlaps:
                         logger.error(
-                            f"Client {client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
+                            f"{client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
                         )
                         add_failure(
                             config=config,
@@ -2037,7 +2033,7 @@ def main():
                         continue
 
             logger.info(
-                f"Client {client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
+                f"{client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
             )
 
             questionnaires = []
@@ -2127,7 +2123,7 @@ def main():
                 message = format_ta_message(questionnaires)
                 send_message_ta(driver, client_url, message)
         except Exception as e:
-            logger.exception(f"Error for client {client['Client Name']}")
+            logger.exception(f"Error for {client['Client Name']}")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],
