@@ -13,13 +13,13 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from utils.database import update_questionnaires_in_db
-from utils.selenium import wait_for_page_load, wait_for_url_stability
-from utils.types import (
+from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     Questionnaire,
 )
+from utils.database import update_questionnaires_in_db
+from utils.selenium import wait_for_page_load, wait_for_url_stability
 
 
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:

@@ -10,10 +10,10 @@ import pandas as pd
 from loguru import logger
 from openpyxl.styles import Alignment, Font
 
+from utils.custom_types import Appointment, Config
 from utils.database import get_all_evaluators_info, get_appointments
 from utils.google import get_punch_list
 from utils.misc import load_config
-from utils.types import Appointment, Config
 
 TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
 

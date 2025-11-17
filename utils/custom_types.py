@@ -127,6 +127,13 @@ class Config(BaseModel):
     piecework: PieceworkConfig
 
 
+class FullConfig(BaseModel):
+    """A Pydantic model representing the full configuration of the application."""
+
+    services: Services
+    config: Config
+
+
 class Questionnaire(TypedDict):
     """A TypedDict containing information about a questionnaire."""
 

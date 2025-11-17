@@ -5,12 +5,12 @@ from typing import Literal, Optional
 import yaml
 from loguru import logger
 
-from utils.database import add_failure_to_db
-from utils.google import add_to_failure_sheet
-from utils.types import (
+from utils.custom_types import (
     Config,
     Services,
 )
+from utils.database import add_failure_to_db
+from utils.google import add_to_failure_sheet
 
 
 def load_config() -> tuple[Services, Config]:

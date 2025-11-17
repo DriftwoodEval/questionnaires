@@ -26,6 +26,7 @@ from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from utils.custom_types import ClientFromDB, Config, Services
 from utils.database import get_previous_clients
 from utils.google import (
     get_punch_list,
@@ -35,7 +36,6 @@ from utils.google import (
     update_punch_list,
 )
 from utils.misc import add_failure, load_config
-from utils.types import ClientFromDB, Config, Services
 
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")

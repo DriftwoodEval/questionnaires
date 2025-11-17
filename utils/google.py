@@ -14,12 +14,12 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
 
-from utils.questionnaires import get_most_recent_not_done
-from utils.types import (
+from utils.custom_types import (
     AdminEmailInfo,
     ClientWithQuestionnaires,
     Config,
 )
+from utils.questionnaires import get_most_recent_not_done
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = [

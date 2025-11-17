@@ -17,6 +17,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
 
+from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
     get_previous_clients,
     insert_basic_client,
@@ -35,7 +36,6 @@ from utils.selenium import (
     initialize_selenium,
     login_ta,
 )
-from utils.types import ClientFromDB, Config, FailedClientFromDB, Services
 
 
 def get_clients_to_send(config: Config) -> pd.DataFrame | None:

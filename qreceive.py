@@ -6,6 +6,15 @@ from loguru import logger
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 
+from utils.custom_types import (
+    AdminEmailInfo,
+    ClientWithQuestionnaires,
+    Config,
+    FailedClientFromDB,
+    Questionnaire,
+    Services,
+    validate_questionnaires,
+)
 from utils.database import (
     get_previous_clients,
     update_failure_in_db,
@@ -28,15 +37,6 @@ from utils.selenium import (
     initialize_selenium,
     login_ta,
     resend_portal_invite,
-)
-from utils.types import (
-    AdminEmailInfo,
-    ClientWithQuestionnaires,
-    Config,
-    FailedClientFromDB,
-    Questionnaire,
-    Services,
-    validate_questionnaires,
 )
 
 logger.add("logs/qreceive.log", rotation="500 MB")

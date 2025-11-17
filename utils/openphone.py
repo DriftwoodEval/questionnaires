@@ -5,7 +5,7 @@ from backoff import expo, on_exception, on_predicate
 from loguru import logger
 from ratelimit import RateLimitException, limits
 
-from utils.types import Config, Services
+from utils.custom_types import Config, Services
 
 
 def log_backoff(details):

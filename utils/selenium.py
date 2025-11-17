@@ -18,7 +18,7 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from utils.types import Services
+from utils.custom_types import Services
 
 
 def initialize_selenium() -> tuple[WebDriver, ActionChains]:

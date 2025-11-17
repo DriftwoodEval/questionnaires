@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import pymysql.cursors
 from loguru import logger
 
-from utils.types import (
+from utils.custom_types import (
     Appointment,
     ClientFromDB,
     ClientWithQuestionnaires,
