@@ -270,6 +270,7 @@ def go_to_client(
 
 def check_if_opened_portal(driver: WebDriver) -> bool:
     """Check if the TA portal has been opened by the client."""
+    logger.info("Checking if portal has been opened...")
     try:
         find_element(
             driver, By.XPATH, "//div[contains(normalize-space(text()), 'Username:')]", 3
@@ -281,6 +282,7 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
 
 def check_if_docs_signed(driver: WebDriver) -> bool:
     """Check if the TA docs have been signed by the client."""
+    logger.info("Checking if docs have been signed...")
     try:
         find_element(
             driver,

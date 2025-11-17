@@ -2134,6 +2134,8 @@ def main():
                 daeval=client["daeval"],
             )
 
+    logger.info(f"Finished loop for {len(clients)} clients")
+
 
 if __name__ == "__main__":
     logger.add("logs/qsend.log", rotation="500 MB")
