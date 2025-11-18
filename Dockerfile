@@ -46,4 +46,4 @@ COPY . .
 ENV TZ=America/New_York \
     PYTHONUNBUFFERED=1
 
-CMD ["uv run config-server.py"]
+CMD ["uv", "run", "config-server.py"]

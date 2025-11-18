@@ -19,7 +19,7 @@ from utils.google import add_to_failure_sheet
 
 def load_local_settings() -> LocalSettings:
     """Load local settings from local_config.yml."""
-    local_config_path = "./local_config.yml"
+    local_config_path = "./config/local_config.yml"
     if not os.path.exists(local_config_path):
         logger.error(
             f"Local config file not found at {local_config_path}. Cannot determine API URL."

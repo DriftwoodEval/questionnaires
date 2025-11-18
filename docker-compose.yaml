@@ -1,6 +1,7 @@
 services:
   qreceive:
     image: ghcr.io/driftwoodeval/questionnaires-qreceive:main
+    container_name: qreceive
     environment:
       - HEADLESS=true
     volumes:
@@ -11,6 +12,7 @@ services:
 
   config-server:
     image: ghcr.io/driftwoodeval/questionnaires-config-server:main
+    container_name: config-server
     volumes:
       - ./config:/app/config
     ports:

@@ -46,7 +46,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract metadata for qmail image
+      - name: Extract metadata for config-server image
         id: meta-config-server
         uses: docker/metadata-action@v5
         with:
