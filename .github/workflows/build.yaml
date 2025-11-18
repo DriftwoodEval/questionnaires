@@ -39,25 +39,26 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          target: qreceive
           push: true
           tags: ${{ steps.meta-qreceive.outputs.tags }}
           labels: ${{ steps.meta-qreceive.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # - name: Extract metadata for qmail image
-      #   id: meta-qmail
-      #   uses: docker/metadata-action@v5
-      #   with:
-      #     images: ${{ env.REGISTRY }}/${{ github.repository }}-qmail
+      - name: Extract metadata for qmail image
+        id: meta-config-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-config-server
 
-      # - name: Build and push qmail image
-      #   uses: docker/build-push-action@v5
-      #   with:
-      #     context: .
-      #     target: qmail
-      #     push: true
-      #     tags: ${{ steps.meta-qmail.outputs.tags }}
-      #     labels: ${{ steps.meta-qmail.outputs.labels }}
-      #     cache-from: type=gha
-      #     cache-to: type=gha,mode=max
+      - name: Build and push config-server image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: config-server
+          push: true
+          tags: ${{ steps.meta-config-server.outputs.tags }}
+          labels: ${{ steps.meta-config-server.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

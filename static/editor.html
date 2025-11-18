@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Configuration Editor</title>
+    <style>
+      /* --- General & Layout --- */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
+          sans-serif;
+        background: #f0f2f5;
+        min-height: 100vh;
+        padding: 20px;
+        color: #1a1a1a;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+      .header {
+        background: #2d3748;
+        color: white;
+        padding: 25px;
+      }
+      .header h1 {
+        font-size: 1.5rem;
+        margin-bottom: 5px;
+      }
+      .tabs {
+        display: flex;
+        background: #fff;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 0 20px;
+      }
+      .tab {
+        padding: 15px 25px;
+        cursor: pointer;
+        border: none;
+        background: none;
+        font-size: 0.95rem;
+        color: #718096;
+        border-bottom: 2px solid transparent;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+      .tab:hover {
+        color: #2b6cb0;
+        background: #ebf8ff;
+      }
+      .tab.active {
+        color: #2b6cb0;
+        border-bottom-color: #2b6cb0;
+      }
+      .content {
+        padding: 30px;
+        max-height: 75vh;
+        overflow-y: auto;
+        background: #fff;
+      }
+      .section {
+        display: none;
+      }
+      .section.active {
+        display: block;
+      }
+      .subsection {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 25px;
+      }
+      .subsection h3 {
+        color: #2d3748;
+        margin-bottom: 15px;
+        font-size: 1.1rem;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 10px;
+      }
+
+      /* --- Actions and Status --- */
+      .actions {
+        padding: 20px 30px;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        background: #f8fafc;
+      }
+      .btn {
+        padding: 10px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn-primary {
+        background: #2b6cb0;
+        color: white;
+      }
+      .btn-primary:hover {
+        background: #2c5282;
+      }
+      .btn-secondary {
+        background: #a0aec0;
+        color: white;
+      }
+      .btn-danger {
+        background: #e53e3e;
+        color: white;
+        padding: 6px 12px;
+        font-size: 0.8rem;
+      }
+      .btn-success {
+        background: #48bb78;
+        color: white;
+        font-size: 0.85rem;
+        padding: 8px 16px;
+        margin-top: 10px;
+      }
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: #718096;
+      }
+      .alert {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 25px;
+        border-radius: 8px;
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transform: translateY(-100px);
+        transition: transform 0.3s;
+        z-index: 1000;
+      }
+      .alert.show {
+        transform: translateY(0);
+      }
+      .alert-success {
+        background: #48bb78;
+      }
+      .alert-error {
+        background: #e53e3e;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+      }
+
+      /* Form groups containing KeyValue or DictObject editors to span all columns */
+      .grid .form-group:has(.keyvalue-editor),
+      .grid .form-group:has(.dict-object-container) {
+        grid-column: 1 / -1; /* Span from the first column to the last */
+      }
+
+      /* Make the Add buttons for full-width form groups also span the full width */
+      .grid .form-group:has(.keyvalue-editor) .btn-success,
+      .grid .form-group:has(.dict-object-container) .btn-success {
+        width: 100%;
+        text-align: center;
+      }
+
+      /* Dict Object Styling (The "Cards") */
+      .dict-object-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 15px;
+      }
+      .dict-card {
+        background: white;
+        border: 1px solid #cbd5e0;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+      .dict-card-header {
+        background: #edf2f7;
+        padding: 10px 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #cbd5e0;
+      }
+      .dict-card-header strong {
+        font-size: 0.95rem;
+        color: #2d3748;
+      }
+      .dict-card-body {
+        padding: 15px;
+      }
+      .dict-card-body .grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      }
+
+      /* List and KeyValue Items */
+      .list-item,
+      .keyvalue-item {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .list-item input {
+        flex: 1;
+      }
+      .keyvalue-editor .keyvalue-item {
+        grid-template-columns: 2fr 3fr auto; /* Key : Value : Button */
+        display: grid;
+        margin-bottom: 10px;
+      }
+
+      /* --- Form Elements --- */
+      .form-group {
+        margin-bottom: 5px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #4a5568;
+      }
+      .form-group label .required {
+        color: #e53e3e;
+        margin-left: 2px;
+      }
+      .form-group input,
+      .form-group textarea,
+      .form-group select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #cbd5e0;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        transition: border-color 0.2s;
+      }
+      .form-group input:focus,
+      .form-group textarea:focus {
+        outline: none;
+        border-color: #4299e1;
+        box-shadow: 0 0 0 2px #bee3f8;
+      }
+      .form-group textarea {
+        min-height: 100px;
+        font-family: monospace;
+      }
+
+      .locked-input {
+        background-color: #f1f1f1;
+        cursor: not-allowed;
+        border: 1px solid #e2e2e2;
+        color: #757575;
+      }
+      .locked-input:focus {
+        outline: none;
+        border-color: #e2e2e2;
+        box-shadow: none;
+      }
+      input:not([readonly]),
+      textarea:not([readonly]) {
+        cursor: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Configuration Editor</h1>
+      </div>
+      <div id="alert" class="alert"></div>
+      <div id="tabs" class="tabs"></div>
+      <div class="content">
+        <div id="loading" class="loading">Loading configuration...</div>
+        <form id="configForm" style="display: none"></form>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-secondary" id="discardBtn">
+          Discard Changes
+        </button>
+        <button type="button" class="btn btn-primary" id="saveBtn">
+          Save Configuration
+        </button>
+      </div>
+    </div>
+
+    <script>
+      const LOCKED_FIELDS = [
+        "config.punch_list_id",
+        "config.failed_sheet_id",
+        "config.database_url",
+        "config.records_folder_id",
+        "config.sent_records_folder_id",
+        "services.openphone.key",
+        "services.openphone.main_number",
+      ];
+      let configData = {};
+      let schemaData = {};
+
+      function getValueByPath(obj, path) {
+        return path.split(".").reduce((acc, part) => acc?.[part], obj);
+      }
+
+      function setValueByPath(obj, path, value) {
+        const parts = path.split(".");
+        const last = parts.pop();
+        const target = parts.reduce((acc, part) => {
+          if (!acc[part]) acc[part] = {};
+          return acc[part];
+        }, obj);
+        target[last] = value;
+      }
+
+      function showAlert(message, type) {
+        const alert = document.getElementById("alert");
+        alert.className = `alert alert-${type} show`;
+        alert.textContent = message;
+        setTimeout(() => alert.classList.remove("show"), 4000);
+      }
+
+      async function init() {
+        try {
+          const schemaRes = await fetch("/api/schema");
+          if (!schemaRes.ok) throw new Error("Failed to fetch schema");
+          schemaData = await schemaRes.json();
+          generateForm();
+          await loadConfig();
+        } catch (e) {
+          showAlert(`Init failed: ${e.message}`, "error");
+          console.error(e);
+        }
+      }
+
+      function generateForm() {
+        const tabs = document.getElementById("tabs");
+        const form = document.getElementById("configForm");
+        const sections = [
+          { id: "general", label: "General Config", schema: schemaData.config },
+          { id: "services", label: "Services", schema: schemaData.services },
+        ];
+
+        sections.forEach((sect, idx) => {
+          const btn = document.createElement("button");
+          btn.className = `tab ${idx === 0 ? "active" : ""}`;
+          btn.textContent = sect.label;
+          btn.onclick = (e) => {
+            e.preventDefault();
+            document.querySelectorAll(".tab").forEach((t) => {
+              t.classList.remove("active");
+            });
+            document.querySelectorAll(".section").forEach((s) => {
+              s.classList.remove("active");
+            });
+            btn.classList.add("active");
+            document.getElementById(sect.id).classList.add("active");
+          };
+          tabs.appendChild(btn);
+
+          const div = document.createElement("div");
+          div.className = `section ${idx === 0 ? "active" : ""}`;
+          div.id = sect.id;
+          renderSchemaNode(div, sect.schema, idx === 0 ? "config" : "services");
+          form.appendChild(div);
+        });
+      }
+
+      function renderSchemaNode(container, schema, prefix) {
+        // 1. Render Direct Fields (in a subsection)
+        if (schema.fields?.length) {
+          const sub = document.createElement("div");
+          sub.className = "subsection";
+          const h3 = document.createElement("h3");
+          h3.textContent = capitalize(prefix.split(".").pop());
+          sub.appendChild(h3);
+
+          const grid = document.createElement("div");
+          grid.className = "grid";
+          schema.fields.forEach((field) => {
+            grid.appendChild(createField(field));
+          });
+          sub.appendChild(grid);
+          container.appendChild(sub);
+        }
+
+        // 2. Render Nested Models
+        if (schema.nested) {
+          Object.entries(schema.nested).forEach(([key, subSchema]) => {
+            renderSchemaNode(container, subSchema, `${prefix}.${key}`);
+          });
+        }
+      }
+
+      function createField(field) {
+        const grp = document.createElement("div");
+        grp.className = "form-group";
+
+        const label = document.createElement("label");
+        label.innerHTML =
+          capitalize(field.name) +
+          (field.required ? '<span class="required">*</span>' : "");
+        grp.appendChild(label);
+
+        if (field.type === "dict_object") {
+          // Piecework Costs (Dynamic Key -> Complex Object)
+          const container = document.createElement("div");
+          container.className = "dict-object-container";
+          container.id = `dict_${field.full_name}`;
+          container.dataset.schema = JSON.stringify(field.item_schema);
+          container.dataset.path = field.full_name;
+
+          const addBtn = document.createElement("button");
+          addBtn.type = "button";
+          addBtn.className = "btn btn-success";
+          addBtn.textContent = "+ Add Entry";
+          addBtn.onclick = () => addDictObjectItem(field.full_name);
+
+          grp.appendChild(container);
+          grp.appendChild(addBtn);
+        } else if (field.type === "keyvalue") {
+          // Records Emails, Name Map (Dynamic Key -> Simple Value)
+          const container = document.createElement("div");
+          container.id = `kv_${field.full_name}`;
+          container.className = "keyvalue-editor";
+          container.dataset.valueType = field.value_type || "text";
+
+          const addBtn = document.createElement("button");
+          addBtn.type = "button";
+          addBtn.className = "btn btn-success";
+          addBtn.textContent = "+ Add Entry";
+          addBtn.onclick = () =>
+            addKeyValueItem(field.full_name, field.value_type);
+
+          grp.appendChild(container);
+          grp.appendChild(addBtn);
+        } else if (field.type === "list") {
+          // Emails, Excluded items (List)
+          const container = document.createElement("div");
+          container.id = `list_${field.full_name}`;
+          container.className = "list-editor";
+
+          const addBtn = document.createElement("button");
+          addBtn.type = "button";
+          addBtn.className = "btn btn-success";
+          container.dataset.itemType = field.item_type || "text";
+          addBtn.textContent = `+ Add ${capitalize(field.item_type || "Item")}`;
+          addBtn.onclick = () => addListItem(field.full_name, field.item_type);
+
+          grp.appendChild(container);
+          grp.appendChild(addBtn);
+        } else if (field.type === "json") {
+          // (Raw JSON/Textarea)
+          const textarea = document.createElement("textarea");
+          textarea.name = field.full_name;
+          textarea.placeholder = "Enter JSON object";
+          if (LOCKED_FIELDS.includes(field.full_name)) {
+            el.setAttribute("readonly", true);
+            el.classList.add("locked-input");
+            el.ondblclick = unlockField;
+          }
+          grp.appendChild(textarea);
+        } else {
+          // Standard Inputs (Text, Password, Number, Email)
+          const input = document.createElement("input");
+          input.name = field.full_name;
+          input.name = field.full_name;
+
+          let inputType = field.type;
+
+          switch (field.type) {
+            case "string":
+            case "url":
+            case "email":
+            case "text":
+              // Use text, url, or email directly if provided, otherwise default to text
+              inputType = ["url", "email"].includes(field.type)
+                ? field.type
+                : "text";
+              break;
+            case "number":
+            case "float":
+            case "integer":
+              // Use 'number' for all numeric types
+              inputType = "number";
+              break;
+            case "password":
+              // Use 'password' for secure input
+              inputType = "password";
+              break;
+            default:
+              // Default everything else to 'text'
+              inputType = "text";
+          }
+
+          input.type = inputType;
+
+          if (inputType === "password") {
+            input.placeholder = "Leave empty to keep existing password";
+          }
+
+          if (inputType === "number" && field.step) {
+            input.step = field.step;
+          }
+
+          if (LOCKED_FIELDS.includes(field.full_name)) {
+            input.setAttribute("readonly", true);
+            input.classList.add("locked-input");
+            input.ondblclick = unlockField;
+          }
+
+          grp.appendChild(input);
+        }
+
+        return grp;
+      }
+
+      // --- List Editor Functions ---
+
+      function renderList(path, itemTypeOverride) {
+        const container = document.getElementById(`list_${path}`);
+        if (!container) return;
+
+        const itemType =
+          itemTypeOverride || container.dataset.itemType || "text";
+
+        // Get data from current configData state
+        const data = getValueByPath(configData, path) || [];
+        container.innerHTML = "";
+
+        data.forEach((item, index) => {
+          const row = document.createElement("div");
+          row.className = "list-item";
+
+          const input = document.createElement("input");
+          input.type = itemType;
+          input.value = item;
+          input.dataset.listPath = path;
+          input.dataset.listIndex = index;
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "btn btn-danger";
+          delBtn.textContent = "×";
+          delBtn.type = "button";
+          delBtn.ondblclick = () => removeListItem(path, index);
+
+          row.appendChild(input);
+          row.appendChild(delBtn);
+          container.appendChild(row);
+        });
+      }
+
+      function addListItem(path, itemType) {
+        let data = getValueByPath(configData, path);
+        if (!Array.isArray(data)) {
+          setValueByPath(configData, path, []);
+          data = getValueByPath(configData, path);
+        }
+        data.push("");
+        renderList(path, itemType);
+      }
+
+      function removeListItem(path, index) {
+        const data = getValueByPath(configData, path);
+        if (Array.isArray(data) && index >= 0 && index < data.length) {
+          data.splice(index, 1);
+          renderList(path);
+        }
+      }
+
+      // --- Key Value Editor Functions ---
+
+      function renderKeyValue(path) {
+        const container = document.getElementById(`kv_${path}`);
+        if (!container) return;
+
+        const data = getValueByPath(configData, path) || {};
+        container.innerHTML = "";
+
+        const schemaType = container.dataset.valueType;
+        let inputType = schemaType;
+
+        switch (schemaType) {
+          case "string":
+          case "url":
+          case "email":
+            inputType = ["url", "email"].includes(schemaType)
+              ? schemaType
+              : "text";
+            break;
+          case "number":
+          case "float":
+          case "integer":
+            inputType = "number";
+            break;
+          case "password":
+            inputType = "password";
+            break;
+          default:
+            inputType = "text";
+        }
+
+        // Note: Data is read here, but key editing/reordering happens during saveConfig
+        Object.entries(data).forEach(([k, v]) => {
+          const row = document.createElement("div");
+          row.className = "keyvalue-item";
+
+          const kInput = document.createElement("input");
+          kInput.placeholder = "Key";
+          kInput.value = k;
+          kInput.dataset.kvPath = path;
+          kInput.dataset.originalKey = k; // Store original key for remapping on save
+
+          const vInput = document.createElement("input");
+          vInput.placeholder = "Value";
+          vInput.value = v;
+          vInput.type = inputType;
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "btn btn-danger";
+          delBtn.textContent = "×";
+          delBtn.type = "button";
+          delBtn.onclick = () => removeKeyValueItem(path, k);
+
+          row.appendChild(kInput);
+          row.appendChild(vInput);
+          row.appendChild(delBtn);
+          container.appendChild(row);
+        });
+      }
+
+      function addKeyValueItem(path) {
+        let data = getValueByPath(configData, path);
+        if (!data) {
+          setValueByPath(configData, path, {});
+          data = getValueByPath(configData, path);
+        }
+
+        let counter = 1;
+        let tempKey = "new_key";
+        while (data[tempKey]) {
+          tempKey = `new_key_${counter}`;
+          counter++;
+        }
+
+        data[tempKey] = "";
+        renderKeyValue(path);
+      }
+
+      function removeKeyValueItem(path, key) {
+        const data = getValueByPath(configData, path);
+        if (data && data[key] !== undefined) {
+          delete data[key];
+          renderKeyValue(path);
+        }
+      }
+
+      // --- Dict Object Functions (Piecework Costs) ---
+
+      function renderDictObjects(path) {
+        const container = document.getElementById(`dict_${path}`);
+        if (!container) return;
+
+        const schema = JSON.parse(container.dataset.schema);
+        const data = getValueByPath(configData, path) || {};
+
+        container.innerHTML = "";
+
+        Object.keys(data).forEach((key) => {
+          const card = document.createElement("div");
+          card.className = "dict-card";
+
+          const header = document.createElement("div");
+          header.className = "dict-card-header";
+          header.innerHTML = `<strong>${key}</strong>`;
+          const delBtn = document.createElement("button");
+          delBtn.className = "btn btn-danger";
+          delBtn.textContent = "Remove";
+          delBtn.type = "button";
+          delBtn.ondblclick = () => {
+            // 1. Harvest all unsaved changes into a new state
+            let newState;
+            try {
+              newState = harvestCurrentFormState(configData);
+            } catch {
+              return;
+            }
+
+            // 2. Perform the deletion on the new state
+            const dictObject = getValueByPath(newState, path);
+            if (dictObject && dictObject[key] !== undefined) {
+              delete dictObject[key];
+            }
+
+            // 3. Update the global configData
+            configData = newState;
+
+            // 4. Re-render the cards and repopulate all fields with the new state
+            renderDictObjects(path);
+            populateForm(configData);
+          };
+          header.appendChild(delBtn);
+          card.appendChild(header);
+
+          const body = document.createElement("div");
+          body.className = "dict-card-body";
+          const grid = document.createElement("div");
+          grid.className = "grid";
+
+          if (schema.fields) {
+            schema.fields.forEach((f) => {
+              const tempField = {
+                ...f,
+                full_name: `${path}.${key}.${f.name}`,
+              };
+              grid.appendChild(createField(tempField));
+            });
+          }
+          body.appendChild(grid);
+          card.appendChild(body);
+          container.appendChild(card);
+        });
+      }
+
+      function addDictObjectItem(path) {
+        const name = prompt("Enter the name (key) for the new entry:");
+        if (!name || !name.trim()) return;
+
+        const key = name.trim();
+        let data = getValueByPath(configData, path);
+        if (!data) {
+          setValueByPath(configData, path, {});
+          data = getValueByPath(configData, path);
+        }
+
+        if (data[key]) {
+          alert(`The name "${key}" already exists.`);
+          return;
+        }
+
+        // Initialize empty object for this key based on the nested model structure
+        const itemSchema = JSON.parse(
+          document.getElementById(`dict_${path}`).dataset.schema
+        );
+        const emptyItem = {};
+        itemSchema.fields.forEach((f) => {
+          // Initialize required fields to empty string, optionals to null
+          emptyItem[f.name] = f.required && f.type !== "number" ? "" : null;
+        });
+
+        data[key] = emptyItem;
+        renderDictObjects(path);
+        populateForm(configData); // Re-populate inputs inside new fields
+      }
+
+      // --- Data Loading & Saving (FIXED) ---
+
+      async function loadConfig() {
+        document.getElementById("loading").style.display = "block";
+        document.getElementById("configForm").style.display = "none";
+
+        try {
+          const res = await fetch("/api/config");
+          if (!res.ok) throw new Error("Fetch failed");
+          configData = await res.json();
+          populateForm(configData);
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("configForm").style.display = "block";
+        } catch (e) {
+          showAlert(`Load Error: ${e.message}`, "error");
+        }
+      }
+
+      function unlockField(event) {
+        const target = event.target;
+        if (target.hasAttribute("readonly")) {
+          target.removeAttribute("readonly");
+          target.classList.remove("locked-input");
+          target.focus();
+        }
+      }
+
+      function populateForm(data) {
+        // 1. Dynamic Editors (must render *before* populating inputs)
+        document.querySelectorAll(".list-editor").forEach((el) => {
+          renderList(el.id.replace("list_", ""));
+        });
+        document.querySelectorAll(".keyvalue-editor").forEach((el) => {
+          renderKeyValue(el.id.replace("kv_", ""));
+        });
+        document.querySelectorAll(".dict-object-container").forEach((el) => {
+          renderDictObjects(el.dataset.path);
+        });
+
+        // 2. Standard and Dynamic Inputs (second pass to fill all newly created inputs)
+        document
+          .querySelectorAll("input[name], textarea[name]")
+          .forEach((el) => {
+            const val = getValueByPath(data, el.name);
+
+            if (el.tagName === "TEXTAREA" && el.name.endsWith(".users")) {
+              el.value =
+                val === undefined || val === null
+                  ? ""
+                  : JSON.stringify(val, null, 2);
+            }
+            // FIX: Skip populating password fields to avoid showing them, but allow other fields
+            else if (el.type !== "password") {
+              el.value = val === undefined || val === null ? "" : val;
+            }
+          });
+
+        // 3. Populate dynamic List inputs (which don't have standard 'name' attributes)
+        document.querySelectorAll(".list-editor input").forEach((el) => {
+          const dataArray = getValueByPath(data, el.dataset.listPath) || [];
+          el.value = dataArray[parseInt(el.dataset.listIndex, 10)] || "";
+        });
+
+        // 4. Populate dynamic KeyValue inputs
+        document
+          .querySelectorAll(".keyvalue-editor .keyvalue-item")
+          .forEach((item) => {
+            const kInput = item.querySelector("input:first-child");
+            const vInput = item.querySelector("input:nth-child(2)");
+            const path = kInput.dataset.kvPath;
+            const originalKey = kInput.dataset.originalKey;
+            const dataObj = getValueByPath(data, path) || {};
+
+            kInput.value = originalKey;
+            vInput.value = dataObj[originalKey] || "";
+          });
+      }
+
+      function harvestCurrentFormState(originalConfig) {
+        const newConfig = JSON.parse(JSON.stringify(originalConfig));
+
+        // 1. Harvest Standard Inputs, Dict Objects
+        document
+          .querySelectorAll("input[name], textarea[name]")
+          .forEach((el) => {
+            let val = el.value;
+            const path = el.name;
+
+            if (el.type === "number") {
+              // FIX FOR Optional[float]: Convert empty or whitespace strings to null
+              if (val.trim() === "") {
+                val = null;
+              } else {
+                // Convert to float, checking for invalid text input
+                val = parseFloat(val);
+                if (Number.isNaN(val)) {
+                  showAlert(`Invalid number format in field: ${path}`, "error");
+                  throw new Error("Invalid number detected.");
+                }
+              }
+            } else if (el.type === "password" && val === "") {
+              // If password field is empty, reuse old value from configData
+              val = getValueByPath(originalConfig, path);
+            } else if (el.tagName === "TEXTAREA" && path.endsWith(".users")) {
+              try {
+                val = JSON.parse(val);
+              } catch (e) {
+                showAlert(`JSON Parse Error in ${path}: ${e.message}`, "error");
+                throw new Error("Invalid JSON detected.");
+              }
+            }
+            setValueByPath(newConfig, path, val);
+          });
+
+        // 2. Harvest List inputs
+        document.querySelectorAll(".list-editor").forEach((container) => {
+          const path = container.id.replace("list_", "");
+          const inputs = container.querySelectorAll("input");
+
+          const listValues = Array.from(inputs)
+            .map((input) => input.value)
+            .filter((v) => v.trim());
+          setValueByPath(newConfig, path, listValues);
+        });
+
+        // 3. Harvest KeyValue inputs
+        document.querySelectorAll(".keyvalue-editor").forEach((container) => {
+          const path = container.id.replace("kv_", "");
+          const newMap = {};
+
+          container.querySelectorAll(".keyvalue-item").forEach((item) => {
+            const keyInput = item.querySelector("input:first-child");
+            const valueInput = item.querySelector("input:nth-child(2)");
+
+            if (keyInput.value.trim()) {
+              newMap[keyInput.value.trim()] = valueInput.value;
+            }
+          });
+          setValueByPath(newConfig, path, newMap);
+        });
+
+        return newConfig;
+      }
+
+      // NEW SAVE FUNCTION: Now uses the harvester before making the API call.
+      async function saveConfig() {
+        try {
+          const newConfig = harvestCurrentFormState(configData);
+
+          const res = await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newConfig),
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            const errDetail = err.detail
+              .map((d) => `${d.loc[d.loc.length - 1]} - ${d.msg}`)
+              .join(", ");
+            throw new Error(`${errDetail} (${res.status} ${res.statusText})`);
+          }
+          showAlert("Saved Successfully!", "success");
+          await loadConfig();
+        } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          showAlert(errMsg, "error");
+          console.error(e);
+        }
+      }
+      function capitalize(s) {
+        if (!s) return "";
+        return s
+          .split(".")
+          .pop()
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase())
+          .replace(/\b(id|cc|ta|url|mhs|wps)\b/gi, (w) => w.toUpperCase())
+          .replace(/openphone/gi, "OpenPhone")
+          .replace(/qglobal/gi, "QGlobal")
+          .replace(/therapyappointment/gi, "TherapyAppointment")
+          .replace(/Name Map/gi, "Report Writers Name Map")
+          .replace(/qreceive/gi, "QReceive");
+      }
+
+      init();
+
+      document.addEventListener("DOMContentLoaded", () => {
+        // Find the save button by a new ID
+        const saveBtn = document.getElementById("saveBtn");
+        if (saveBtn) {
+          saveBtn.addEventListener("click", saveConfig); // <-- Direct reference is seen
+        }
+
+        // Find the discard button by a new ID
+        const discardBtn = document.getElementById("discardBtn");
+        if (discardBtn) {
+          discardBtn.addEventListener("click", loadConfig); // <-- Direct reference is seen
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -73,14 +73,14 @@ class OpenPhone:
     def __init__(self, config: Config, services: Services):
         self.config = config
         self.services = services
-        self.main_number = services["openphone"]["main_number"]
-        self.default_user = services["openphone"]["users"][config.name.lower()]["id"]
+        self.main_number = services.openphone.main_number
+        self.default_user = services.openphone.users[config.name.lower()].id
         self.limited_request = LimitedRequest()
 
     def _get_auth_headers(self) -> dict:
         return {
             "Content-Type": "application/json",
-            "Authorization": self.services["openphone"]["key"],
+            "Authorization": self.services.openphone.key,
         }
 
     @on_exception(

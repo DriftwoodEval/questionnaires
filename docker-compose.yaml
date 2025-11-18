@@ -8,3 +8,11 @@ services:
       - ./put:/app/put
       - ./logs:/app/logs
     restart: unless-stopped
+
+  config-server:
+    image: ghcr.io/driftwoodeval/questionnaires-config-server:main
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

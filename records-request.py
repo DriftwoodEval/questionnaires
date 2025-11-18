@@ -91,7 +91,7 @@ class TherapyAppointmentBot:
 
     def __init__(self, services: Services, config: Config):
         """Initializes the TherapyAppointmentBot."""
-        self.taconfig = services["therapyappointment"]
+        self.taconfig = services.therapyappointment
         self.config = config
         self.driver = self._initialize_driver()
         self.wait = WebDriverWait(self.driver, WAIT_TIMEOUT)
@@ -122,10 +122,10 @@ class TherapyAppointmentBot:
         username_field = self.wait.until(
             EC.presence_of_element_located((By.NAME, "user_username"))
         )
-        username_field.send_keys(self.taconfig["username"])
+        username_field.send_keys(self.taconfig.username)
 
         password_field = self.driver.find_element(By.NAME, "user_password")
-        password_field.send_keys(self.taconfig["password"])
+        password_field.send_keys(self.taconfig.password)
         password_field.submit()
         logger.success("Login successful.")
 

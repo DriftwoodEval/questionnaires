@@ -1,4 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+
+FROM builder AS qreceive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
@@ -31,3 +33,17 @@ ENV CHROME_BIN=/usr/bin/chromium \
     PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
+
+FROM builder AS config-server
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
+
+COPY . .
+
+ENV TZ=America/New_York \
+    PYTHONUNBUFFERED=1
+
+CMD ["uv run config-server.py"]

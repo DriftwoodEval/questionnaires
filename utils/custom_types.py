@@ -4,42 +4,56 @@ from typing import Annotated, Literal, Optional, TypedDict, Union
 from pydantic import (
     BaseModel,
     EmailStr,
+    Field,
     StringConstraints,
     field_validator,
 )
 
 
-class Service(TypedDict):
-    """A TypedDict containing service credentials."""
+class LocalConfigOverrides(BaseModel, extra="forbid"):
+    """Optional configuration overrides."""
+
+    database_url: Optional[str] = None
+
+
+class LocalSettings(BaseModel):
+    """Model for reading the local_config.yml file."""
+
+    api_url: str = Field(description="The full URL for fetching the remote config.")
+    config_overrides: LocalConfigOverrides = Field(default_factory=LocalConfigOverrides)
+
+
+class Service(BaseModel):
+    """A BaseModel containing service credentials."""
 
     username: str
     password: str
 
 
 class ServiceWithAdmin(Service):
-    """A TypedDict containing service credentials and an admin user."""
+    """A BaseModel containing service credentials and an admin user."""
 
     admin_username: str
     admin_password: str
 
 
-class OpenPhoneUser(TypedDict):
-    """A TypedDict containing OpenPhone user information."""
+class OpenPhoneUser(BaseModel):
+    """A BaseModel containing OpenPhone user information."""
 
     id: str
     phone: str
 
 
-class OpenPhoneService(TypedDict):
-    """A TypedDict containing OpenPhone API credentials and settings."""
+class OpenPhoneService(BaseModel):
+    """A BaseModel containing OpenPhone API credentials and settings."""
 
     key: str
-    main_number: str
+    main_number: Annotated[str, StringConstraints(pattern=r"^\+?1\d{10}$")]
     users: dict[str, OpenPhoneUser]
 
 
-class Services(TypedDict):
-    """A TypedDict containing all the service configurations and credentials."""
+class Services(BaseModel):
+    """A BaseModel containing all the service configurations and credentials."""
 
     mhs: Service
     openphone: OpenPhoneService
@@ -111,8 +125,6 @@ class Config(BaseModel):
     email: EmailStr
     automated_email: EmailStr
     qreceive_emails: list[EmailStr]
-    cc_emails: list[EmailStr]
-    excluded_calendars: list[EmailStr]
     punch_list_id: str
     punch_list_range: Annotated[
         str,
@@ -123,7 +135,7 @@ class Config(BaseModel):
     excluded_ta: list[str]
     records_folder_id: str
     sent_records_folder_id: str
-    records_emails: dict[str, str]
+    records_emails: dict[str, EmailStr]
     piecework: PieceworkConfig
 
 

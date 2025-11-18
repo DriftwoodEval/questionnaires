@@ -1,38 +1,73 @@
+import os
 import re
+import sys
 from datetime import date
 from typing import Literal, Optional
 
+import requests
 import yaml
 from loguru import logger
 
 from utils.custom_types import (
     Config,
+    LocalSettings,
     Services,
 )
 from utils.database import add_failure_to_db
 from utils.google import add_to_failure_sheet
 
 
-def load_config() -> tuple[Services, Config]:
-    """Load and parse the configuration from the 'info.yml' file.
+def load_local_settings() -> LocalSettings:
+    """Load local settings from local_config.yml."""
+    local_config_path = "./local_config.yml"
+    if not os.path.exists(local_config_path):
+        logger.error(
+            f"Local config file not found at {local_config_path}. Cannot determine API URL."
+        )
+        sys.exit(1)
 
-    Returns:
-        tuple[Services, Config]: A tuple containing the initialized `Services`
-        and `Config` instances.
-    """
-    with open("./config/info.yml", "r") as file:
-        logger.debug("Loading config info file")
-        info = yaml.safe_load(file)
-        services = info["services"]
-        config = info["config"]
-        # Validate as Services and Config types
-        try:
-            services = Services(**services)
-            config = Config(**config)
-        except Exception:
-            logger.exception("Invalid config info file")
-            exit(1)
-        return services, config
+    with open(local_config_path, "r") as f:
+        local_data = yaml.safe_load(f)
+
+    try:
+        local_settings = LocalSettings.model_validate(local_data)
+        logger.debug(f"Local settings loaded. API URL: {local_settings.api_url}")
+        return local_settings
+    except Exception:
+        logger.exception("Invalid local config file")
+        sys.exit(1)
+
+
+def load_config() -> tuple[Services, Config]:
+    """Load config from API and apply local overrides."""
+    local_settings = load_local_settings()
+    api_url = local_settings.api_url + "/api/config"
+
+    logger.debug(f"Fetching config from {api_url}")
+    try:
+        response = requests.get(api_url)
+        response.raise_for_status()
+        remote_data = response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch config from API: {e}")
+        sys.exit(1)
+
+    services_data = remote_data.get("services", {})
+    config_data = remote_data.get("config", {})
+
+    overrides = local_settings.config_overrides.model_dump(exclude_none=True)
+    config_data.update(overrides)
+
+    try:
+        services = Services.model_validate(services_data)
+        config = Config.model_validate(config_data)
+
+    except Exception:
+        logger.exception("Final merged config failed Pydantic validation.")
+        sys.exit(1)
+
+    logger.info("Configuration successfully loaded, merged, and validated.")
+    return services, config
 
 
 def add_failure(

@@ -180,13 +180,17 @@ def login_ta(
     logger.debug("Entering username")
     username_field = find_element(driver, By.NAME, "user_username")
     username_field.send_keys(
-        services["therapyappointment"]["admin_username" if admin else "username"]
+        services.therapyappointment.admin_username
+        if admin
+        else services.therapyappointment.username
     )
 
     logger.debug("Entering password")
     password_field = find_element(driver, By.NAME, "user_password")
     password_field.send_keys(
-        services["therapyappointment"]["admin_password" if admin else "password"]
+        services.therapyappointment.admin_password
+        if admin
+        else services.therapyappointment.password
     )
 
     logger.debug("Submitting login form")

@@ -99,10 +99,10 @@ def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> N
     click_element(driver, By.ID, "loginID")
 
     logger.debug("Entering username")
-    find_element(driver, By.ID, "Username").send_keys(services["wps"]["username"])
+    find_element(driver, By.ID, "Username").send_keys(services.wps.username)
 
     logger.debug("Entering password")
-    find_element(driver, By.ID, "Password").send_keys(services["wps"]["password"])
+    find_element(driver, By.ID, "Password").send_keys(services.wps.password)
 
     logger.debug("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -128,10 +128,10 @@ def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) 
 
     logger.debug("Entering password")
     password = find_element(driver, By.NAME, "login:pword")
-    username.send_keys(services["qglobal"]["username"])
+    username.send_keys(services.qglobal.username)
 
     logger.debug("Submitting login form")
-    password.send_keys(services["qglobal"]["password"])
+    password.send_keys(services.qglobal.password)
     password.send_keys(Keys.ENTER)
 
 
@@ -145,8 +145,8 @@ def login_mhs(driver: WebDriver, actions: ActionChains, services: Services) -> N
 
     logger.debug("Entering password")
     password = find_element(driver, By.NAME, "txtPassword")
-    username.send_keys(services["mhs"]["username"])
-    password.send_keys(services["mhs"]["password"])
+    username.send_keys(services.mhs.username)
+    password.send_keys(services.mhs.password)
 
     logger.debug("Submitting login form")
     actions.send_keys(Keys.ENTER)
