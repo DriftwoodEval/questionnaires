@@ -55,10 +55,10 @@ class OpenPhoneService(BaseModel):
 class Services(BaseModel):
     """A BaseModel containing all the service configurations and credentials."""
 
-    mhs: Service
     openphone: OpenPhoneService
-    qglobal: Service
     therapyappointment: ServiceWithAdmin
+    mhs: Service
+    qglobal: Service
     wps: Service
 
 

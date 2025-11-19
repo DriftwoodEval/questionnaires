@@ -312,10 +312,21 @@
       let configData = {};
       let schemaData = {};
 
+      /**
+       * Safely retrieves a nested value from an object using a dot-separated path string.
+       * @param {Object} obj - The object to search.
+       * @param {string} path - The dot-separated path (e.g., "services.openphone.key").
+       */
       function getValueByPath(obj, path) {
         return path.split(".").reduce((acc, part) => acc?.[part], obj);
       }
 
+      /**
+       * Safely sets a nested value in an object using a dot-separated path string. Creates nested objects as needed.
+       * @param {Object} obj - The object to modify.
+       * @param {string} path - The dot-separated path.
+       * @param {*} value - The value to set.
+       */
       function setValueByPath(obj, path, value) {
         const parts = path.split(".");
         const last = parts.pop();
@@ -326,11 +337,47 @@
         target[last] = value;
       }
 
+      /**
+       * Capitalizes a field name (handling snake_case, ID, and specific service names).
+       */
+      function capitalize(s) {
+        if (!s) return "";
+        return (
+          s
+            .split(".")
+            .pop()
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (l) => l.toUpperCase())
+            // Handle specific abbreviations/names
+            .replace(/\b(id|cc|ta|url|mhs|wps)\b/gi, (w) => w.toUpperCase())
+            .replace(/openphone/gi, "OpenPhone")
+            .replace(/qglobal/gi, "QGlobal")
+            .replace(/therapyappointment/gi, "TherapyAppointment")
+            .replace(/Name Map/gi, "Report Writers Name Map")
+            .replace(/qreceive/gi, "QReceive")
+        );
+      }
+
+      /**
+       * Displays an alert message.
+       */
       function showAlert(message, type) {
         const alert = document.getElementById("alert");
         alert.className = `alert alert-${type} show`;
         alert.textContent = message;
         setTimeout(() => alert.classList.remove("show"), 4000);
+      }
+
+      /**
+       * Enables editing on a locked field (requires double-click).
+       */
+      function unlockField(event) {
+        const target = event.target;
+        if (target.hasAttribute("readonly")) {
+          target.removeAttribute("readonly");
+          target.classList.remove("locked-input");
+          target.focus();
+        }
       }
 
       async function init() {
@@ -355,11 +402,13 @@
         ];
 
         sections.forEach((sect, idx) => {
+          // Tab Button
           const btn = document.createElement("button");
           btn.className = `tab ${idx === 0 ? "active" : ""}`;
           btn.textContent = sect.label;
           btn.onclick = (e) => {
             e.preventDefault();
+            // Tab switching
             document.querySelectorAll(".tab").forEach((t) => {
               t.classList.remove("active");
             });
@@ -371,6 +420,7 @@
           };
           tabs.appendChild(btn);
 
+          // Tab content
           const div = document.createElement("div");
           div.className = `section ${idx === 0 ? "active" : ""}`;
           div.id = sect.id;
@@ -379,8 +429,12 @@
         });
       }
 
+      /**
+       * Recursively renders form elements based on the schema node.
+       * Handles direct fields and nested objects.
+       */
       function renderSchemaNode(container, schema, prefix) {
-        // 1. Render Direct Fields (in a subsection)
+        // Render Direct Fields
         if (schema.fields?.length) {
           const sub = document.createElement("div");
           sub.className = "subsection";
@@ -397,7 +451,7 @@
           container.appendChild(sub);
         }
 
-        // 2. Render Nested Models
+        // Render Nested Models
         if (schema.nested) {
           Object.entries(schema.nested).forEach(([key, subSchema]) => {
             renderSchemaNode(container, subSchema, `${prefix}.${key}`);
@@ -405,6 +459,9 @@
         }
       }
 
+      /**
+       * Creates the HTML structure for a single configuration field based on its type.
+       */
       function createField(field) {
         const grp = document.createElement("div");
         grp.className = "form-group";
@@ -416,7 +473,7 @@
         grp.appendChild(label);
 
         if (field.type === "dict_object") {
-          // Piecework Costs (Dynamic Key -> Complex Object)
+          // Dynamic Key -> Complex Object (like Piecework Costs)
           const container = document.createElement("div");
           container.className = "dict-object-container";
           container.id = `dict_${field.full_name}`;
@@ -432,7 +489,7 @@
           grp.appendChild(container);
           grp.appendChild(addBtn);
         } else if (field.type === "keyvalue") {
-          // Records Emails, Name Map (Dynamic Key -> Simple Value)
+          // Dynamic Key -> Simple Value (like school records emails)
           const container = document.createElement("div");
           container.id = `kv_${field.full_name}`;
           container.className = "keyvalue-editor";
@@ -448,7 +505,7 @@
           grp.appendChild(container);
           grp.appendChild(addBtn);
         } else if (field.type === "list") {
-          // Emails, Excluded items (List)
+          // List (like enails, excluded TA names)
           const container = document.createElement("div");
           container.id = `list_${field.full_name}`;
           container.className = "list-editor";
@@ -463,7 +520,7 @@
           grp.appendChild(container);
           grp.appendChild(addBtn);
         } else if (field.type === "json") {
-          // (Raw JSON/Textarea)
+          // Raw JSON/Textarea
           const textarea = document.createElement("textarea");
           textarea.name = field.full_name;
           textarea.placeholder = "Enter JSON object";
@@ -486,7 +543,6 @@
             case "url":
             case "email":
             case "text":
-              // Use text, url, or email directly if provided, otherwise default to text
               inputType = ["url", "email"].includes(field.type)
                 ? field.type
                 : "text";
@@ -494,15 +550,12 @@
             case "number":
             case "float":
             case "integer":
-              // Use 'number' for all numeric types
               inputType = "number";
               break;
             case "password":
-              // Use 'password' for secure input
               inputType = "password";
               break;
             default:
-              // Default everything else to 'text'
               inputType = "text";
           }
 
@@ -528,8 +581,63 @@
         return grp;
       }
 
-      // --- List Editor Functions ---
+      /**
+       * Fills all form elements with the values from the provided configuration data.
+       * NOTE: Dynamic editors (list, kv, dict) must be re-rendered first to create the necessary inputs.
+       */
+      function populateForm(data) {
+        // Dynamic Editors: Re-render to create list/kv/dict inputs based on 'data'
+        document.querySelectorAll(".list-editor").forEach((el) => {
+          renderList(el.id.replace("list_", ""));
+        });
+        document.querySelectorAll(".keyvalue-editor").forEach((el) => {
+          renderKeyValue(el.id.replace("kv_", ""));
+        });
+        document.querySelectorAll(".dict-object-container").forEach((el) => {
+          renderDictObjects(el.dataset.path);
+        });
 
+        // 2. Standard and Dynamic Inputs: Fill all standard and newly created dynamic inputs
+        document
+          .querySelectorAll("input[name], textarea[name]")
+          .forEach((el) => {
+            const val = getValueByPath(data, el.name);
+
+            if (el.tagName === "TEXTAREA" && el.name.endsWith(".users")) {
+              // JSON field population
+              el.value =
+                val === undefined || val === null
+                  ? ""
+                  : JSON.stringify(val, null, 2);
+            }
+            // Skip populating password fields to avoid exposing existing value
+            else if (el.type !== "password") {
+              el.value = val === undefined || val === null ? "" : val;
+            }
+          });
+
+        // Populate dynamic List inputs (which don't have standard 'name' attributes)
+        document.querySelectorAll(".list-editor input").forEach((el) => {
+          const dataArray = getValueByPath(data, el.dataset.listPath) || [];
+          el.value = dataArray[parseInt(el.dataset.listIndex, 10)] || "";
+        });
+
+        // 4. Populate dynamic KeyValue inputs
+        document
+          .querySelectorAll(".keyvalue-editor .keyvalue-item")
+          .forEach((item) => {
+            const kInput = item.querySelector("input:first-child");
+            const vInput = item.querySelector("input:nth-child(2)");
+            const path = kInput.dataset.kvPath;
+            const originalKey = kInput.dataset.originalKey;
+            const dataObj = getValueByPath(data, path) || {};
+
+            kInput.value = originalKey;
+            vInput.value = dataObj[originalKey] || "";
+          });
+      }
+
+      /** Renders or re-renders the list UI for a given path. */
       function renderList(path, itemTypeOverride) {
         const container = document.getElementById(`list_${path}`);
         if (!container) return;
@@ -537,9 +645,8 @@
         const itemType =
           itemTypeOverride || container.dataset.itemType || "text";
 
-        // Get data from current configData state
         const data = getValueByPath(configData, path) || [];
-        container.innerHTML = "";
+        container.innerHTML = ""; // Clear existing list items
 
         data.forEach((item, index) => {
           const row = document.createElement("div");
@@ -563,26 +670,51 @@
         });
       }
 
-      function addListItem(path, itemType) {
-        let data = getValueByPath(configData, path);
-        if (!Array.isArray(data)) {
-          setValueByPath(configData, path, []);
-          data = getValueByPath(configData, path);
+      /** Adds an empty item to a list field. Requires harvesting the current form state first. */
+      function addListItem(path) {
+        let newState;
+        try {
+          // Harvest all current form changes
+          newState = harvestCurrentFormState(configData);
+        } catch {
+          return; // Stop if harvest/validation fails
         }
-        data.push("");
-        renderList(path, itemType);
+
+        // Perform the list addition on the new state
+        let data = getValueByPath(newState, path);
+        if (!Array.isArray(data)) {
+          setValueByPath(newState, path, []);
+          data = getValueByPath(newState, path);
+        }
+        data.push(""); // Add the new empty item
+
+        // Update global state and re-render the form
+        configData = newState;
+        populateForm(configData);
       }
 
+      /** Removes an item from a list field. Requires harvesting the current form state first. */
       function removeListItem(path, index) {
-        const data = getValueByPath(configData, path);
+        let newState;
+        try {
+          // Harvest all current form changes
+          newState = harvestCurrentFormState(configData);
+        } catch {
+          return; // Stop if harvest/validation fails
+        }
+
+        // Perform the list deletion on the new state
+        const data = getValueByPath(newState, path);
         if (Array.isArray(data) && index >= 0 && index < data.length) {
           data.splice(index, 1);
-          renderList(path);
         }
+
+        // Update global state and re-render the entire form
+        configData = newState;
+        populateForm(configData);
       }
 
-      // --- Key Value Editor Functions ---
-
+      /** Renders or re-renders the key/value UI for a given path. */
       function renderKeyValue(path) {
         const container = document.getElementById(`kv_${path}`);
         if (!container) return;
@@ -590,9 +722,9 @@
         const data = getValueByPath(configData, path) || {};
         container.innerHTML = "";
 
+        // Determine input type for the value field
         const schemaType = container.dataset.valueType;
         let inputType = schemaType;
-
         switch (schemaType) {
           case "string":
           case "url":
@@ -613,7 +745,6 @@
             inputType = "text";
         }
 
-        // Note: Data is read here, but key editing/reordering happens during saveConfig
         Object.entries(data).forEach(([k, v]) => {
           const row = document.createElement("div");
           row.className = "keyvalue-item";
@@ -622,7 +753,7 @@
           kInput.placeholder = "Key";
           kInput.value = k;
           kInput.dataset.kvPath = path;
-          kInput.dataset.originalKey = k; // Store original key for remapping on save
+          kInput.dataset.originalKey = k; // Store key for re-mapping during harvest
 
           const vInput = document.createElement("input");
           vInput.placeholder = "Value";
@@ -633,7 +764,7 @@
           delBtn.className = "btn btn-danger";
           delBtn.textContent = "×";
           delBtn.type = "button";
-          delBtn.onclick = () => removeKeyValueItem(path, k);
+          delBtn.ondblclick = () => removeKeyValueItem(path, k);
 
           row.appendChild(kInput);
           row.appendChild(vInput);
@@ -642,47 +773,71 @@
         });
       }
 
+      /** Adds an empty key/value pair. Requires harvesting the current form state first. */
       function addKeyValueItem(path) {
-        let data = getValueByPath(configData, path);
-        if (!data) {
-          setValueByPath(configData, path, {});
-          data = getValueByPath(configData, path);
+        let newState;
+        try {
+          // Harvest all current form changes
+          newState = harvestCurrentFormState(configData);
+        } catch {
+          return;
         }
 
+        let data = getValueByPath(newState, path);
+        if (!data) {
+          setValueByPath(newState, path, {});
+          data = getValueByPath(newState, path);
+        }
+
+        // Find a unique temporary key and add to the harvested state
         let counter = 1;
         let tempKey = "new_key";
         while (data[tempKey]) {
           tempKey = `new_key_${counter}`;
           counter++;
         }
-
         data[tempKey] = "";
-        renderKeyValue(path);
+
+        // Update global state and re-render the form
+        configData = newState;
+        populateForm(configData);
       }
 
+      /** Removes a key/value pair. Requires harvesting the current form state first. */
       function removeKeyValueItem(path, key) {
-        const data = getValueByPath(configData, path);
+        let newState;
+        try {
+          // Harvest all current form changes
+          newState = harvestCurrentFormState(configData);
+        } catch {
+          return;
+        }
+
+        // Perform the deletion on the harvested state
+        const data = getValueByPath(newState, path);
         if (data && data[key] !== undefined) {
           delete data[key];
-          renderKeyValue(path);
         }
+
+        // Update glboal state and re-render the form
+        configData = newState;
+        populateForm(configData);
       }
 
-      // --- Dict Object Functions (Piecework Costs) ---
-
+      /** Renders dict object cards based on the complex object structure. */
       function renderDictObjects(path) {
         const container = document.getElementById(`dict_${path}`);
         if (!container) return;
 
         const schema = JSON.parse(container.dataset.schema);
         const data = getValueByPath(configData, path) || {};
-
         container.innerHTML = "";
 
         Object.keys(data).forEach((key) => {
           const card = document.createElement("div");
           card.className = "dict-card";
 
+          // Card Header (Key/Name and Delete Button)
           const header = document.createElement("div");
           header.className = "dict-card-header";
           header.innerHTML = `<strong>${key}</strong>`;
@@ -690,8 +845,8 @@
           delBtn.className = "btn btn-danger";
           delBtn.textContent = "Remove";
           delBtn.type = "button";
+          // Deletion logic requires state harvest/update/re-render like list/kv
           delBtn.ondblclick = () => {
-            // 1. Harvest all unsaved changes into a new state
             let newState;
             try {
               newState = harvestCurrentFormState(configData);
@@ -699,22 +854,20 @@
               return;
             }
 
-            // 2. Perform the deletion on the new state
             const dictObject = getValueByPath(newState, path);
             if (dictObject && dictObject[key] !== undefined) {
               delete dictObject[key];
             }
 
-            // 3. Update the global configData
             configData = newState;
-
-            // 4. Re-render the cards and repopulate all fields with the new state
+            // Re-render the card container, then repopulate all inputs
             renderDictObjects(path);
             populateForm(configData);
           };
           header.appendChild(delBtn);
           card.appendChild(header);
 
+          // Card Body
           const body = document.createElement("div");
           body.className = "dict-card-body";
           const grid = document.createElement("div");
@@ -722,6 +875,7 @@
 
           if (schema.fields) {
             schema.fields.forEach((f) => {
+              // Create a temporary field definition with the full path: path.key.field_name
               const tempField = {
                 ...f,
                 full_name: `${path}.${key}.${f.name}`,
@@ -735,39 +889,49 @@
         });
       }
 
+      /** Adds a new complex object (dict entry) by prompting for a key. */
       function addDictObjectItem(path) {
         const name = prompt("Enter the name (key) for the new entry:");
         if (!name || !name.trim()) return;
 
         const key = name.trim();
-        let data = getValueByPath(configData, path);
-        if (!data) {
-          setValueByPath(configData, path, {});
-          data = getValueByPath(configData, path);
-        }
-
-        if (data[key]) {
-          alert(`The name "${key}" already exists.`);
+        let newState;
+        try {
+          // Harvest all current form changes
+          newState = harvestCurrentFormState(configData);
+        } catch {
           return;
         }
 
-        // Initialize empty object for this key based on the nested model structure
+        let data = getValueByPath(newState, path);
+        if (!data) {
+          setValueByPath(newState, path, {});
+          data = getValueByPath(newState, path);
+        }
+
+        if (data[key]) {
+          alert(`The name "${key}" already exists. Discarding changes...`);
+          return;
+        }
+
+        // Initialize empty object
         const itemSchema = JSON.parse(
           document.getElementById(`dict_${path}`).dataset.schema
         );
         const emptyItem = {};
         itemSchema.fields.forEach((f) => {
-          // Initialize required fields to empty string, optionals to null
+          // Initialize based on schema type/requirement
           emptyItem[f.name] = f.required && f.type !== "number" ? "" : null;
         });
-
         data[key] = emptyItem;
+
+        // Update glboal state and re-render the form
+        configData = newState;
         renderDictObjects(path);
-        populateForm(configData); // Re-populate inputs inside new fields
+        populateForm(configData);
       }
 
-      // --- Data Loading & Saving (FIXED) ---
-
+      /** Fetches configuration data from the server and updates the form. */
       async function loadConfig() {
         document.getElementById("loading").style.display = "block";
         document.getElementById("configForm").style.display = "none";
@@ -784,70 +948,17 @@
         }
       }
 
-      function unlockField(event) {
-        const target = event.target;
-        if (target.hasAttribute("readonly")) {
-          target.removeAttribute("readonly");
-          target.classList.remove("locked-input");
-          target.focus();
-        }
-      }
-
-      function populateForm(data) {
-        // 1. Dynamic Editors (must render *before* populating inputs)
-        document.querySelectorAll(".list-editor").forEach((el) => {
-          renderList(el.id.replace("list_", ""));
-        });
-        document.querySelectorAll(".keyvalue-editor").forEach((el) => {
-          renderKeyValue(el.id.replace("kv_", ""));
-        });
-        document.querySelectorAll(".dict-object-container").forEach((el) => {
-          renderDictObjects(el.dataset.path);
-        });
-
-        // 2. Standard and Dynamic Inputs (second pass to fill all newly created inputs)
-        document
-          .querySelectorAll("input[name], textarea[name]")
-          .forEach((el) => {
-            const val = getValueByPath(data, el.name);
-
-            if (el.tagName === "TEXTAREA" && el.name.endsWith(".users")) {
-              el.value =
-                val === undefined || val === null
-                  ? ""
-                  : JSON.stringify(val, null, 2);
-            }
-            // FIX: Skip populating password fields to avoid showing them, but allow other fields
-            else if (el.type !== "password") {
-              el.value = val === undefined || val === null ? "" : val;
-            }
-          });
-
-        // 3. Populate dynamic List inputs (which don't have standard 'name' attributes)
-        document.querySelectorAll(".list-editor input").forEach((el) => {
-          const dataArray = getValueByPath(data, el.dataset.listPath) || [];
-          el.value = dataArray[parseInt(el.dataset.listIndex, 10)] || "";
-        });
-
-        // 4. Populate dynamic KeyValue inputs
-        document
-          .querySelectorAll(".keyvalue-editor .keyvalue-item")
-          .forEach((item) => {
-            const kInput = item.querySelector("input:first-child");
-            const vInput = item.querySelector("input:nth-child(2)");
-            const path = kInput.dataset.kvPath;
-            const originalKey = kInput.dataset.originalKey;
-            const dataObj = getValueByPath(data, path) || {};
-
-            kInput.value = originalKey;
-            vInput.value = dataObj[originalKey] || "";
-          });
-      }
-
+      /**
+       * Scrapes the current values from the form inputs and maps them back into a configuration object.
+       * This is important for all dynamic operations (add/remove) and the final save,
+       * ensuring unsaved user input is preserved/incorporated.
+       * @param {Object} originalConfig - The configuration currently stored in configData (used for password preservation).
+       * @returns {Object} A new, harvested configuration object.
+       */
       function harvestCurrentFormState(originalConfig) {
         const newConfig = JSON.parse(JSON.stringify(originalConfig));
 
-        // 1. Harvest Standard Inputs, Dict Objects
+        // Harvest Standard Inputs, Dict Objects
         document
           .querySelectorAll("input[name], textarea[name]")
           .forEach((el) => {
@@ -855,11 +966,9 @@
             const path = el.name;
 
             if (el.type === "number") {
-              // FIX FOR Optional[float]: Convert empty or whitespace strings to null
               if (val.trim() === "") {
-                val = null;
+                val = null; // Treat empty number field as null
               } else {
-                // Convert to float, checking for invalid text input
                 val = parseFloat(val);
                 if (Number.isNaN(val)) {
                   showAlert(`Invalid number format in field: ${path}`, "error");
@@ -867,20 +976,13 @@
                 }
               }
             } else if (el.type === "password" && val === "") {
-              // If password field is empty, reuse old value from configData
+              // If password field is empty, keep the original, unexposed value
               val = getValueByPath(originalConfig, path);
-            } else if (el.tagName === "TEXTAREA" && path.endsWith(".users")) {
-              try {
-                val = JSON.parse(val);
-              } catch (e) {
-                showAlert(`JSON Parse Error in ${path}: ${e.message}`, "error");
-                throw new Error("Invalid JSON detected.");
-              }
             }
             setValueByPath(newConfig, path, val);
           });
 
-        // 2. Harvest List inputs
+        // Harvest List inputs
         document.querySelectorAll(".list-editor").forEach((container) => {
           const path = container.id.replace("list_", "");
           const inputs = container.querySelectorAll("input");
@@ -891,7 +993,7 @@
           setValueByPath(newConfig, path, listValues);
         });
 
-        // 3. Harvest KeyValue inputs
+        // Harvest KeyValue inputs
         document.querySelectorAll(".keyvalue-editor").forEach((container) => {
           const path = container.id.replace("kv_", "");
           const newMap = {};
@@ -900,6 +1002,7 @@
             const keyInput = item.querySelector("input:first-child");
             const valueInput = item.querySelector("input:nth-child(2)");
 
+            // Only save if the key is not empty
             if (keyInput.value.trim()) {
               newMap[keyInput.value.trim()] = valueInput.value;
             }
@@ -910,9 +1013,10 @@
         return newConfig;
       }
 
-      // NEW SAVE FUNCTION: Now uses the harvester before making the API call.
+      /** Saves the harvested configuration to the server via API. */
       async function saveConfig() {
         try {
+          // Harvest form state before saving to get the latest user input and handle dynamic fields
           const newConfig = harvestCurrentFormState(configData);
 
           const res = await fetch("/api/config", {
@@ -920,6 +1024,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(newConfig),
           });
+
           if (!res.ok) {
             const err = await res.json();
             const errDetail = err.detail
@@ -927,6 +1032,7 @@
               .join(", ");
             throw new Error(`${errDetail} (${res.status} ${res.statusText})`);
           }
+
           showAlert("Saved Successfully!", "success");
           await loadConfig();
         } catch (e) {
@@ -935,35 +1041,16 @@
           console.error(e);
         }
       }
-      function capitalize(s) {
-        if (!s) return "";
-        return s
-          .split(".")
-          .pop()
-          .replace(/_/g, " ")
-          .replace(/\b\w/g, (l) => l.toUpperCase())
-          .replace(/\b(id|cc|ta|url|mhs|wps)\b/gi, (w) => w.toUpperCase())
-          .replace(/openphone/gi, "OpenPhone")
-          .replace(/qglobal/gi, "QGlobal")
-          .replace(/therapyappointment/gi, "TherapyAppointment")
-          .replace(/Name Map/gi, "Report Writers Name Map")
-          .replace(/qreceive/gi, "QReceive");
-      }
 
       init();
 
       document.addEventListener("DOMContentLoaded", () => {
-        // Find the save button by a new ID
-        const saveBtn = document.getElementById("saveBtn");
-        if (saveBtn) {
-          saveBtn.addEventListener("click", saveConfig); // <-- Direct reference is seen
-        }
-
-        // Find the discard button by a new ID
-        const discardBtn = document.getElementById("discardBtn");
-        if (discardBtn) {
-          discardBtn.addEventListener("click", loadConfig); // <-- Direct reference is seen
-        }
+        document
+          .getElementById("saveBtn")
+          ?.addEventListener("click", saveConfig);
+        document
+          .getElementById("discardBtn")
+          ?.addEventListener("click", loadConfig); // Discarding re-loads the server config
       });
     </script>
   </body>
