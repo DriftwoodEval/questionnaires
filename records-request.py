@@ -264,14 +264,14 @@ class TherapyAppointmentBot:
             )
         )
 
-        if sending_school != receiving_school:
+        if sending_school.lower() != receiving_school.lower():
             logger.warning(
                 f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
             )
             raise (Exception("District on receive does not match district on send"))
         else:
             try:
-                school_address = school_contacts[sending_school]
+                school_address = school_contacts[sending_school.lower()]
             except KeyError:
                 raise (
                     Exception(
@@ -440,6 +440,7 @@ def main():
     services, config = load_config()
 
     school_contacts = config.records_emails
+    school_contacts = {k.lower(): v for k, v in school_contacts.items()}
 
     clients_to_process = get_clients_to_request(config)
 
