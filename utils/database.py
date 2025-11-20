@@ -352,7 +352,7 @@ def add_failure_to_db(
     client_id: int,
     error: str,
     failed_date: date,
-    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL"]] = None,
+    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
 ):
     """Adds the information given to the DB."""
     db_connection = get_db(config)
@@ -368,7 +368,7 @@ def update_failure_in_db(
     config: Config,
     client_id: int,
     reason: str,
-    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL"]] = None,
+    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
     resolved: Optional[bool] = None,
     failed_date: Optional[date] = None,
     reminded: Optional[int] = None,

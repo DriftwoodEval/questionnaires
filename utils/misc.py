@@ -94,8 +94,7 @@ def add_failure(
         questionnaires_generated,
     )
 
-    if daeval != "Records":
-        add_failure_to_db(config, client_id, error, failed_date, daeval)
+    add_failure_to_db(config, client_id, error, failed_date, daeval)
 
 
 ### FORMATTING ###
