@@ -32,12 +32,7 @@ def get_db(config: Config):
 def get_previous_clients(
     config: Config, failed: bool = False
 ) -> tuple[dict[int, ClientFromDB], dict[int, FailedClientFromDB]]:
-    """Load previous clients from the database and a YAML file.
-
-    Args:
-        config (Config): The configuration object.
-        failed (bool, optional): Whether to load failed clients. Defaults to False.
-    """
+    """Load previous clients from the database, excluding inactive clients."""
     logger.info(
         f"Loading previous clients from DB{' and failed clients' if failed else ''}"
     )
@@ -49,7 +44,7 @@ def get_previous_clients(
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
-            sql = "SELECT * FROM emr_client"
+            sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
             cursor.execute(sql)
             clients = cursor.fetchall()
 
@@ -88,7 +83,7 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
             cursor.execute(sql)
             failures = cursor.fetchall()
 
-            sql = "SELECT * FROM emr_client"
+            sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
             cursor.execute(sql)
             clients = cursor.fetchall()
 
