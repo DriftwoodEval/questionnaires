@@ -37,6 +37,8 @@ from utils.selenium import (
     login_ta,
 )
 
+logger.add("logs/qsend.log", rotation="500 MB")
+
 
 def get_clients_to_send(config: Config) -> pd.DataFrame | None:
     """Gets a list of clients from the punch list who need to have their questionnaire(s) sent to them.
@@ -2039,6 +2041,7 @@ def main():
             questionnaires = []
             send = True
             for questionnaire in questionnaires_needed:
+                logger.debug(f"Genned questionnaires so far: {questionnaires}")
                 try:
                     link, accounts_created = assign_questionnaire(
                         driver,
@@ -2080,7 +2083,6 @@ def main():
                 except Exception as e:  # noqa: E722
                     logger.exception(f"Error assigning {questionnaire}")
 
-                    # TODO 🫠: see if generated questionnaires make it in
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
