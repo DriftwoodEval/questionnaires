@@ -1846,6 +1846,10 @@ def main():
                     )
 
                     continue
+                else:
+                    logger.info(
+                        f"{client['Client Name']} has already failed to send because {error}, retrying"
+                    )
 
         if client["Language"] != "" and client["Language"] != "English":
             logger.error(f"{client['Client Name']} doesn't speak English")

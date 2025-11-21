@@ -305,7 +305,7 @@ def update_questionnaire_in_db(
         with db_connection.cursor() as cursor:
             sql = """
                 UPDATE `emr_questionnaire`
-                SET status=%s
+                SET status=%s, updated_at = NOW()
                 WHERE clientId=%s AND sent=%s AND questionnaireType=%s
             """
 
@@ -330,7 +330,7 @@ def update_questionnaires_in_db(
                 for questionnaire in client.questionnaires:
                     sql = """
                         UPDATE `emr_questionnaire`
-                        SET status=%s, reminded=%s, lastReminded=%s
+                        SET status=%s, reminded=%s, lastReminded=%s, updated_at = NOW()
                         WHERE clientId=%s AND sent=%s AND questionnaireType=%s
                     """
 
@@ -358,7 +358,12 @@ def add_failure_to_db(
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
-            sql = "INSERT IGNORE INTO emr_failure (clientId, daEval, reason, failedDate) VALUES (%s, %s, %s, %s)"
+            sql = """INSERT INTO emr_failure (clientId, daEval, reason, failedDate)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+            daEval=VALUES(daEval),
+            updated_at = NOW();
+            """
             values = (client_id, da_eval, error, failed_date)
             cursor.execute(sql, values)
             db_connection.commit()
@@ -399,6 +404,9 @@ def update_failure_in_db(
             if last_reminded is not None:
                 updates.append("lastReminded=%s")
                 values += (last_reminded,)
+
+            if not updates:
+                updates.append("updated_at = NOW()")
 
             sql += ", ".join(updates)
             sql += " WHERE clientId=%s AND reason=%s"
