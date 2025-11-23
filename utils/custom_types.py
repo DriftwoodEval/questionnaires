@@ -172,7 +172,7 @@ class Failure(TypedDict):
 
     failedDate: date
     reason: str
-    daEval: Optional[Literal["DA", "EVAL", "DAEVAL"]]
+    daEval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]]
     reminded: int
     lastReminded: Optional[date]
 
