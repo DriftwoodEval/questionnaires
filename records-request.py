@@ -461,7 +461,13 @@ def main():
         for _, client in clients_to_process.iterrows():
             client_id = client["Client ID"]
             asdAdhd = client["For"]
-            client = prev_clients[int(client_id)]
+            try:
+                client = prev_clients[int(client_id)]
+            except KeyError:
+                logger.error(
+                    f"Client with ID {client_id} is not an active client in the database"
+                )
+                continue
             client_name = client.fullName
 
             if bot.go_to_client(client_id):
