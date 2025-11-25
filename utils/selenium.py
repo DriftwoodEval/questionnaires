@@ -239,7 +239,7 @@ def go_to_client(
                 break
             except Exception as e:
                 if attempt == 2:
-                    logger.exception(f"Failed to search after 3 attempts: {e}")
+                    logger.error(f"Failed to search after 3 attempts: {e}")
                     raise e
                 else:
                     logger.warning(f"Failed to search: {e}, trying again")
@@ -263,12 +263,12 @@ def go_to_client(
     for attempt in range(3):
         try:
             return _go_to_client_loop(driver, actions, client_id)
-        except Exception:
+        except Exception as e:
             if attempt == 2:
-                logger.exception(f"Failed to go to client after 3 attempts")
+                logger.error(f"Failed to go to client after 3 attempts: {e}")
                 return
             else:
-                logger.exception(f"Failed to go to client, trying again")
+                logger.error(f"Failed to go to client, trying again: {e}")
     return
 
 

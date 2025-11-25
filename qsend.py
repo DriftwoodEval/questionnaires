@@ -1813,8 +1813,8 @@ def main():
                 login(driver, actions, services)
                 sleep(1)
                 break
-            except Exception:
-                logger.exception(f"Login failed, trying again")
+            except Exception as e:
+                logger.error(f"Login failed, trying again: {e}")
                 sleep(1)
 
     today = date.today()
@@ -1947,8 +1947,8 @@ def main():
                 client["TA First Name"] = client_from_db.firstName
             client["TA Last Name"] = client_from_db.lastName
 
-        except (NoSuchElementException, TimeoutException):
-            logger.exception(f"Element not found")
+        except (NoSuchElementException, TimeoutException) as e:
+            logger.error(f"Element not found: {e}")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],
@@ -2085,7 +2085,7 @@ def main():
                     )
 
                 except Exception as e:  # noqa: E722
-                    logger.exception(f"Error assigning {questionnaire}")
+                    logger.error(f"Error assigning {questionnaire}: {e}")
 
                     add_failure(
                         config=config,
@@ -2129,7 +2129,7 @@ def main():
                 message = format_ta_message(questionnaires)
                 send_message_ta(driver, client_url, message)
         except Exception as e:
-            logger.exception(f"Error for {client['Client Name']}")
+            logger.error(f"Error for {client['Client Name']}: {e}")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],

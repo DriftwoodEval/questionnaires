@@ -186,11 +186,11 @@ class TherapyAppointmentBot:
                 )
                 client_link.click()
             return True
-        except TimeoutException:
-            logger.exception(f"Client not found or search failed for: {client_id}")
+        except TimeoutException as e:
+            logger.error(f"Client not found or search failed for: {client_id}: {e}")
             return False
-        except NoSuchElementException:
-            logger.warning(f"Could not find a search element for: {client_id}")
+        except NoSuchElementException as e:
+            logger.warning(f"Could not find a search element for: {client_id}: {e}")
             return False
 
     def check_if_opened_portal(self) -> bool:
@@ -474,8 +474,8 @@ def main():
                         new_success_count += 1
 
                 except Exception as e:
-                    logger.exception(
-                        f"An error occurred while processing {client_name}"
+                    logger.error(
+                        f"An error occurred while processing {client_name}: {e}"
                     )
                     add_failure(
                         config=config,

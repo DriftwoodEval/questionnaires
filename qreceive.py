@@ -397,8 +397,8 @@ def main():
                         (client, "Did not deliver within timeout")
                     )
             except Exception as e:
-                logger.exception(
-                    f"Error checking message status for {client.fullName} ({message_id})"
+                logger.error(
+                    f"Error checking message status for {client.fullName} ({message_id}): {e}"
                 )
                 email_info["errors"].append(
                     f"Error checking message status for {client.fullName}: {e}"
