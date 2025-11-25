@@ -270,6 +270,7 @@ def get_punch_list(config: Config):
                     "DA Qs Sent",
                     "EVAL Qs Needed",
                     "EVAL Qs Sent",
+                    "Evaluator",
                     "Assigned to OR added to report writing folder",
                     "Billed?",
                     "AJP Review Done/Hold for payroll",

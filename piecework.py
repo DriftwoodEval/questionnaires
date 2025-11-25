@@ -60,6 +60,13 @@ def get_report_clients(config: Config) -> Optional[pd.DataFrame]:
     report_done = punch_list[
         (punch_list["Billed?"] == "TRUE")
         & (punch_list["AJP Review Done/Hold for payroll"] != "TRUE")
+        & (
+            (punch_list["For"] != "ADHD")
+            | (
+                (punch_list["For"] == "ADHD")
+                & (punch_list["Evaluator"].str.lower() == "ap")
+            )
+        )
     ].copy()
 
     if report_done.empty:
