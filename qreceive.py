@@ -139,6 +139,9 @@ def check_failures(
         if is_resolved:
             update_failure_in_db(config, client_id, reason, resolved=True)
             logger.info(f"Resolved failure for {client.fullName}")
+        else:
+            # This updates the checked date
+            update_failure_in_db(config, client_id, reason)
 
 
 ClientType = Union[FailedClientFromDB, ClientWithQuestionnaires]
@@ -178,7 +181,7 @@ def main():
         driver.quit()
 
         # Send reminders for failures and questionnaires
-        clients, failed_clients = get_previous_clients(config)
+        clients, failed_clients = get_previous_clients(config, failed=True)
 
         messages_sent: list[
             tuple[FailedClientFromDB | ClientWithQuestionnaires, str]
