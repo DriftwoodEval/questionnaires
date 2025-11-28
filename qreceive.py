@@ -313,10 +313,6 @@ def main():
 
                     if most_recent_q["reminded"] == 3 and last_reminded_distance >= 3:
                         email_info["call"].append(client)
-                        for q in client.questionnaires:
-                            if q["status"] == "PENDING":
-                                q["reminded"] += 1
-                                q["lastReminded"] = date.today()
 
                     elif (
                         most_recent_q["reminded"] < 3
