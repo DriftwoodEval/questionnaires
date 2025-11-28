@@ -157,6 +157,7 @@ class Questionnaire(TypedDict):
         "PENDING",
         "COMPLETED",
         "IGNORING",
+        "SPANISH",
         "LANGUAGE",
         "TEACHER",
         "EXTERNAL",

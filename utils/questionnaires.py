@@ -45,7 +45,7 @@ def filter_inactive_and_not_pending(
         for client in clients.values()
         if client.status is True
         and any(
-            q.get("status") in ["PENDING", "IGNORING", "RESCHEDULED"]
+            q.get("status") in ["PENDING", "SPANISH", "IGNORING", "RESCHEDULED"]
             for q in client.questionnaires
             if isinstance(q, dict)
         )
@@ -86,10 +86,14 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
     completion_criteria = {
         "mhs.com": "//*[contains(text(), 'Thank you for completing')] | "
+        "//*[contains(text(), 'Gracias por contestar')] | "
         "//*[contains(text(), 'This link has already been used')] | "
-        "//*[contains(text(), 'We have received your answers')]",
-        "pearsonassessments.com": "//*[contains(text(), 'Test Completed!')]",
-        "wpspublish.com": "//*[contains(text(), 'This assessment is not available at this time')]",
+        "//*[contains(text(), 'We have received your answers')] |"
+        "//*[contains(text(), 'Hemos recibido sus respuestas')]",
+        "pearsonassessments.com": "//*[contains(text(), 'Test Completed!')] | "
+        "//*[contains(text(), '¡Prueba completada!')]",
+        "wpspublish.com": "//*[contains(text(), 'This assessment is not available at this time')] | "
+        "//*[contains(text(), 'Esta evaluación no está disponible en este momento')]",
     }
 
     wait = WebDriverWait(driver, 15)
@@ -190,7 +194,6 @@ def check_questionnaires(
                     )
                     client_updated = True
                 else:
-                    questionnaire["status"] = "PENDING"
                     logger.warning(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
@@ -213,18 +216,19 @@ def check_questionnaires(
 def get_most_recent_not_done(
     client: ClientWithQuestionnaires,
 ) -> Optional[Questionnaire]:
-    """Get the most recent questionnaire that is still PENDING from the given client by taking max of q["sent"].
+    """Get the most recent questionnaire that is still PENDING or SPANISH from the given client by taking max of q["sent"].
 
     Args:
         client (ClientWithQuestionnaires): The client with questionnaires to check.
 
     Returns:
-        Questionnaire: The most recent questionnaire that is still PENDING.
+        Questionnaire: The most recent questionnaire that is still PENDING or SPANISH.
     """
     pending_and_sent = (
         q
         for q in client.questionnaires
-        if q["status"] == "PENDING" and q["sent"] is not None
+        if (q["status"] == "PENDING" or q["status"] == "SPANISH")
+        and q["sent"] is not None
     )
 
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
@@ -240,7 +244,7 @@ def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
         bool: True if the client has ever been reminded of a questionnaire, False otherwise.
     """
     return any(
-        q["reminded"] != 0 and q["status"] == "PENDING"
+        q["reminded"] != 0 and (q["status"] == "PENDING" or q["status"] == "SPANISH")
         for q in client.questionnaires
         if isinstance(q, dict)
     )
