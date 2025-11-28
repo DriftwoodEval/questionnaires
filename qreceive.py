@@ -178,7 +178,6 @@ def main():
         # Check failures and update in DB
         driver, actions = initialize_selenium()
         check_failures(config, services, driver, actions, failed_clients)
-        driver.quit()
 
         # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config, failed=True)
