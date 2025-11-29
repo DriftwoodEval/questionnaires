@@ -85,7 +85,7 @@ def build_q_message(
     su_sus_es = "su" if link_count == 1 else "sus"
     sent_s_es = "" if link_count == 1 else "s"
     complete_s_es = "" if link_count == 1 else "s"
-    sent_it_them_es = f"Lo enviamos" if link_count == 1 else f"Los enviamos"
+    sent_it_them_es = "Lo enviamos" if link_count == 1 else "Los enviamos"
 
     messages_en = {
         0: (
@@ -113,13 +113,13 @@ def build_q_message(
 
     messages_es = {
         0: (
-            f"Hola, somos {config.name} de Driftwood Evaluation Center. ¡Estamos listos para "
+            f"Hola, es {config.name} de Driftwood Evaluation Center. ¡Estamos listos para "
             f"programar su cita! Para poder programar su cita, necesitamos que complete {su_sus_es} "
             f"{q_s_es}. {sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com. "
             f"Por favor, responda a este mensaje con cualquier pregunta. Gracias."
         ),
         1: (
-            f"Hola, somos {config.name} de Driftwood Evaluation Center. Estamos esperando que "
+            f"Hola, es {config.name} de Driftwood Evaluation Center. Estamos esperando que "
             f"complete {su_sus_es} {q_s_es} enviado{sent_s_es} {distance_phrase_es}. "
             f"No podemos programar su cita hasta que {lo_los_es} {esta_estan_es} "
             f"completo{complete_s_es} en {su_sus_es} totalidad. {sent_it_them_es} a su correo electrónico "
@@ -127,7 +127,7 @@ def build_q_message(
             f"cualquier pregunta. Gracias."
         ),
         2: (
-            f"Somos Driftwood Evaluation Center. Si {su_sus_es} {q_s_es} no {esta_estan_es} "
+            f"Es Driftwood Evaluation Center. Si {su_sus_es} {q_s_es} no {esta_estan_es} "
             f"completo{complete_s_es} antes de "
             f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (en 3 días), "
             f"cerraremos su remisión. Responda a este mensaje con cualquier inquietud. "
@@ -226,6 +226,7 @@ def main():
         "call": [],
         "completed": [],
         "errors": [],
+        "ifsp_download_needed": [],
     }
 
     try:
@@ -234,6 +235,12 @@ def main():
         if clients is None:
             logger.critical("Failed to get previous clients")
             return
+
+        email_info["ifsp_download_needed"] = [
+            client
+            for client_id, client in clients.items()
+            if client.ifsp and not client.ifspDownloaded
+        ]
 
         clients = validate_questionnaires(clients)
         clients = filter_inactive_and_not_pending(clients)
@@ -501,7 +508,7 @@ def main():
                     html=admin_email_html,
                 )
             except Exception:
-                logger.exception(f"Failed to send the admin email")
+                logger.exception("Failed to send the admin email")
 
 
 if __name__ == "__main__":

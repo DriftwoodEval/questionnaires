@@ -16,7 +16,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
-
 from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
     get_previous_clients,
@@ -1939,7 +1938,7 @@ def main():
             client["Gender"] = client_from_db.gender
             client["Phone Number"] = client_from_db.phoneNumber
             if (
-                client_from_db.preferredName != None
+                client_from_db.preferredName is not None
                 and client_from_db.preferredName != ""
             ):
                 client["TA First Name"] = client_from_db.preferredName

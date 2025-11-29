@@ -25,7 +25,6 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
 from utils.custom_types import ClientFromDB, Config, Services
 from utils.database import get_previous_clients
 from utils.google import (
@@ -304,7 +303,7 @@ class TherapyAppointmentBot:
                 self.config.sent_records_folder_id,
             )
         except Exception:
-            logger.exception(f"Error moving files to sent folder")
+            logger.exception("Error moving files to sent folder")
             return False
 
         update_punch_list(

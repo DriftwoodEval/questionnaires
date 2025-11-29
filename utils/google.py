@@ -193,6 +193,24 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             )
             + "</li></ul>"
         )
+    if email_info["ifsp_download_needed"]:
+        email_text += (
+            "IFSP download needed:\n"
+            + "\n".join(
+                [
+                    f"- {client.fullName}"
+                    for client in email_info["ifsp_download_needed"]
+                ]
+            )
+            + "\n"
+        )
+        email_html += (
+            "<h2>IFSP download needed</h2><ul><li>"
+            + "</li><li>".join(
+                client.fullName for client in email_info["ifsp_download_needed"]
+            )
+            + "</li></ul>"
+        )
     if email_info["call"]:
         email_text += (
             "Call:\n"
