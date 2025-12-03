@@ -157,6 +157,7 @@ class Questionnaire(TypedDict):
         "PENDING",
         "COMPLETED",
         "IGNORING",
+        "SPANISH",
         "LANGUAGE",
         "TEACHER",
         "EXTERNAL",
@@ -208,6 +209,8 @@ class ClientFromDB(_ClientBase):
     """A Pydantic model representing a client from the database."""
 
     questionnaires: Optional[list[Questionnaire]] = None
+    ifsp: bool
+    ifspDownloaded: bool
 
 
 class ClientWithQuestionnaires(_ClientBase):
@@ -245,6 +248,7 @@ class AdminEmailInfo(TypedDict):
     call: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
     completed: list[ClientWithQuestionnaires]
     errors: list[str]
+    ifsp_download_needed: list[ClientFromDB]
 
 
 class Appointment(TypedDict):

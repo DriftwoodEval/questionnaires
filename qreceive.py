@@ -49,30 +49,98 @@ def build_q_message(
     distance: int,
 ) -> Optional[str]:
     """Builds the message to be sent to the client based on their most recent questionnaire."""
-    link_count = len([q for q in client.questionnaires if q["status"] == "PENDING"])
-
     if not most_recent_q["sent"]:
         logger.warning(
             f"{client.fullName}'s {most_recent_q['questionnaireType']} has no sent date, cannot build message"
         )
         return None
 
-    if distance == 0:
-        distance_phrase = "today"
-    elif distance == -1:
-        distance_phrase = f"on {most_recent_q['sent'].strftime('%m/%d')} (yesterday)"
-    else:
-        distance_phrase = (
-            f"on {most_recent_q['sent'].strftime('%m/%d')} ({abs(distance)} days ago)"
-        )
+    link_count = len(
+        [q for q in client.questionnaires if q["status"] in ["PENDING", "SPANISH"]]
+    )
+    is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)
+    portal_link = "https://portal.therapyappointment.com"
 
-    message = None
-    if most_recent_q["reminded"] == 0:
-        message = f"Hello, this is {config.name} from Driftwood Evaluation Center. We are ready to schedule your appointment! In order for us to schedule your appointment, we need you to complete your {'questionnaire' if link_count == 1 else 'questionnaires'}. You can find {'it' if link_count == 1 else 'them'} in the messages tab in our patient portal: https://portal.therapyappointment.com Please reply to this text with any questions. Thank you for your help."
-    elif most_recent_q["reminded"] == 1:
-        message = f"Hello, this is {config.name} with Driftwood Evaluation Center. We are waiting for you to complete the questionnaire{'' if link_count == 1 else 's'} sent to you {distance_phrase}. We are unable to schedule your appointment until {'it is' if link_count == 1 else 'they are'} completed in {'its' if link_count == 1 else 'their'} entirety. You can find {'it' if link_count == 1 else 'them'} in the messages tab in our patient portal: https://portal.therapyappointment.com Please reply to this text with any questions. Thank you for your help."
-    elif most_recent_q["reminded"] == 2:
-        message = f"This is Driftwood Evaluation Center. If your questionnaire{' is' if link_count == 1 else 's are'} not completed by {(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), we will close out your referral. Reply to this text with any concerns. You can find the questionnaire{'' if link_count == 1 else 's'} in the messages tab in our patient portal: https://portal.therapyappointment.com"
+    if distance == 0:
+        distance_phrase_en = "today"
+        distance_phrase_es = "hoy"
+    elif distance == -1:
+        date_str = most_recent_q["sent"].strftime("%m/%d")
+        distance_phrase_en = f"on {date_str} (yesterday)"
+        distance_phrase_es = f"el {date_str} (ayer)"
+    else:
+        date_str = most_recent_q["sent"].strftime("%m/%d")
+        days_ago = abs(distance)
+        distance_phrase_en = f"on {date_str} ({days_ago} days ago)"
+        distance_phrase_es = f"el {date_str} (hace {days_ago} días)"
+
+    q_s_en = "questionnaire" if link_count == 1 else "questionnaires"
+    it_them_en = "it" if link_count == 1 else "them"
+    is_are_en = "is" if link_count == 1 else "are"
+    its_their_en = "its" if link_count == 1 else "their"
+
+    q_s_es = "cuestionario" if link_count == 1 else "cuestionarios"
+    lo_los_es = "lo" if link_count == 1 else "los"
+    esta_estan_es = "está" if link_count == 1 else "están"
+    su_sus_es = "su" if link_count == 1 else "sus"
+    sent_s_es = "" if link_count == 1 else "s"
+    complete_s_es = "" if link_count == 1 else "s"
+    sent_it_them_es = "Lo enviamos" if link_count == 1 else "Los enviamos"
+
+    messages_en = {
+        0: (
+            f"Hello, this is {config.name} from Driftwood Evaluation Center. "
+            f"We are ready to schedule your appointment! In order for us to schedule your appointment, "
+            f"we need you to complete your {q_s_en}. You can find {it_them_en} in the messages tab "
+            f"in our patient portal: {portal_link} Please reply to this text with any questions. "
+            f"Thank you for your help."
+        ),
+        1: (
+            f"Hello, this is {config.name} with Driftwood Evaluation Center. "
+            f"We are waiting for you to complete the {q_s_en} sent to you {distance_phrase_en}. "
+            f"We are unable to schedule your appointment until {it_them_en} {is_are_en} completed "
+            f"in {its_their_en} entirety. You can find {it_them_en} in the messages tab in our "
+            f"patient portal: {portal_link} Please reply to this text with any questions. "
+            f"Thank you for your help."
+        ),
+        2: (
+            f"This is Driftwood Evaluation Center. If your {q_s_en} {is_are_en} not completed by "
+            f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), "
+            f"we will close out your referral. Reply to this text with any concerns. You can find the "
+            f"{q_s_en} in the messages tab in our patient portal: {portal_link}"
+        ),
+    }
+
+    messages_es = {
+        0: (
+            f"Hola, es {config.name} de Driftwood Evaluation Center. ¡Estamos listos para "
+            f"programar su cita! Para poder programar su cita, necesitamos que complete {su_sus_es} "
+            f"{q_s_es}. {sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com. "
+            f"Por favor, responda a este mensaje con cualquier pregunta. Gracias."
+        ),
+        1: (
+            f"Hola, es {config.name} de Driftwood Evaluation Center. Estamos esperando que "
+            f"complete {su_sus_es} {q_s_es} enviado{sent_s_es} {distance_phrase_es}. "
+            f"No podemos programar su cita hasta que {lo_los_es} {esta_estan_es} "
+            f"completo{complete_s_es} en {su_sus_es} totalidad. {sent_it_them_es} a su correo electrónico "
+            f"desde una dirección DriftwoodEval.com. Por favor, responda a este mensaje con "
+            f"cualquier pregunta. Gracias."
+        ),
+        2: (
+            f"Es Driftwood Evaluation Center. Si {su_sus_es} {q_s_es} no {esta_estan_es} "
+            f"completo{complete_s_es} antes de "
+            f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (en 3 días), "
+            f"cerraremos su remisión. Responda a este mensaje con cualquier inquietud. "
+            f"{sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com."
+        ),
+    }
+
+    reminded_count = most_recent_q["reminded"]
+
+    if is_spanish:
+        message = messages_es.get(reminded_count)
+    else:
+        message = messages_en.get(reminded_count)
 
     return message
 
@@ -158,6 +226,7 @@ def main():
         "call": [],
         "completed": [],
         "errors": [],
+        "ifsp_download_needed": [],
     }
 
     try:
@@ -166,6 +235,12 @@ def main():
         if clients is None:
             logger.critical("Failed to get previous clients")
             return
+
+        email_info["ifsp_download_needed"] = [
+            client
+            for client_id, client in clients.items()
+            if client.ifsp and not client.ifspDownloaded
+        ]
 
         clients = validate_questionnaires(clients)
         clients = filter_inactive_and_not_pending(clients)
@@ -383,7 +458,7 @@ def main():
                         clients_to_update_db.append(client)
                     elif isinstance(client, ClientWithQuestionnaires):
                         for q in client.questionnaires:
-                            if q["status"] == "PENDING":
+                            if q["status"] == "PENDING" or q["status"] == "SPANISH":
                                 q["reminded"] += 1
                                 q["lastReminded"] = date.today()
                         clients_to_update_db.append(client)
@@ -433,7 +508,7 @@ def main():
                     html=admin_email_html,
                 )
             except Exception:
-                logger.exception(f"Failed to send the admin email")
+                logger.exception("Failed to send the admin email")
 
 
 if __name__ == "__main__":

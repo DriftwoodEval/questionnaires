@@ -246,6 +246,7 @@ def put_questionnaire_in_db(
         "PENDING",
         "COMPLETED",
         "IGNORING",
+        "SPANISH",
         "LANGUAGE",
         "TEACHER",
         "EXTERNAL",
@@ -253,19 +254,7 @@ def put_questionnaire_in_db(
         "JUST_ADDED",
     ],
 ):
-    """Insert a questionnaire into the database.
-
-    Args:
-        config (Config): The configuration object.
-        client_id (str): The client ID.
-        link (str): The link of the questionnaire.
-        qtype (str): The qtype of the questionnaire.
-        sent_date: The date the questionnaire was sent.
-        status (Literal["COMPLETED", "PENDING", "RESCHEDULED"]): The status of the questionnaire.
-
-    Returns:
-        None
-    """
+    """Insert a questionnaire into the database."""
     db_connection = get_db(config)
 
     with db_connection:
@@ -291,6 +280,7 @@ def update_questionnaire_in_db(
         "PENDING",
         "COMPLETED",
         "IGNORING",
+        "SPANISH",
         "LANGUAGE",
         "TEACHER",
         "EXTERNAL",
