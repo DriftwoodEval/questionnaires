@@ -25,6 +25,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+
 from utils.custom_types import ClientFromDB, Config, Services
 from utils.database import get_previous_clients
 from utils.google import (
@@ -482,11 +483,15 @@ def main():
                     logger.error(
                         f"An error occurred while processing {client_name}: {e}"
                     )
+                    add_to_sheet = False
+                    if str(e) == "portal not opened" or str(e) == "docs not signed":
+                        add_to_sheet = True
                     add_failure(
                         config=config,
                         client_id=client_id,
                         error=str(e),
                         failed_date=today,
+                        add_to_sheet=add_to_sheet,
                         full_name=client_name,
                         asd_adhd=asdAdhd,
                         daeval="Records",

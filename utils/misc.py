@@ -76,6 +76,7 @@ def add_failure(
     error: str,
     failed_date: date,
     full_name: str,
+    add_to_sheet: Optional[bool] = True,
     asd_adhd: Optional[str] = None,
     daeval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
     questionnaires_needed: Optional[list[str]] = None,
@@ -86,17 +87,18 @@ def add_failure(
         f"Failure information: {client_id}, {error}, {failed_date}, {full_name}, {asd_adhd}, {daeval}, {questionnaires_needed}, {questionnaires_generated}"
     )
 
-    add_to_failure_sheet(
-        config,
-        client_id,
-        error,
-        failed_date,
-        full_name,
-        asd_adhd,
-        daeval,
-        questionnaires_needed,
-        questionnaires_generated,
-    )
+    if add_to_sheet:
+        add_to_failure_sheet(
+            config,
+            client_id,
+            error,
+            failed_date,
+            full_name,
+            asd_adhd,
+            daeval,
+            questionnaires_needed,
+            questionnaires_generated,
+        )
 
     add_failure_to_db(config, client_id, error, failed_date, daeval)
 

@@ -16,6 +16,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
+
 from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
     get_previous_clients,
@@ -1884,6 +1885,7 @@ def main():
                     client_id=client["Client ID"],
                     error="portal not opened",
                     failed_date=today,
+                    add_to_sheet=False,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
                     daeval=client["daeval"],
@@ -1905,6 +1907,7 @@ def main():
                     client_id=client["Client ID"],
                     error="docs not signed",
                     failed_date=today,
+                    add_to_sheet=False,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
                     daeval=client["daeval"],
