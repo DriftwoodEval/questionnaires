@@ -56,9 +56,18 @@ def build_q_message(
         return None
 
     link_count = len(
-        [q for q in client.questionnaires if q["status"] in ["PENDING", "SPANISH"]]
+        [
+            q
+            for q in client.questionnaires
+            if q["status"]
+            in [
+                "PENDING",
+                #  "SPANISH"
+            ]
+        ]
     )
-    is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)
+    # is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)
+    is_spanish = False
     portal_link = "https://portal.therapyappointment.com"
 
     if distance == 0:
@@ -458,7 +467,8 @@ def main():
                         clients_to_update_db.append(client)
                     elif isinstance(client, ClientWithQuestionnaires):
                         for q in client.questionnaires:
-                            if q["status"] == "PENDING" or q["status"] == "SPANISH":
+                            if q["status"] == "PENDING":
+                                # or q["status"] == "SPANISH":
                                 q["reminded"] += 1
                                 q["lastReminded"] = date.today()
                         clients_to_update_db.append(client)

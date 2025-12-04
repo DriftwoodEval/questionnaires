@@ -45,7 +45,13 @@ def filter_inactive_and_not_pending(
         for client in clients.values()
         if client.status is True
         and any(
-            q.get("status") in ["PENDING", "SPANISH", "IGNORING", "RESCHEDULED"]
+            q.get("status")
+            in [
+                "PENDING",
+                # "SPANISH",
+                "IGNORING",
+                "RESCHEDULED",
+            ]
             for q in client.questionnaires
             if isinstance(q, dict)
         )
@@ -227,7 +233,10 @@ def get_most_recent_not_done(
     pending_and_sent = (
         q
         for q in client.questionnaires
-        if (q["status"] == "PENDING" or q["status"] == "SPANISH")
+        if (
+            q["status"] == "PENDING"
+            # or q["status"] == "SPANISH"
+        )
         and q["sent"] is not None
     )
 
@@ -244,7 +253,11 @@ def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
         bool: True if the client has ever been reminded of a questionnaire, False otherwise.
     """
     return any(
-        q["reminded"] != 0 and (q["status"] == "PENDING" or q["status"] == "SPANISH")
+        q["reminded"] != 0
+        and (
+            q["status"] == "PENDING"
+            # or q["status"] == "SPANISH"
+        )
         for q in client.questionnaires
         if isinstance(q, dict)
     )
