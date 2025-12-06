@@ -131,6 +131,7 @@ class Config(BaseModel):
         StringConstraints(pattern=r"^.+![A-z]+\d*(:[A-z]+\d*)?$"),
     ]
     failed_sheet_id: str
+    payroll_folder_id: str
     database_url: str
     excluded_ta: list[str]
     records_folder_id: str
