@@ -3,7 +3,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import inquirer
 import pandas as pd
@@ -12,7 +12,7 @@ from openpyxl.styles import Alignment, Font
 
 from utils.custom_types import Appointment, Config
 from utils.database import get_all_evaluators_info, get_appointments
-from utils.google import get_punch_list
+from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import load_config
 
 TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
@@ -20,15 +20,22 @@ TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
 
 def load_tracked_reports() -> dict[str, str]:
     """Load the set of previously tracked client IDs from disk."""
-    if TRACKING_FILE.exists():
-        try:
-            with open(TRACKING_FILE, "r") as f:
-                data = json.load(f)
-                return data.get("client_ids", [])
-        except Exception:
-            logger.exception("Failed to load previously tracked client IDs")
-            return {}
-    return {}
+    if not TRACKING_FILE.exists():
+        return {}
+
+    try:
+        with open(TRACKING_FILE, "r") as f:
+            data = json.load(f)
+            client_ids = data.get("client_ids", {})
+            if not isinstance(client_ids, dict):
+                logger.warning(
+                    "Tracked data file structure is invalid (not a dict). Resetting."
+                )
+                return {}
+            return client_ids
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.exception("Failed to load previously tracked client IDs, resetting.")
+        return {}
 
 
 def save_tracked_reports(client_ids: dict[str, str]):
@@ -39,7 +46,7 @@ def save_tracked_reports(client_ids: dict[str, str]):
             json.dump({"client_ids": client_ids}, f, indent=2)
         logger.info(f"Saved {len(client_ids)} entries to {TRACKING_FILE}")
     except Exception:
-        logger.exception("Failed to save tracking file")
+        logger.exception(f"Failed to save tracking file to {TRACKING_FILE}")
 
 
 def extract_writer_initials(assigned_to: str) -> str:
@@ -304,9 +311,10 @@ def prepare_detail_data(
     evaluators: dict[int, dict],
     config: Config,
     report_clients: Optional[pd.DataFrame],
-) -> list[dict]:
-    """Prepares the flat list of non-cancelled appointment details for the Details DataFrame."""
-    detail_rows = []
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Prepares detail data, returning a dictionary mapping worker names to their detail rows."""
+    worker_details: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
     for appointment in appointments:
         if appointment.get("cancelled"):
             continue
@@ -317,48 +325,54 @@ def prepare_detail_data(
         if npi and da_eval:
             evaluator_info = evaluators.get(npi)
             evaluator_name = (
-                evaluator_info.get("providerName")
+                evaluator_info["providerName"]
                 if evaluator_info and evaluator_info.get("providerName")
                 else f"Unknown Evaluator (NPI: {npi})"
             )
 
-            detail_rows.append(
-                {
-                    "WORKER": evaluator_name,
-                    "CLIENT": appointment.get("clientName", "N/A"),
-                    "START TIME": appointment.get("startTime").strftime(
-                        "%Y-%m-%d %I:%M %p"
-                    ),
-                    "TYPE": str(da_eval),
-                }
-            )
+            row = {
+                "WORKER": evaluator_name,
+                "CLIENT": appointment.get("clientName", "N/A"),
+                "START TIME": appointment.get("startTime").strftime(
+                    "%Y-%m-%d %I:%M %p"
+                ),
+                "TYPE": str(da_eval),
+            }
+            worker_details[evaluator_name].append(row)
 
     if report_clients is not None and not report_clients.empty:
         for _, row in report_clients.iterrows():
             writer_name = row.get("Writer Name", "")
             client_name = row.get("Client Name", "")
             if writer_name:
-                detail_rows.append(
-                    {
-                        "WORKER": writer_name,
-                        "CLIENT": client_name,
-                        "START TIME": "N/A",
-                        "TYPE": "REPORT",
-                    }
-                )
+                row = {
+                    "WORKER": writer_name,
+                    "CLIENT": client_name,
+                    "START TIME": "N/A",
+                    "TYPE": "REPORT",
+                }
+                worker_details[writer_name].append(row)
 
-    sorted_detail_rows = sorted(
-        detail_rows, key=lambda k: (k["WORKER"], k["START TIME"])
-    )
+    combined_detail_rows = []
 
-    return sorted_detail_rows
+    for worker, details_list in worker_details.items():
+        sorted_details = sorted(
+            details_list, key=lambda k: (k["WORKER"], k["START TIME"])
+        )
+        worker_details[worker] = sorted_details
+        combined_detail_rows.extend(sorted_details)
+
+    worker_details["__COMBINED_DETAIL_DATA__"] = combined_detail_rows
+
+    return worker_details
 
 
-def generate_excel_report(
+def generate_main_report(
     summary_data: list[dict],
     detail_data: list[dict],
     start_date: date,
     end_date: date,
+    config: Config,
 ):
     """Generates a single Excel file with two sheets: Summary and Detail."""
     piecework_output_folder = Path("piecework_output")
@@ -372,6 +386,8 @@ def generate_excel_report(
     df_summary = pd.DataFrame(summary_data)
     df_detail = pd.DataFrame(detail_data)
 
+    file_generated = False
+
     try:
         with pd.ExcelWriter(filename, engine="openpyxl") as writer:
             df_summary.to_excel(writer, sheet_name="Summary Counts", index=False)
@@ -380,20 +396,25 @@ def generate_excel_report(
             workbook = writer.book
             summary_sheet = writer.sheets["Summary Counts"]
 
+            currency_format = '"$"#,##0.00'
+
             for row_idx, row in enumerate(
                 summary_data, start=2
             ):  # start=2 to skip header
                 if row.get("UNIT"):
-                    cell = summary_sheet.cell(row=row_idx, column=4)
-                    cell.number_format = '"$"#,##0.00'
+                    summary_sheet.cell(
+                        row=row_idx, column=4
+                    ).number_format = currency_format
 
                 if row.get("COST"):
-                    cell = summary_sheet.cell(row=row_idx, column=5)
-                    cell.number_format = '"$"#,##0.00'
+                    summary_sheet.cell(
+                        row=row_idx, column=5
+                    ).number_format = currency_format
 
                 if row.get("TOTAL PAY"):
-                    cell = summary_sheet.cell(row=row_idx, column=6)
-                    cell.number_format = '"$"#,##0.00'
+                    summary_sheet.cell(
+                        row=row_idx, column=6
+                    ).number_format = currency_format
 
             # Find the last row with data
             last_row = len(df_summary) + 1  # +1 for header row
@@ -404,7 +425,7 @@ def generate_excel_report(
 
             grand_total_cell = summary_sheet.cell(row=last_row + 2, column=6)
             grand_total_cell.value = formula
-            grand_total_cell.number_format = '"$"#,##0.00'
+            grand_total_cell.number_format = currency_format
             grand_total_cell.font = Font(bold=True)
             grand_total_cell.alignment = Alignment(horizontal="right")
 
@@ -417,13 +438,10 @@ def generate_excel_report(
                 column_letter = column[0].column_letter
 
                 for cell in column:
-                    try:
-                        if cell.value:
-                            cell_length = len(str(cell.value))
-                            if cell_length > max_length:
-                                max_length = cell_length
-                    except:
-                        pass
+                    if cell.value:
+                        cell_length = len(str(cell.value))
+                        if cell_length > max_length:
+                            max_length = cell_length
 
                 adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
                 summary_sheet.column_dimensions[column_letter].width = adjusted_width
@@ -435,21 +453,69 @@ def generate_excel_report(
                 column_letter = column[0].column_letter
 
                 for cell in column:
-                    try:
-                        if cell.value:
-                            cell_length = len(str(cell.value))
-                            if cell_length > max_length:
-                                max_length = cell_length
-                    except:
-                        pass
+                    if cell.value:
+                        cell_length = len(str(cell.value))
+                        if cell_length > max_length:
+                            max_length = cell_length
 
                 adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
                 detail_sheet.column_dimensions[column_letter].width = adjusted_width
 
         logger.success(f"Wrote Excel file: {filename}")
+        file_generated = True
 
     except Exception:
         logger.exception(f"An error occurred while writing the Excel file {filename}.")
+
+    if file_generated:
+        upload_file_to_drive(filename, config.payroll_folder_id)
+
+
+def generate_individual_detail_reports(
+    worker_details: Dict[str, List[Dict[str, Any]]],
+    start_date: date,
+    end_date: date,
+    config: Config,
+):
+    """Generates a separate Excel file for each worker's detail data."""
+    base_output_folder = Path("piecework_output")
+    worker_details.pop("__COMBINED_DETAIL_DATA__")
+
+    for worker_name, detail_data in worker_details.items():
+        if not detail_data:
+            continue
+
+        safe_worker_name = re.sub(r'[\\/:*?"<>|]', "", worker_name).strip()
+        worker_folder = base_output_folder / safe_worker_name
+        worker_folder.mkdir(parents=True, exist_ok=True)
+        filename = (
+            worker_folder
+            / f"{safe_worker_name}_{start_date.strftime('%y-%m-%d')}_{end_date.strftime('%y-%m-%d')}.xlsx"
+        )
+        df_detail = pd.DataFrame(detail_data)
+
+        try:
+            with pd.ExcelWriter(filename, engine="openpyxl") as writer:
+                df_detail.to_excel(writer, sheet_name="Details", index=False)
+
+                detail_sheet = writer.sheets["Details"]
+                for column in detail_sheet.columns:
+                    max_length = max(
+                        (len(str(cell.value)) for cell in column if cell.value),
+                        default=0,
+                    )
+                    adjusted_width = min(max_length + 5, 50)
+                    detail_sheet.column_dimensions[
+                        column[0].column_letter
+                    ].width = adjusted_width
+
+            logger.info(f"Wrote individual detail file locally for: {worker_name}")
+            upload_file_to_drive(filename, config.payroll_folder_id, safe_worker_name)
+
+        except Exception:
+            logger.exception(
+                f"An error occurred while writing the individual Excel file for {worker_name}."
+            )
 
 
 def main():
@@ -486,18 +552,20 @@ def main():
 
     appointment_counts = get_work_counts(appointments, evaluators, report_clients)
     summary_data = prepare_summary_data(appointment_counts, config)
-    detail_data = prepare_detail_data(appointments, evaluators, config, report_clients)
+    worker_details = prepare_detail_data(
+        appointments, evaluators, config, report_clients
+    )
 
-    if not summary_data and not detail_data:
+    combined_detail_data = worker_details.get("__COMBINED_DETAIL_DATA__", [])
+
+    if not summary_data and not combined_detail_data:
         logger.info("No valid appointments found to include in the report.")
         return
 
-    generate_excel_report(
-        summary_data,
-        detail_data,
-        start_date,
-        end_date,
+    generate_main_report(
+        summary_data, combined_detail_data, start_date, end_date, config
     )
+    generate_individual_detail_reports(worker_details, start_date, end_date, config)
 
 
 if __name__ == "__main__":

@@ -4,14 +4,17 @@ import os
 import re
 from datetime import date
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Literal, Optional
 
+import magic
 import pandas as pd
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
 from loguru import logger
 
 from utils.custom_types import (
@@ -470,6 +473,80 @@ def add_to_failure_sheet(
 
     except Exception:
         logger.exception("Failed to add to failure sheet")
+
+
+def find_or_create_drive_folder(service, parent_folder_id: str, folder_name: str):
+    """Finds an existing folder or creates a new one inside the parent folder and returns its ID."""
+    try:
+        query = f"name='{folder_name}' and '{parent_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        response = (
+            service.files().list(q=query, spaces="drive", fields="files(id)").execute()
+        )
+        files = response.get("files", [])
+
+        if files:
+            return files[0]["id"]
+
+        file_metadata = {
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_folder_id],
+        }
+        folder = service.files().create(body=file_metadata, fields="id").execute()
+        logger.success(f"Created new Drive folder '{folder_name}'.")
+        return folder.get("id")
+
+    except Exception:
+        logger.exception("An unexpected error occurred in Drive folder search/creation")
+        return None
+
+
+def upload_file_to_drive(
+    file_path: Path, base_folder_id: str, subfolder: Optional[str] = None
+):
+    """Uploads a file to Google Drive in the specified folder."""
+
+    def _get_filetype_by_magic(filepath: Path) -> str:
+        """Returns the MIME type by inspecting the file's header (magic number)."""
+        try:
+            return magic.from_file(filepath, mime=True)
+        except FileNotFoundError:
+            return "File not found"
+        except Exception as e:
+            return f"Error: {e}"
+
+    creds = google_authenticate()
+
+    try:
+        service = build("drive", "v3", credentials=creds)
+    except Exception:
+        logger.exception("Skipping Drive upload: Could not build Drive service")
+        return
+
+    target_folder_id = base_folder_id
+    if subfolder:
+        subfolder_id = find_or_create_drive_folder(service, base_folder_id, subfolder)
+        if subfolder_id:
+            target_folder_id = subfolder_id
+        else:
+            logger.warning(
+                f"Failed to create/find Drive subfolder for '{subfolder}'. Uploading to base folder."
+            )
+
+    file_metadata = {"name": file_path.name, "parents": [target_folder_id]}
+    media = MediaFileUpload(file_path, mimetype=_get_filetype_by_magic(file_path))
+
+    try:
+        file = (
+            service.files()
+            .create(body=file_metadata, media_body=media, fields="id,webViewLink")
+            .execute()
+        )
+        logger.success(
+            f"File uploaded successfully to Drive: {file.get('webViewLink')}"
+        )
+    except Exception:
+        logger.exception("An unexpected error occurred during Drive upload.")
 
 
 def move_file_in_drive(service, file_id: str, dest_folder_id: str):
