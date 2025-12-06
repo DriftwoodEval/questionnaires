@@ -63,11 +63,13 @@ def build_q_message(
             in [
                 "PENDING",
                 #  "SPANISH"
+                "POSTEVAL_PENDING",
             ]
         ]
     )
     # is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)
     is_spanish = False
+    is_posteval = any(q["status"] == "POSTEVAL_PENDING" for q in client.questionnaires)
     portal_link = "https://portal.therapyappointment.com"
 
     if distance == 0:
@@ -99,7 +101,7 @@ def build_q_message(
     messages_en = {
         0: (
             f"Hello, this is {config.name} from Driftwood Evaluation Center. "
-            f"We are ready to schedule your appointment! In order for us to schedule your appointment, "
+            f"{'We are ready to schedule your appointment! In order for us to schedule your appointment, ' if not is_posteval else 'In order to provide you with a comprehensive report, '}"
             f"we need you to complete your {q_s_en}. You can find {it_them_en} in the messages tab "
             f"in our patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
@@ -107,7 +109,7 @@ def build_q_message(
         1: (
             f"Hello, this is {config.name} with Driftwood Evaluation Center. "
             f"We are waiting for you to complete the {q_s_en} sent to you {distance_phrase_en}. "
-            f"We are unable to schedule your appointment until {it_them_en} {is_are_en} completed "
+            f"{'We are unable to schedule your appointment' if not is_posteval else 'We are unable to provide you with a comprehensive report'} until {it_them_en} {is_are_en} completed "
             f"in {its_their_en} entirety. You can find {it_them_en} in the messages tab in our "
             f"patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
@@ -115,7 +117,7 @@ def build_q_message(
         2: (
             f"This is Driftwood Evaluation Center. If your {q_s_en} {is_are_en} not completed by "
             f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), "
-            f"we will close out your referral. Reply to this text with any concerns. You can find the "
+            f"we will {'close out your referral' if not is_posteval else 'provide you with an incomplete report'}. Reply to this text with any concerns. You can find the "
             f"{q_s_en} in the messages tab in our patient portal: {portal_link}"
         ),
     }
@@ -467,8 +469,11 @@ def main():
                         clients_to_update_db.append(client)
                     elif isinstance(client, ClientWithQuestionnaires):
                         for q in client.questionnaires:
-                            if q["status"] == "PENDING":
-                                # or q["status"] == "SPANISH":
+                            if (
+                                q["status"] == "PENDING"
+                                or q["status"] == "POSTEVAL_PENDING"
+                                # or q["status"] == "SPANISH"
+                            ):
                                 q["reminded"] += 1
                                 q["lastReminded"] = date.today()
                         clients_to_update_db.append(client)
