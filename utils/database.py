@@ -169,7 +169,7 @@ def get_appointments(
                         emr_appointment a
                     LEFT JOIN emr_client c ON a.clientId = c.id
                     WHERE
-                        a.startTime >= %s AND a.endTime <= %s
+                        a.startTime >= %s AND a.endTime <= %s + INTERVAL 1 DAY
                 """
                 cursor.execute(sql, (start_date, end_date))
                 results = cursor.fetchall()
