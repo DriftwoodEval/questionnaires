@@ -1,5 +1,6 @@
 import base64
 import io
+import mimetypes
 import os
 import re
 from datetime import date
@@ -7,7 +8,6 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Literal, Optional
 
-import magic
 import pandas as pd
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -506,10 +506,10 @@ def upload_file_to_drive(
 ):
     """Uploads a file to Google Drive in the specified folder."""
 
-    def _get_filetype_by_magic(filepath: Path) -> str:
-        """Returns the MIME type by inspecting the file's header (magic number)."""
+    def _get_filetype(filepath: Path) -> str:
         try:
-            return magic.from_file(filepath, mime=True)
+            mimetype, _ = mimetypes.guess_type(filepath)
+            return mimetype or "application/octet-stream"
         except FileNotFoundError:
             return "File not found"
         except Exception as e:
@@ -534,7 +534,7 @@ def upload_file_to_drive(
             )
 
     file_metadata = {"name": file_path.name, "parents": [target_folder_id]}
-    media = MediaFileUpload(file_path, mimetype=_get_filetype_by_magic(file_path))
+    media = MediaFileUpload(file_path, mimetype=_get_filetype(file_path))
 
     try:
         file = (
