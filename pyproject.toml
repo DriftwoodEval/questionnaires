@@ -26,7 +26,8 @@ dependencies = [
     "fastapi>=0.121.2",
     "sqlalchemy>=2.0.44",
     "uvicorn>=0.38.0",
-    "python-magic>=0.4.27",
+    "python-magic>=0.4.27; sys_platform != 'win32'",
+    "python-magic-bin; sys_platform == 'win32'",
 ]
 
 [dependency-groups]
