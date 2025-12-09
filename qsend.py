@@ -1747,6 +1747,10 @@ def check_client_failed(
         prev_daeval = prev_failed_client.failure.get("daEval", None)
         daeval = client_info["daeval"]
 
+        if daeval == "Records":
+            # Don't count records failures for QSend
+            return (False, None)
+
         error = prev_failed_client.failure.get("reason", None)
         error = str(error).lower()
         if daeval == "DA":
