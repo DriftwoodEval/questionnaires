@@ -304,8 +304,11 @@ def resend_portal_invite(
 ) -> None:
     """Resend the TA portal invite to the client."""
     go_to_client(driver, actions, client_id)
-    click_element(
-        driver,
-        By.XPATH,
-        "//span[contains(normalize-space(text()), 'Resend Portal Invitation')]",
-    )
+    try:
+        click_element(
+            driver,
+            By.XPATH,
+            "//span[contains(normalize-space(text()), 'Resend Portal Invitation')]",
+        )
+    except Exception:
+        raise

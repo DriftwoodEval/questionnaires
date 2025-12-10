@@ -319,7 +319,18 @@ def main():
                         ):
                             logger.info(f"Sending reminder TO {client.fullName}")
                             if client.failure["reason"] == "portal not opened":
-                                resend_portal_invite(driver, actions, str(client.id))
+                                try:
+                                    resend_portal_invite(
+                                        driver, actions, str(client.id)
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Failed to resend invite for {client.fullName}: {e}"
+                                    )
+                                    email_info["failed"].append(
+                                        (client, "Failed to resend invite")
+                                    )
+                                    continue
 
                             message = build_failure_message(config, client)
                             # Redundant failsafe to super ensure we don't text people a message that just says "None"
