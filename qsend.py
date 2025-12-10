@@ -2147,6 +2147,8 @@ def main():
             )
 
     logger.info(f"Finished loop for {len(clients)} clients")
+    # Final newline for preventing overwriting last line on windows
+    print()
 
 
 if __name__ == "__main__":
