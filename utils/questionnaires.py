@@ -1,8 +1,10 @@
+import re
 from datetime import date
 from typing import Optional, Tuple, cast
 from urllib.parse import urlparse
 
 from loguru import logger
+from playwright.sync_api import Page, TimeoutError
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
@@ -69,13 +71,8 @@ def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
     )
 
 
-def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
+def check_q_done(page: Page, q_link: str, q_type: str) -> bool:
     """Check if a questionnaire linked by `q_link` is completed.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance.
-        q_link (str): The URL of the questionnaire.
-        q_type (str): The type of the questionnaire.
 
     Returns:
         bool: True if the questionnaire is completed, False otherwise.
@@ -84,33 +81,34 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         Exception: If the questionnaire type does not match the URL's expected pattern.
     """
     url_patterns = {
-        "ASRS (2-5 Years)": "/asrs_web/",
-        "ASRS (6-18 Years)": "/asrs_web/",
-        "Conners EC": "/CEC/",
-        "Conners 4": "/conners4/",
+        "ASRS (2-5 Years)": "/asrs_web",
+        "ASRS (6-18 Years)": "/asrs_web",
+        "Conners EC": "/CEC",
+        "Conners 4": "/conners4",
         "DP-4": "respondent.wpspublish.com",
     }
 
     completion_criteria = {
-        "mhs.com": "//*[contains(text(), 'Thank you for completing')] | "
-        "//*[contains(text(), 'Gracias por contestar')] | "
-        "//*[contains(text(), 'This link has already been used')] | "
-        "//*[contains(text(), 'We have received your answers')] |"
-        "//*[contains(text(), 'Hemos recibido sus respuestas')]",
-        "pearsonassessments.com": "//*[contains(text(), 'Test Completed!')] | "
-        "//*[contains(text(), '¡Prueba completada!')]",
-        "wpspublish.com": "//*[contains(text(), 'This assessment is not available at this time')] | "
-        "//*[contains(text(), 'Esta evaluación no está disponible en este momento')]",
+        "mhs.com": [
+            "Thank you for completing",
+            "Gracias por contestar",
+            "This link has already been used",
+            "We have received your answers",
+            "Hemos recibido sus respuestas",
+        ],
+        "pearsonassessments.com": ["Test Completed!", "¡Prueba completada!"],
+        "wpspublish.com": [
+            "This assessment is not available at this time",
+            "Esta evaluación no está disponible en este momento",
+        ],
     }
 
-    wait = WebDriverWait(driver, 15)
-
     try:
-        driver.get(q_link)
-        final_url = wait_for_url_stability(driver)
+        page.goto(q_link)
+        final_url = wait_for_url_stability(page)
         # logger.debug(f"Final URL (possibly after redirects): {final_url}")
 
-        if not wait_for_page_load(driver):
+        if not wait_for_page_load(page):
             return False
 
         if q_type in url_patterns:
@@ -123,24 +121,26 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
         link_host = urlparse(q_link).netloc
 
-        for host_substring, xpath in completion_criteria.items():
+        for host_substring, expected_texts in completion_criteria.items():
             if host_substring in link_host:
-                logger.info(f"Checking {host_substring} completion for {q_link}")
-                wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
-                logger.info(f"Found completion criteria for {q_link}")
-                return True
+                logger.info(f"Checking {host_substring} completion for {q_link}.")
 
-        logger.warning(f"Unknown or unsupported questionnaire host in link: {q_link}")
-        return False
+                regex_pattern = "|".join([re.escape(text) for text in expected_texts])
 
-    except (TimeoutException, NoSuchElementException):
-        logger.info(
-            f"Questionnaire at {q_link} is likely not completed (Timeout waiting for completion message)."
-        )
-        return False
+                locator = page.get_by_text(re.compile(regex_pattern, re.IGNORECASE))
 
-    except WebDriverException:
-        logger.exception(f"WebDriver error checking questionnaire at {q_link}")
+                try:
+                    element = locator.first
+                    element.wait_for(timeout=5000)
+                    matched_content = element.inner_text()
+                    logger.info(
+                        f"Found completion criteria for {q_link}: {matched_content}"
+                    )
+                    return True
+                except TimeoutError:
+                    pass
+
+        logger.info(f"No completion message found, or unsupported link: {q_link}")
         return False
 
     except Exception:
@@ -149,7 +149,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
 
 def check_questionnaires(
-    driver: WebDriver,
+    page: Page,
     config: Config,
     clients: dict[int, ClientWithQuestionnaires],
 ) -> Tuple[
@@ -157,11 +157,6 @@ def check_questionnaires(
     list[str],
 ]:
     """Check if all questionnaires for the given clients are completed. This function will navigate to each questionnaire link and look for specific text on the page based on the URL.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        config (Config): The configuration object.
-        clients (dict[int, ClientWithQuestionnaires]): A dictionary of clients with their IDs as keys and ClientWithQuestionnaires objects as values.
 
     Returns:
         list[ClientWithQuestionnaires]: A list of clients whose questionnaires are all completed.
@@ -193,7 +188,7 @@ def check_questionnaires(
                     f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
                 )
                 if check_q_done(
-                    driver, questionnaire["link"], questionnaire["questionnaireType"]
+                    page, questionnaire["link"], questionnaire["questionnaireType"]
                 ):
                     questionnaire["status"] = "COMPLETED"
                     logger.info(

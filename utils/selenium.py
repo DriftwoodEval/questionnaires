@@ -3,6 +3,7 @@ import time
 from time import sleep
 
 from loguru import logger
+from playwright.sync_api import Page, TimeoutError
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -113,26 +114,23 @@ def click_element(
                 sleep(1)
 
 
-def wait_for_page_load(driver: WebDriver, timeout: int = 15) -> bool:
+def wait_for_page_load(page: Page, timeout: int = 15) -> bool:
     """Waits for the page to reach 'complete' readyState."""
     try:
-        WebDriverWait(driver, timeout).until(
-            lambda driver: driver.execute_script("return document.readyState")
-            == "complete"
-        )
+        page.wait_for_load_state("load", timeout=timeout * 1000)
         return True
     except TimeoutException:
-        logger.warning("Timeout waiting for document.readyState == 'complete'.")
+        logger.warning("Timeout waiting for load state 'load'.")
         return False
 
 
 def wait_for_url_stability(
-    driver: WebDriver, timeout: int = 10, check_interval: int = 1
+    page: Page, timeout: int = 10, check_interval: int = 1
 ) -> str:
     """Wait for the URL to stabilize (stop redirecting).
 
     Args:
-        driver: The WebDriver instance.
+        page: The Playwright Page instance.
         timeout: Maximum time to wait for stability.
         check_interval: Time between URL checks.
 
@@ -140,102 +138,85 @@ def wait_for_url_stability(
         The final stable URL.
     """
     end_time = time.time() + timeout
-    previous_url = driver.current_url
+    previous_url = page.url
 
     while time.time() < end_time:
         time.sleep(check_interval)
-        current_url = driver.current_url
+        current_url = page.url
 
         if current_url == previous_url:
             # URL hasn't changed, wait one more interval to confirm
             time.sleep(check_interval)
-            if driver.current_url == current_url:
+            if page.url == current_url:
                 return current_url
 
         previous_url = current_url
 
     # Timeout reached, return current URL
-    return driver.current_url
+    return page.url
 
 
 def login_ta(
-    driver: WebDriver,
-    actions: ActionChains,
+    page: Page,
     services: Services,
     admin: bool = False,
 ) -> None:
     """Log in to TherapyAppointment.
 
     Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
+        page (Page): The Playwright Page instance.
         services (Services): The configuration object containing the TherapyAppointment credentials.
         admin (bool, optional): Whether to log in as an admin user. Defaults to False.
     """
     logger.info("Logging in to TherapyAppointment")
 
     logger.debug("Going to login page")
-    driver.get("https://portal.therapyappointment.com")
+    page.goto("https://portal.therapyappointment.com")
 
     logger.debug("Entering username")
-    username_field = find_element(driver, By.NAME, "user_username")
-    username_field.send_keys(
+    page.get_by_role("textbox", name="*Username").press_sequentially(
         services.therapyappointment.admin_username
         if admin
-        else services.therapyappointment.username
+        else services.therapyappointment.username,
+        delay=100,
     )
 
     logger.debug("Entering password")
-    password_field = find_element(driver, By.NAME, "user_password")
-    password_field.send_keys(
+    page.get_by_role("textbox", name="*Password").press_sequentially(
         services.therapyappointment.admin_password
         if admin
-        else services.therapyappointment.password
+        else services.therapyappointment.password,
+        delay=100,
     )
+    page.get_by_role("button", name=" Sign In").click()
 
     logger.debug("Submitting login form")
-    actions.send_keys(Keys.ENTER)
-    actions.perform()
 
 
-def go_to_client(
-    driver: WebDriver, actions: ActionChains, client_id: str
-) -> str | None:
+def go_to_client(page: Page, client_id: str) -> str | None:
     """Navigates to the given client in TA and returns the client's URL."""
 
-    def _search_clients(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> None:
+    def _search_clients(page: Page, client_id: str) -> None:
         logger.info(f"Searching for {client_id} on TA")
-        sleep(2)
-
         logger.debug("Trying to escape random popups")
-        actions.send_keys(Keys.ESCAPE)
-        actions.perform()
+        page.keyboard.press("Escape")
 
         logger.debug("Entering client ID")
-        client_id_label = find_element(
-            driver, By.XPATH, "//label[text()='Account Number']"
+        page.get_by_role("searchbox", name="Account Number").press_sequentially(
+            client_id, delay=100
         )
-        client_id_field = client_id_label.find_element(
-            By.XPATH, "./following-sibling::input"
-        )
-        client_id_field.send_keys(client_id)
 
-        logger.debug("Clicking search")
-        click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
+        logger.debug("Searching")
+        page.get_by_role("searchbox", name="Account Number").press("Enter")
 
-    def _go_to_client_loop(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> str:
-        driver.get("https://portal.therapyappointment.com")
-        sleep(1)
+    def _go_to_client_loop(page: Page, client_id: str) -> str:
+        page.goto("https://portal.therapyappointment.com")
         logger.debug("Navigating to Clients section")
-        click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
+        page.get_by_text("Clients", exact=True).click()
 
         for attempt in range(3):
             try:
-                _search_clients(driver, actions, client_id)
+                _search_clients(page, client_id)
                 break
             except Exception as e:
                 if attempt == 2:
@@ -243,26 +224,23 @@ def go_to_client(
                     raise e
                 else:
                     logger.warning(f"Failed to search: {e}, trying again")
-                    driver.refresh()
+                    page.reload()
 
         sleep(1)
 
         logger.debug("Selecting client profile")
 
-        click_element(
-            driver,
-            By.CSS_SELECTOR,
-            "a[aria-description*='Press Enter to view the profile of",
-            max_attempts=1,
-        )
+        locator = page.locator(
+            "a[aria-description*='Press Enter to view the profile of']"
+        ).click()
 
-        current_url = driver.current_url
+        current_url = page.url
         logger.success(f"Navigated to client profile: {current_url}")
         return current_url
 
     for attempt in range(3):
         try:
-            return _go_to_client_loop(driver, actions, client_id)
+            return _go_to_client_loop(page, client_id)
         except Exception as e:
             if attempt == 2:
                 logger.error(f"Failed to go to client after 3 attempts: {e}")
@@ -272,40 +250,30 @@ def go_to_client(
     return
 
 
-def check_if_opened_portal(driver: WebDriver) -> bool:
+def check_if_opened_portal(page: Page) -> bool:
     """Check if the TA portal has been opened by the client."""
     logger.info("Checking if portal has been opened...")
     try:
-        find_element(
-            driver, By.XPATH, "//div[contains(normalize-space(text()), 'Username:')]", 3
-        )
+        page.get_by_text("Username: ")
         return True
-    except (NoSuchElementException, TimeoutException):
+    except TimeoutError:
         return False
 
 
-def check_if_docs_signed(driver: WebDriver) -> bool:
+def check_if_docs_signed(page: Page) -> bool:
     """Check if the TA docs have been signed by the client."""
     logger.info("Checking if docs have been signed...")
     try:
-        find_element(
-            driver,
-            By.XPATH,
-            "//div[contains(normalize-space(text()), 'has completed registration')]",
-            3,
-        )
+        page.get_by_text("has completed registration")
         return True
     except (NoSuchElementException, TimeoutException):
         return False
 
 
-def resend_portal_invite(
-    driver: WebDriver, actions: ActionChains, client_id: str
-) -> None:
+def resend_portal_invite(page, Page, client_id: str) -> None:
     """Resend the TA portal invite to the client."""
-    go_to_client(driver, actions, client_id)
-    click_element(
-        driver,
-        By.XPATH,
-        "//span[contains(normalize-space(text()), 'Resend Portal Invitation')]",
-    )
+    go_to_client(page, client_id)
+    try:
+        page.get_by_role("button", name="Resend Portal Invitation").click()
+    except Exception as e:
+        logger.error(f"Failed to resend portal invite: {e}")

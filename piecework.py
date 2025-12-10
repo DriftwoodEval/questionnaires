@@ -15,16 +15,16 @@ from utils.database import get_all_evaluators_info, get_appointments
 from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import load_config
 
-TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
+REPORT_TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
 
 
 def load_tracked_reports() -> dict[str, str]:
-    """Load the set of previously tracked client IDs from disk."""
-    if not TRACKING_FILE.exists():
+    """Load the client IDs that have already had reports paid for from the file."""
+    if not REPORT_TRACKING_FILE.exists():
         return {}
 
     try:
-        with open(TRACKING_FILE, "r") as f:
+        with open(REPORT_TRACKING_FILE, "r") as f:
             data = json.load(f)
             client_ids = data.get("client_ids", {})
             if not isinstance(client_ids, dict):
@@ -39,25 +39,18 @@ def load_tracked_reports() -> dict[str, str]:
 
 
 def save_tracked_reports(client_ids: dict[str, str]):
-    """Save the set of tracked client IDs to disk."""
-    TRACKING_FILE.parent.mkdir(parents=True, exist_ok=True)
+    """Save the client IDs that have had reports paid for to the file."""
+    REPORT_TRACKING_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(TRACKING_FILE, "w") as f:
+        with open(REPORT_TRACKING_FILE, "w") as f:
             json.dump({"client_ids": client_ids}, f, indent=2)
-        logger.info(f"Saved {len(client_ids)} entries to {TRACKING_FILE}")
+        logger.info(f"Saved {len(client_ids)} entries to {REPORT_TRACKING_FILE}")
     except Exception:
-        logger.exception(f"Failed to save tracking file to {TRACKING_FILE}")
-
-
-def extract_writer_initials(assigned_to: str) -> str:
-    """Extract only letters from the assigned to column."""
-    if pd.isna(assigned_to) or not assigned_to:
-        return ""
-    return re.sub(r"[^a-zA-Z]", "", assigned_to)
+        logger.exception(f"Failed to save tracking file to {REPORT_TRACKING_FILE}")
 
 
 def get_report_clients(config: Config) -> Optional[pd.DataFrame]:
-    """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
+    """Find clients who have reports done, and who either haven't been ran before, or were ran on the same day."""
     punch_list = get_punch_list(config)
 
     if punch_list is None:
@@ -127,7 +120,9 @@ def get_report_clients(config: Config) -> Optional[pd.DataFrame]:
         logger.error("No valid reports found after filtering out unassigned clients")
         return None
 
-    result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
+    result["Initials"] = result["Assigned To"].apply(
+        lambda assigned_to: re.sub(r"[^a-zA-Z]", "", assigned_to) if assigned_to else ""
+    )
     result["Writer Name"] = result["Initials"].apply(
         lambda initials: config.piecework.get_full_name(initials) if initials else ""
     )
@@ -166,6 +161,7 @@ def get_date_range() -> Optional[tuple[date, date]]:
             ],
         ),
     ]
+
     answers = inquirer.prompt(questions)
     if answers:
         date_range = answers["date_range"]
@@ -416,7 +412,6 @@ def generate_main_report(
                         row=row_idx, column=6
                     ).number_format = currency_format
 
-            # Find the last row with data
             last_row = len(df_summary) + 1  # +1 for header row
 
             summary_sheet.cell(row=last_row + 2, column=1, value="GRAND TOTAL")
@@ -519,7 +514,7 @@ def generate_individual_detail_reports(
 
 
 def main():
-    """Main function to run piecework."""
+    """Select a date range (last week or the week before), collect appointments in that range, collect new report entries, and generate reports for the whole company and for each worker."""
     logger.info("Starting...")
 
     _, config = load_config()
