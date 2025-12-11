@@ -29,14 +29,7 @@ from utils.selenium import (
 
 
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
-    """Check if all questionnaires for the given client are completed.
-
-    Args:
-        client (ClientWithQuestionnaires): The client to check.
-
-    Returns:
-        bool: True if all questionnaires are completed, False otherwise.
-    """
+    """Check if all questionnaires for a given client are completed."""
     return all(
         q["status"] == "COMPLETED" for q in client.questionnaires if isinstance(q, dict)
     )
@@ -45,7 +38,7 @@ def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
 def filter_inactive_and_not_pending(
     clients: dict[int, ClientWithQuestionnaires],
 ) -> dict[int, ClientWithQuestionnaires]:
-    """Filters clients that are not active and have no pending questionnaires."""
+    """Filter out clients that are inactive and don't have pending, rescheduled, or ignoring questionnaires."""
     filtered_clients = {
         client.id: client
         for client in clients.values()
@@ -188,16 +181,7 @@ def check_questionnaires(
     list[ClientWithQuestionnaires],
     list[str],
 ]:
-    """Check if all questionnaires for the given clients are completed. This function will navigate to each questionnaire link and look for specific text on the page based on the URL.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        config (Config): The configuration object.
-        clients (dict[int, ClientWithQuestionnaires]): A dictionary of clients with their IDs as keys and ClientWithQuestionnaires objects as values.
-
-    Returns:
-        list[ClientWithQuestionnaires]: A list of clients whose questionnaires are all completed.
-    """
+    """Check if all questionnaires for the given clients are completed. This loops over the clients dictionary and runs check_q_done for each questionnaire. It then updates the database."""
     if not clients:
         return [], []
     completed_clients = []
@@ -255,14 +239,7 @@ def check_questionnaires(
 def get_most_recent_not_done(
     client: ClientWithQuestionnaires,
 ) -> Optional[Questionnaire]:
-    """Get the most recent questionnaire that is still PENDING, POSTEVAL_PENDING or SPANISH from the given client by taking max of q["sent"].
-
-    Args:
-        client (ClientWithQuestionnaires): The client with questionnaires to check.
-
-    Returns:
-        Questionnaire: The most recent questionnaire that is still PENDING, POSTEVAL_PENDING or SPANISH.
-    """
+    """Get the most recent questionnaire that is still PENDING or POSTEVAL_PENDING from the given client by taking max of q["sent"]."""
     pending_and_sent = (
         q
         for q in client.questionnaires
@@ -277,14 +254,7 @@ def get_most_recent_not_done(
 
 
 def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
-    """Check if the client has ever been reminded of a questionnaire.
-
-    Args:
-        client (ClientWithQuestionnaires): The client with questionnaires to check.
-
-    Returns:
-        bool: True if the client has ever been reminded of a questionnaire, False otherwise.
-    """
+    """Check if the client has ever been reminded of a still pending questionnaire."""
     return any(
         q["reminded"] != 0
         and (

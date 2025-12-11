@@ -160,16 +160,6 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 
     Searches for a client using their human-friendly ID, which is the ID
     shown on TherapyAppointment, "C" + 9-digit number.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for
-            browser automation.
-        actions (ActionChains): The ActionChains instance used for
-            simulating user actions.
-        client (pd.Series): A Pandas Series containing the client's data.
-
-    Returns:
-        None
     """
 
     def _search_helper(driver: WebDriver, id: str) -> None:
@@ -203,13 +193,6 @@ def check_for_qglobal_account(
 ) -> bool:
     """Check if a client has an account on QGlobal.
 
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for
-            browser automation.
-        actions (ActionChains): The ActionChains instance used for
-            simulating user actions.
-        client (pd.Series): A Pandas Series containing the client's data.
-
     Returns:
         bool: True if the client has an account on QGlobal, False otherwise.
     """
@@ -232,13 +215,6 @@ def add_client_to_qglobal(
     driver: WebDriver, actions: ActionChains, client: pd.Series
 ) -> bool:
     """Add a client to QGlobal if they don't already have an account.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for
-            browser automation.
-        actions (ActionChains): The ActionChains instance used for
-            simulating user actions.
-        client (pd.Series): A Pandas Series containing the client's data.
 
     Returns:
         bool: True if the client was successfully added to QGlobal, False otherwise.
@@ -297,16 +273,6 @@ def add_client_to_mhs(
     accounts_created: dict[str, bool],
 ) -> bool:
     """Add a client to MHS, or goes to the existing client.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for
-            browser automation.
-        actions (ActionChains): The ActionChains instance used for
-            simulating user actions.
-        client (pd.Series): A Pandas Series containing the client's data.
-        questionnaire (str): The type of questionnaire to be added to MHS.
-        accounts_created (dict[str, bool]): A dictionary containing the
-            status of accounts created for the client.
 
     Returns:
         bool: True if successful, False otherwise.
@@ -1988,7 +1954,7 @@ def main():
                 )
                 continue
 
-            if str(questionnaires_needed) == "Unknown":
+            if isinstance(questionnaires_needed, str):
                 logger.error(f"{client['Client Name']} has unknown questionnaire needs")
                 add_failure(
                     config=config,
@@ -2003,6 +1969,7 @@ def main():
 
             if prev_clients != {}:
                 previous_questionnaires = check_client_previous(prev_clients, client)
+                previous_questionnaire_info = {}
 
                 if previous_questionnaires:
                     previous_questionnaire_info = {
@@ -2010,6 +1977,35 @@ def main():
                         for q in previous_questionnaires
                     }
 
+                if client["daeval"] == "EVAL":
+                    theoretical_da_qs = get_questionnaires(
+                        client["Age"],
+                        client["For"],
+                        "DA",
+                    )
+
+                    if isinstance(theoretical_da_qs, list):
+                        missing_da_qs = [
+                            q
+                            for q in theoretical_da_qs
+                            if q not in previous_questionnaire_info
+                        ]
+
+                        if missing_da_qs:
+                            print(
+                                f"\n[ALERT] {client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}"
+                            )
+                            should_add = (
+                                input("Do you want to add these to the list? (y/N): ")
+                                .lower()
+                                .strip()
+                            )
+
+                            if should_add == "y":
+                                questionnaires_needed.extend(missing_da_qs)
+                                questionnaires_needed = list(set(questionnaires_needed))
+
+                if previous_questionnaires:
                     questionnaires_to_remove = [
                         q_type
                         for q_type, status in previous_questionnaire_info.items()
