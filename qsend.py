@@ -1843,6 +1843,33 @@ def main():
             continue
 
         try:
+            client_from_db = prev_clients.get(int(client["Client ID"]))
+            if not client_from_db:
+                logger.error(f"{client['Client Name']} not found in DB")
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error="not in db",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
+                )
+                continue
+
+            if client_from_db.autismStop:
+                logger.error(f"{client['Client Name']} has autism stop")
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error="autism stop",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
+                )
+                continue
+
             client_url = go_to_client(driver, actions, client["Client ID"])
 
             if not client_url:
@@ -1901,19 +1928,6 @@ def main():
                         resolved=True,
                     )
 
-            client_from_db = prev_clients.get(int(client["Client ID"]))
-            if not client_from_db:
-                logger.error(f"{client['Client Name']} not found in DB")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="not in db",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
             client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
             client["Age"] = relativedelta(datetime.now(), client_from_db.dob).years
             client["Gender"] = client_from_db.gender

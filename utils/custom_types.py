@@ -211,6 +211,7 @@ class ClientFromDB(_ClientBase):
     """A Pydantic model representing a client from the database."""
 
     questionnaires: Optional[list[Questionnaire]] = None
+    autismStop: bool
     ifsp: bool
     ifspDownloaded: bool
 
