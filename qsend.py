@@ -179,18 +179,13 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
         except:  # noqa: E722
             logger.warning("Failed to search, attempting to retry")
             driver.get("https://qglobal.pearsonassessments.com")
-            click_element(driver, By.NAME, "searchForm:j_id347")
+            click_element(driver, By.XPATH, "//a[text()='Search']")
             _search_helper(driver, id)
 
     logger.info(f"Searching QGlobal for {client['Human Friendly ID']}")
-    click_element(driver, By.NAME, "searchForm:j_id347")
+    click_element(driver, By.XPATH, "//a[text()='Search']")
 
     _search_helper(driver, client["Human Friendly ID"])
-
-    logger.debug("Waiting for page to load")
-    sleep(
-        15
-    )  # This needs to be this long or we enter the client id in the search twice?
 
     logger.debug("Submitting search form")
     actions.send_keys(Keys.ENTER)
@@ -1439,16 +1434,20 @@ def gen_vineland(
     logger.debug("Entering respondent last name")
     find_element(driver, By.ID, "respondentLastName").send_keys(config.initials[-1])
 
-    logger.debug("Continuing to email step")
-    click_element(driver, By.XPATH, "//button[contains(.,'Continue to E-mail')]")
-
     logger.debug("Selecting email options")
-    click_element(driver, By.XPATH, "//div/div[2]/label")
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    sleep(2)
     click_element(
         driver,
         By.XPATH,
-        "//div[2]/qg2-multi-column-layout/div/section[2]/div/qg2-form-radio-button/div/div/section[2]/div/div[2]/label",
+        "//label[contains(normalize-space(text()), 'Include')]",
     )
+    click_element(
+        driver,
+        By.XPATH,
+        "(//label[contains(normalize-space(text()), 'Include')])[2]",
+    )
+    sleep(2)
 
     link = get_qglobal_link(driver, actions)
 
