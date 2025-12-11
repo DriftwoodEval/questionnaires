@@ -1,4 +1,5 @@
 import re
+import sys
 from datetime import date, datetime
 from time import sleep, strftime, strptime
 from typing import Union
@@ -35,6 +36,12 @@ from utils.selenium import (
     go_to_client,
     initialize_selenium,
     login_ta,
+)
+
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
 )
 
 logger.add("logs/qsend.log", rotation="500 MB")

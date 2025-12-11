@@ -1,5 +1,6 @@
 import io
 import re
+import sys
 import time
 from base64 import b64decode
 from datetime import date
@@ -36,6 +37,12 @@ from utils.google import (
     update_punch_list,
 )
 from utils.misc import add_failure, load_config
+
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
+)
 
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")

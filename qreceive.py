@@ -1,3 +1,4 @@
+import sys
 from datetime import date, datetime, timedelta
 from typing import Optional, Union
 
@@ -37,6 +38,12 @@ from utils.selenium import (
     initialize_selenium,
     login_ta,
     resend_portal_invite,
+)
+
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
 )
 
 logger.add("logs/qreceive.log", rotation="500 MB")
