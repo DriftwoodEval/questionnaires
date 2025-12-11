@@ -2014,7 +2014,7 @@ def main():
                         q_type
                         for q_type, status in previous_questionnaire_info.items()
                         if q_type in questionnaires_needed
-                        and status in ["COMPLETED", "EXTERNAL"]
+                        and status in ["COMPLETED", "EXTERNAL", "ARCHIVED"]
                     ]
 
                     questionnaires_needed = list(
@@ -2025,7 +2025,7 @@ def main():
                     for q_type in questionnaires_needed:
                         if q_type in previous_questionnaire_info:
                             status = previous_questionnaire_info[q_type]
-                            if status not in ["COMPLETED", "EXTERNAL"]:
+                            if status not in ["COMPLETED", "EXTERNAL", "ARCHIVED"]:
                                 remaining_overlaps.append(f"{q_type} - {status}")
 
                     if remaining_overlaps:
