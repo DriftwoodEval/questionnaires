@@ -1,4 +1,6 @@
-from datetime import date
+import os
+import re
+from datetime import date, datetime
 from typing import Optional, Tuple, cast
 from urllib.parse import urlparse
 
@@ -19,7 +21,11 @@ from utils.custom_types import (
     Questionnaire,
 )
 from utils.database import update_questionnaires_in_db
-from utils.selenium import wait_for_page_load, wait_for_url_stability
+from utils.selenium import (
+    save_screenshot_to_path,
+    wait_for_page_load,
+    wait_for_url_stability,
+)
 
 
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
@@ -69,20 +75,25 @@ def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
     )
 
 
+def get_id_from_path(path: str, max_length: int = 50) -> str:
+    """Extracts a sanitized identifier from a URL path."""
+    clean_path = path.split("?")[0].strip("/")
+    sanitized = re.sub(r"[^\w\-]+", "_", clean_path)
+    return sanitized[:max_length].strip("_")
+
+
+def generate_screenshot_filename(
+    status: str, q_type: str, host: str, unique_id: str
+) -> str:
+    """Creates a filename for a screenshot based on information about the questionnaire."""
+    safe_type = "".join(c for c in q_type if c.isalnum() or c in ("_", "-"))
+    safe_host = host.replace(".", "_").replace(":", "_")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{status.upper()}_{safe_type}_{safe_host}_{unique_id}_{timestamp}.png"
+
+
 def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
-    """Check if a questionnaire linked by `q_link` is completed.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance.
-        q_link (str): The URL of the questionnaire.
-        q_type (str): The type of the questionnaire.
-
-    Returns:
-        bool: True if the questionnaire is completed, False otherwise.
-
-    Raises:
-        Exception: If the questionnaire type does not match the URL's expected pattern.
-    """
+    """Checks questionnaire completion status and captures evidence."""
     url_patterns = {
         "ASRS (2-5 Years)": "/asrs_web/",
         "ASRS (6-18 Years)": "/asrs_web/",
@@ -91,24 +102,43 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         "DP-4": "respondent.wpspublish.com",
     }
 
-    completion_criteria = {
-        "mhs.com": "//*[contains(text(), 'Thank you for completing')] | "
-        "//*[contains(text(), 'Gracias por contestar')] | "
-        "//*[contains(text(), 'This link has already been used')] | "
-        "//*[contains(text(), 'We have received your answers')] |"
-        "//*[contains(text(), 'Hemos recibido sus respuestas')]",
-        "pearsonassessments.com": "//*[contains(text(), 'Test Completed!')] | "
-        "//*[contains(text(), '¡Prueba completada!')]",
-        "wpspublish.com": "//*[contains(text(), 'This assessment is not available at this time')] | "
-        "//*[contains(text(), 'Esta evaluación no está disponible en este momento')]",
+    raw_completion_texts = {
+        "mhs.com": [
+            "Thank you for completing",
+            "Gracias por contestar",
+            "This link has already been used",
+            "We have received your answers",
+            "Hemos recibido sus respuestas",
+        ],
+        "pearsonassessments.com": [
+            "Test Completed!",
+            "¡Prueba completada!",
+        ],
+        "wpspublish.com": [
+            "This assessment is not available at this time",
+            "Esta evaluación no está disponible en este momento",
+        ],
+    }
+
+    completion_xpaths = {
+        host: " | ".join(f"//*[contains(text(), '{text}')]" for text in texts)
+        for host, texts in raw_completion_texts.items()
     }
 
     wait = WebDriverWait(driver, 15)
 
+    final_url = ""
+    parsed_url = urlparse(q_link)
+    link_host = parsed_url.netloc
+    unique_id = get_id_from_path(parsed_url.path)
+
+    def capture_outcome(status: str):
+        filename = generate_screenshot_filename(status, q_type, link_host, unique_id)
+        save_screenshot_to_path(driver, os.path.join("logs/screenshots", filename))
+
     try:
         driver.get(q_link)
         final_url = wait_for_url_stability(driver)
-        # logger.debug(f"Final URL (possibly after redirects): {final_url}")
 
         if not wait_for_page_load(driver):
             return False
@@ -119,32 +149,34 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
             if expected_pattern not in final_url:
                 error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{final_url}'"
                 raise Exception(error_msg)
-            # logger.debug(f"URL validation passed for type '{q_type}'")
 
-        link_host = urlparse(q_link).netloc
-
-        for host_substring, xpath in completion_criteria.items():
-            if host_substring in link_host:
-                logger.info(f"Checking {host_substring} completion for {q_link}")
+        for host_key, xpath in completion_xpaths.items():
+            if host_key in link_host:
+                logger.info(f"Checking {host_key} completion for {q_link}")
                 wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
-                logger.info(f"Found completion criteria for {q_link}")
+                logger.info(f"Completion found for {q_link}: {xpath}")
+                capture_outcome("COMPLETED")
                 return True
 
         logger.warning(f"Unknown or unsupported questionnaire host in link: {q_link}")
+        capture_outcome("UNKNOWN_HOST")
         return False
 
     except (TimeoutException, NoSuchElementException):
         logger.info(
             f"Questionnaire at {q_link} is likely not completed (Timeout waiting for completion message)."
         )
+        capture_outcome("INCOMPLETE")
         return False
 
     except WebDriverException:
         logger.exception(f"WebDriver error checking questionnaire at {q_link}")
+        capture_outcome("WEBDRIVER_ERROR")
         return False
 
     except Exception:
         logger.exception(f"{q_link}")
+        capture_outcome("UNKNOWN_ERROR")
         raise
 
 

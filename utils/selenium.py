@@ -158,6 +158,16 @@ def wait_for_url_stability(
     return driver.current_url
 
 
+def save_screenshot_to_path(driver: WebDriver, filepath: str) -> None:
+    """Save a screenshot of the current page to the specified path."""
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        driver.save_screenshot(filepath)
+        logger.info(f"Screenshot saved to {filepath}")
+    except Exception as e:
+        logger.error(f"Failed to save screenshot: {e}")
+
+
 def login_ta(
     driver: WebDriver,
     actions: ActionChains,
