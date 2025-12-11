@@ -7,6 +7,8 @@ from typing import Union
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from loguru import logger
+from rich import print
+from rich.prompt import Confirm
 from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
@@ -2000,15 +2002,15 @@ def main():
 
                         if missing_da_qs:
                             print(
-                                f"\n[ALERT] {client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}"
+                                f"\n[red]{client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}[/red]"
                             )
-                            should_add = (
-                                input("Do you want to add these to the list? (y/N): ")
-                                .lower()
-                                .strip()
+                            should_add = Confirm.ask(
+                                "Do you want to add these to the list?",
+                                default=False,
+                                case_sensitive=False,
                             )
 
-                            if should_add == "y":
+                            if should_add:
                                 questionnaires_needed.extend(missing_da_qs)
                                 questionnaires_needed = list(set(questionnaires_needed))
 

@@ -26,6 +26,7 @@ dependencies = [
     "fastapi>=0.121.2",
     "sqlalchemy>=2.0.44",
     "uvicorn>=0.38.0",
+    "rich>=14.2.0",
 ]
 
 [dependency-groups]
