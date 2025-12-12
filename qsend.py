@@ -861,13 +861,19 @@ def gen_dp4(
     sleep(1)
 
     logger.debug("Selecting form")
-    form.select_by_visible_text("Parent/Caregiver Checklist")
+    if client["Language"] != "Spanish":
+        form.select_by_visible_text("Parent/Caregiver Checklist")
+    else:
+        form.select_by_visible_text("Spanish Parent/Caregiver Checklist")
 
     logger.debug("Setting delivery method")
     click_element(driver, By.ID, "DeliveryMethod")
 
     logger.debug("Entering rater name")
-    find_element(driver, By.ID, "RaterName").send_keys("Parent/Caregiver")
+    if client["Language"] != "Spanish":
+        find_element(driver, By.ID, "RaterName").send_keys("Parent/Caregiver")
+    else:
+        find_element(driver, By.ID, "RaterName").send_keys("Madre/Padre/Cuidador")
 
     logger.debug("Entering email")
     find_element(driver, By.ID, "RemoteAdminEmail_ToEmail").send_keys(config.email)
@@ -879,7 +885,14 @@ def gen_dp4(
     click_element(driver, By.XPATH, "//input[@value='Send Form']")
 
     logger.debug("Selecting form link")
-    click_element(driver, By.XPATH, "//td[contains(.,'Parent/Caregiver Checklist')]")
+    if client["Language"] != "Spanish":
+        click_element(
+            driver, By.XPATH, "//td[contains(.,'Parent/Caregiver Checklist')]"
+        )
+    else:
+        click_element(
+            driver, By.XPATH, "//td[contains(.,'Spanish Parent/Caregiver Checklist')]"
+        )
 
     logger.debug("Selecting delivery method")
     click_element(driver, By.ID, "DeliveryMethod")
@@ -947,12 +960,16 @@ def gen_conners_ec(
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
     sleep(1)
-
-    logger.debug("Selecting English")
-    language_select.select_by_visible_text("English")
+    if client["Language"] != "Spanish":
+        language_select.select_by_visible_text("English")
+    else:
+        language_select.select_by_visible_text("Spanish")
 
     logger.debug("Entering rater name")
-    find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    if client["Language"] != "Spanish":
+        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    else:
+        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
 
     logger.debug("Selecting next")
     click_element(driver, By.ID, "_btnnext")
@@ -1011,10 +1028,17 @@ def gen_conners_4(
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
     sleep(1)
-    language_select.select_by_visible_text("English")
+
+    if client["Language"] != "Spanish":
+        language_select.select_by_visible_text("English")
+    else:
+        language_select.select_by_visible_text("Spanish")
 
     logger.debug("Entering rater name")
-    find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    if client["Language"] != "Spanish":
+        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    else:
+        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
 
     logger.debug("Selecting next")
     click_element(driver, By.ID, "_btnnext")
@@ -1079,11 +1103,16 @@ def gen_conners_4_self(
     language_select = Select(language_element)
     sleep(1)
 
-    logger.debug("Selecting English")
-    language_select.select_by_visible_text("English")
+    if client["Language"] != "Spanish":
+        language_select.select_by_visible_text("English")
+    else:
+        language_select.select_by_visible_text("Spanish")
 
     logger.debug("Entering rater name")
-    find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    if client["Language"] != "Spanish":
+        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    else:
+        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
 
     logger.debug("Selecting next")
     click_element(driver, By.ID, "_btnnext")
@@ -1141,10 +1170,16 @@ def gen_asrs_2_5(
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
     sleep(1)
-    language_select.select_by_visible_text("English")
+    if client["Language"] != "Spanish":
+        language_select.select_by_visible_text("English")
+    else:
+        language_select.select_by_visible_text("Spanish")
 
     logger.debug("Entering rater name")
-    find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    if client["Language"] != "Spanish":
+        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    else:
+        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
 
     logger.debug("Selecting next")
     click_element(
@@ -1214,10 +1249,16 @@ def gen_asrs_6_18(
     logger.debug("Selecting language")
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
-    language_select.select_by_visible_text("English")
+    if client["Language"] != "Spanish":
+        language_select.select_by_visible_text("English")
+    else:
+        language_select.select_by_visible_text("Spanish")
 
     logger.debug("Entering rater name")
-    find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    if client["Language"] != "Spanish":
+        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+    else:
+        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
 
     logger.debug("Selecting next")
     click_element(
@@ -1502,7 +1543,10 @@ def gen_caars_2(
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
     sleep(1)
-    language_select.select_by_visible_text("English")
+    if client["Language"] != "Spanish":
+        language_select.select_by_visible_text("English")
+    else:
+        language_select.select_by_visible_text("Spanish")
 
     logger.debug("Selecting next")
     click_element(driver, By.ID, "_btnnext")
@@ -1829,8 +1873,8 @@ def main():
                         f"{client['Client Name']} has already failed to send because {error}, retrying"
                     )
 
-        if client["Language"] != "" and client["Language"] != "English":
-            logger.error(f"{client['Client Name']} doesn't speak English")
+        if client["Language"] not in ["", "English", "Spanish"]:
+            logger.error(f"{client['Client Name']} speaks {client['Language']}")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],
@@ -1857,6 +1901,19 @@ def main():
                 )
                 continue
 
+            client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
+            client["Age"] = relativedelta(datetime.now(), client_from_db.dob).years
+            client["Gender"] = client_from_db.gender
+            client["Phone Number"] = client_from_db.phoneNumber
+            if (
+                client_from_db.preferredName is not None
+                and client_from_db.preferredName != ""
+            ):
+                client["TA First Name"] = client_from_db.preferredName
+            else:
+                client["TA First Name"] = client_from_db.firstName
+            client["TA Last Name"] = client_from_db.lastName
+
             if client_from_db.autismStop:
                 logger.error(f"{client['Client Name']} has autism stop")
                 add_failure(
@@ -1870,76 +1927,65 @@ def main():
                 )
                 continue
 
-            client_url = go_to_client(driver, actions, client["Client ID"])
-
-            if not client_url:
-                logger.error("Client URL not found")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="unable to find client",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
-            if not check_if_opened_portal(driver):
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="portal not opened",
-                    failed_date=today,
-                    add_to_sheet=False,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
-            else:
-                if client.get("Previous Error") == "portal not opened":
-                    update_failure_in_db(
+            client_url = ""
+            if client["Language"] != "Spanish":
+                # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
+                client_url = go_to_client(driver, actions, client["Client ID"])
+                if not client_url:
+                    logger.error("Client URL not found")
+                    add_failure(
                         config=config,
                         client_id=client["Client ID"],
-                        reason=client["Previous Error"],
-                        da_eval=client["daeval"],
-                        resolved=True,
+                        error="unable to find client",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
                     )
-
-            if not check_if_docs_signed(driver):
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="docs not signed",
-                    failed_date=today,
-                    add_to_sheet=False,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
-            else:
-                if client.get("Previous Error") == "docs not signed":
-                    update_failure_in_db(
+                    continue
+                if not check_if_opened_portal(driver):
+                    add_failure(
                         config=config,
                         client_id=client["Client ID"],
-                        reason=client["Previous Error"],
-                        da_eval=client["daeval"],
-                        resolved=True,
+                        error="portal not opened",
+                        failed_date=today,
+                        add_to_sheet=False,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
                     )
+                    continue
+                else:
+                    if client.get("Previous Error") == "portal not opened":
+                        update_failure_in_db(
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason=client["Previous Error"],
+                            da_eval=client["daeval"],
+                            resolved=True,
+                        )
 
-            client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
-            client["Age"] = relativedelta(datetime.now(), client_from_db.dob).years
-            client["Gender"] = client_from_db.gender
-            client["Phone Number"] = client_from_db.phoneNumber
-            if (
-                client_from_db.preferredName is not None
-                and client_from_db.preferredName != ""
-            ):
-                client["TA First Name"] = client_from_db.preferredName
-            else:
-                client["TA First Name"] = client_from_db.firstName
-            client["TA Last Name"] = client_from_db.lastName
+                if not check_if_docs_signed(driver):
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="docs not signed",
+                        failed_date=today,
+                        add_to_sheet=False,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
+                else:
+                    if client.get("Previous Error") == "docs not signed":
+                        update_failure_in_db(
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason=client["Previous Error"],
+                            da_eval=client["daeval"],
+                            resolved=True,
+                        )
 
         except (NoSuchElementException, TimeoutException) as e:
             logger.error(f"Element not found: {e}")
@@ -2063,7 +2109,7 @@ def main():
                         continue
 
             logger.info(
-                f"{client['Client Name']} needs questionnaires for a {client['For']} {client['daeval']}: {questionnaires_needed}"
+                f"{client['Client Name']} needs questionnaires for {client['Language']}{' ' if client['Language'] != '' else ''}{client['For']} {client['daeval']}: {questionnaires_needed}"
             )
 
             questionnaires = []
@@ -2141,17 +2187,29 @@ def main():
                 update_punch_by_column(
                     config, client["Client ID"], client["daeval"], "sent"
                 )
-                for questionnaire in questionnaires:
-                    update_questionnaire_in_db(
-                        config,
-                        client["Client ID"],
-                        questionnaire["type"],
-                        datetime.today().strftime("%Y-%m-%d"),
-                        "PENDING",
-                    )
+
+                if client["Language"] != "Spanish":
+                    for questionnaire in questionnaires:
+                        update_questionnaire_in_db(
+                            config,
+                            client["Client ID"],
+                            questionnaire["type"],
+                            datetime.today().strftime("%Y-%m-%d"),
+                            "PENDING",
+                        )
 
                 message = format_ta_message(questionnaires)
-                send_message_ta(driver, client_url, message)
+
+                if client["Language"] == "Spanish":
+                    print(
+                        f"{client['TA First Name']} {client['TA Last Name']} speaks Spanish, not sending a TA message. Here are their questionnaires:"
+                    )
+                    print(message)
+                    input("\nPress enter to continue")
+
+                if client["Language"] != "Spanish":
+                    send_message_ta(driver, client_url, message)
+
         except Exception as e:
             logger.error(f"Error for {client['Client Name']}: {e}")
             add_failure(
