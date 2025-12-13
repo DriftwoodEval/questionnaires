@@ -1889,13 +1889,16 @@ def main():
         try:
             client_from_db = prev_clients.get(int(client["Client ID"]))
             if not client_from_db:
-                logger.error(f"{client['Client Name']} not found in DB")
+                logger.error(
+                    f"{client['Client Name']} not found in DB, do they exist in TherapyAppointment?"
+                )
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
-                    error="not in db",
+                    error="not in db or doesn't exist in therapyappointment",
                     failed_date=today,
                     full_name=client["Client Name"],
+                    add_to_db=False,
                     asd_adhd=client["For"],
                     daeval=client["daeval"],
                 )

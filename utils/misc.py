@@ -77,6 +77,7 @@ def add_failure(
     failed_date: date,
     full_name: str,
     add_to_sheet: Optional[bool] = True,
+    add_to_db: Optional[bool] = True,
     asd_adhd: Optional[str] = None,
     daeval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
     questionnaires_needed: Optional[list[str]] = None,
@@ -100,7 +101,8 @@ def add_failure(
             questionnaires_generated,
         )
 
-    add_failure_to_db(config, client_id, error, failed_date, daeval)
+    if add_to_db:
+        add_failure_to_db(config, client_id, error, failed_date, daeval)
 
 
 ### FORMATTING ###
