@@ -1,6 +1,6 @@
 import hashlib
 from datetime import date
-from typing import Literal, Optional
+from typing import Dict, List, Literal, Optional
 from urllib.parse import urlparse
 
 import pymysql.cursors
@@ -77,39 +77,52 @@ def get_previous_clients(
 def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
     """Get the failed clients from the database."""
     db_connection = get_db(config)
+
+    client_failures: Dict[int, List[Dict]] = {}
+    client_notes: Dict[int, Dict] = {}
+
     with db_connection:
         with db_connection.cursor() as cursor:
             sql = "SELECT * FROM emr_failure"
             cursor.execute(sql)
-            failures = cursor.fetchall()
-
-            sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
-            cursor.execute(sql)
-            clients = cursor.fetchall()
+            for failure in cursor.fetchall():
+                client_id = failure["clientId"]
+                if client_id not in client_failures:
+                    client_failures[client_id] = []
+                client_failures[client_id].append(failure)
 
             sql = "SELECT * FROM emr_note"
             cursor.execute(sql)
-            notes = cursor.fetchall()
+            for note in cursor.fetchall():
+                client_notes[note["clientId"]] = note
 
-            for failure in failures:
-                for client in clients:
-                    if failure["clientId"] == client["id"]:
-                        client["failure"] = failure
-            for note in notes:
-                for client in clients:
-                    if note["clientId"] == client["id"]:
-                        client["note"] = note
+            sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
+            cursor.execute(sql)
+            clients_data = cursor.fetchall()
 
-    failed_clients = {}
-    for client_data in clients:
-        if "failure" in client_data and client_data["failure"]["reminded"] < 100:
+    failed_clients: Dict[int, FailedClientFromDB] = {}
+    for client_data in clients_data:
+        client_id = client_data["id"]
+        failures = client_failures.get(client_id, [])
+        note = client_notes.get(client_id)
+
+        eligible_failures = [f for f in failures if f.get("reminded", 0) < 100]
+
+        if eligible_failures:
+            client_final_data = {
+                **client_data,
+                "failure": eligible_failures,
+                "note": note,
+            }
+
             try:
-                pydantic_client = FailedClientFromDB(**client_data)
-                failed_clients[pydantic_client.id] = pydantic_client
+                pydantic_client = FailedClientFromDB.model_validate(client_final_data)
+                failed_clients[client_id] = pydantic_client
             except Exception:
                 logger.exception(
-                    f"Failed to create FailedClientFromDB for ID {client_data.get('id', 'Unknown')}"
+                    f"Failed to create FailedClientFromDB for ID {client_id}"
                 )
+
     return failed_clients
 
 

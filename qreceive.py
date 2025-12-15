@@ -1,6 +1,6 @@
 import sys
 from datetime import date, datetime, timedelta
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from dateutil.relativedelta import relativedelta
 from loguru import logger
@@ -12,6 +12,7 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     FailedClientFromDB,
+    Failure,
     Questionnaire,
     Services,
     validate_questionnaires,
@@ -165,13 +166,17 @@ def build_q_message(
 
 def build_failure_message(config: Config, client: FailedClientFromDB) -> Optional[str]:
     """Builds a message to be sent to the client based on their failure."""
-    message = None
-    if client.failure["reason"] == "portal not opened":
-        message = f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
-    elif client.failure["reason"] == "docs not signed":
-        message = f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
+    for failure_data in client.failure:
+        reason = failure_data["reason"]
+        message = None
+        if reason == "portal not opened":
+            message = f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
+            return message
+        elif reason == "docs not signed":
+            message = f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
+            return message
 
-    return message
+    return None
 
 
 def should_send_reminder(reminded_count: int, last_reminded_distance: int) -> bool:
@@ -200,37 +205,52 @@ def check_failures(
     failed_clients: dict[int, FailedClientFromDB],
 ):
     """Checks the failures of clients and updates them in the database."""
-    check_and_login_ta(driver, actions, services, first_time=True)
-
+    logger.debug("Checking on failures for clients")
     two_years_ago = date.today() - relativedelta(years=2)
     five_years_ago = date.today() - relativedelta(years=5)
 
     for client_id, client in failed_clients.items():
-        reason = client.failure["reason"]
-        is_resolved = False
+        for failure_data in client.failure:
+            reason = failure_data["reason"]
+            is_resolved = False
 
-        if reason in ["portal not opened", "docs not signed"]:
-            go_to_client(driver, actions, services, str(client_id))
-            if reason == "portal not opened":
-                is_resolved = check_if_opened_portal(driver)
-            elif reason == "docs not signed":
-                is_resolved = check_if_docs_signed(driver)
+            if reason in ["portal not opened", "docs not signed"]:
+                go_to_client(driver, actions, services, str(client_id))
+                if reason == "portal not opened":
+                    is_resolved = check_if_opened_portal(driver)
+                elif reason == "docs not signed":
+                    is_resolved = check_if_docs_signed(driver)
 
-        elif reason == "too young for asd" and client.dob is not None:
-            is_resolved = client.dob < two_years_ago
+            elif reason == "too young for asd" and client.dob is not None:
+                is_resolved = client.dob < two_years_ago
 
-        elif reason == "too young for adhd" and client.dob is not None:
-            is_resolved = client.dob < five_years_ago
+            elif reason == "too young for adhd" and client.dob is not None:
+                is_resolved = client.dob < five_years_ago
 
-        if is_resolved:
-            update_failure_in_db(config, client_id, reason, resolved=True)
-            logger.info(f"Resolved failure for {client.fullName}")
-        else:
-            # This updates the checked date
-            update_failure_in_db(config, client_id, reason)
+            if is_resolved:
+                update_failure_in_db(config, client_id, reason, resolved=True)
+                logger.info(f"Resolved failure for {client.fullName}")
+            else:
+                # This updates the checked date
+                update_failure_in_db(config, client_id, reason)
 
 
 ClientType = Union[FailedClientFromDB, ClientWithQuestionnaires]
+
+
+def get_most_recent_failure(
+    client: FailedClientFromDB,
+) -> Optional[Failure]:
+    """Get the most recent failure that is still not resolved from the given client by taking max of failure["failedDate"]."""
+    unresolved_failures = (
+        f
+        for f in client.failure
+        if (f["reminded"] < 100) and f["failedDate"] is not None
+    )
+
+    return max(
+        unresolved_failures, key=lambda f: cast(date, f["failedDate"]), default=None
+    )
 
 
 def main():
@@ -276,27 +296,40 @@ def main():
         clients, failed_clients = get_previous_clients(config, failed=True)
 
         messages_sent: list[
-            tuple[FailedClientFromDB | ClientWithQuestionnaires, str]
+            tuple[FailedClientFromDB | ClientWithQuestionnaires, str, str | None]
         ] = []
         numbers_sent = []
 
         if failed_clients:
             for _, client in failed_clients.items():
-                if client.failure["reason"] in ["portal not opened", "docs not signed"]:
+                if any(
+                    failure["reason"] in ["portal not opened", "docs not signed"]
+                    for failure in client.failure
+                ):
                     if client.note and "app.pandadoc.com" in str(client.note):
                         logger.info(
                             f"{client.fullName} likely doesn't speak English, skipping"
                         )
                         continue
 
-                    last_reminded = client.failure["lastReminded"]
+                    most_recent_failure = get_most_recent_failure(client)
+                    if not most_recent_failure:
+                        logger.warning(
+                            f"{client.fullName} has no unresolved failures, skipping"
+                        )
+                        continue
+
+                    reason = most_recent_failure["reason"]
+                    reminded_count = most_recent_failure["reminded"]
+                    last_reminded = most_recent_failure["lastReminded"]
+
                     if last_reminded is not None:
                         last_reminded_distance = check_distance(last_reminded)
                     else:
                         last_reminded_distance = 0
 
                     logger.info(
-                        f"{client.fullName} has issue {client.failure['reason']}"
+                        f"{client.fullName} has failure {reason}, checking if they should be reminded"
                     )
 
                     if not client.phoneNumber:
@@ -311,21 +344,24 @@ def main():
                             f"Already messaged {client.fullName} at {client.phoneNumber} today"
                         )
 
-                    if client.failure["reminded"] == 3 and last_reminded_distance > 3:
+                    if reminded_count == 3 and last_reminded_distance > 3:
                         email_info["call"].append(client)
-                        client.failure["reminded"] += 1
-                        client.failure["lastReminded"] = date.today()
+                        update_failure_in_db(
+                            config,
+                            client.id,
+                            reason,
+                            reminded=reminded_count + 1,
+                            last_reminded=date.today(),
+                        )
 
                     elif (
-                        client.failure["reminded"] < 3
+                        reminded_count < 3
                         and not already_messaged_today
                         and client.phoneNumber
                     ):
-                        if should_send_reminder(
-                            client.failure["reminded"], last_reminded_distance
-                        ):
+                        if should_send_reminder(reminded_count, last_reminded_distance):
                             logger.info(f"Sending reminder TO {client.fullName}")
-                            if client.failure["reason"] == "portal not opened":
+                            if reason == "portal not opened":
                                 try:
                                     resend_portal_invite(
                                         driver, actions, services, str(client.id)
@@ -354,7 +390,10 @@ def main():
 
                                 if attempt_text and "id" in attempt_text:
                                     numbers_sent.append(client.phoneNumber)
-                                    messages_sent.append((client, attempt_text["id"]))
+                                    messages_sent.append(
+                                        (client, attempt_text["id"], reason)
+                                    )
+
                                 else:
                                     logger.error(
                                         f"Failed to send message to {client.fullName}"
@@ -444,7 +483,9 @@ def main():
 
                                 if attempt_text and "id" in attempt_text:
                                     numbers_sent.append(client.phoneNumber)
-                                    messages_sent.append((client, attempt_text["id"]))
+                                    messages_sent.append(
+                                        (client, attempt_text["id"], None)
+                                    )
                                 else:
                                     logger.error(
                                         f"Failed to send message to {client.fullName}"
@@ -472,7 +513,7 @@ def main():
 
         clients_to_update_db = []
 
-        for client, message_id in messages_sent:
+        for client, message_id, failure_reason in messages_sent:
             try:
                 delivered = openphone.check_text_delivered(message_id)
 
@@ -481,10 +522,33 @@ def main():
                         f"Successfully delivered message to {client.fullName} ({message_id})"
                     )
 
-                    if isinstance(client, FailedClientFromDB):
-                        client.failure["reminded"] += 1
-                        client.failure["lastReminded"] = date.today()
-                        clients_to_update_db.append(client)
+                    if failure_reason is not None and isinstance(
+                        client, FailedClientFromDB
+                    ):
+                        failure_to_update = next(
+                            (
+                                f
+                                for f in client.failure
+                                if f.get("reason") == failure_reason
+                            ),
+                            None,
+                        )
+                        if failure_to_update:
+                            new_reminded_count = failure_to_update["reminded"] + 1
+                            today = date.today()
+
+                            clients_to_update_db.append(
+                                (
+                                    client.id,
+                                    failure_reason,
+                                    new_reminded_count,
+                                    today,
+                                )
+                            )
+                        else:
+                            logger.error(
+                                f"Delivered message for unknown failure reason '{failure_reason}' for {client.fullName}"
+                            )
                     elif isinstance(client, ClientWithQuestionnaires):
                         for q in client.questionnaires:
                             if (
@@ -512,16 +576,11 @@ def main():
 
         # Update DB
         for client in clients_to_update_db:
-            if isinstance(client, FailedClientFromDB):
-                update_failure_in_db(
-                    config,
-                    client.id,
-                    client.failure["reason"],
-                    reminded=client.failure["reminded"],
-                    last_reminded=client.failure["lastReminded"],
-                )
-            elif isinstance(client, ClientWithQuestionnaires):
+            if isinstance(client, ClientWithQuestionnaires):
                 update_questionnaires_in_db(config, [client])
+            else:
+                client_id, reason, reminded, last_reminded = client
+                update_failure_in_db(config, client_id, reason, reminded, last_reminded)
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"

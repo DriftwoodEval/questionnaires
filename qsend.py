@@ -2,7 +2,7 @@ import re
 import sys
 from datetime import date, datetime
 from time import sleep, strftime, strptime
-from typing import Union
+from typing import Dict, Tuple, Union
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -1825,51 +1825,62 @@ def write_file(filepath: str, data: str) -> None:
 
 
 def check_client_failed(
-    prev_failed_clients: dict[int, FailedClientFromDB], client_info: pd.Series
-) -> tuple[bool, Union[str, None]]:
-    """Checks if the client has failed before.
+    prev_failed_clients: Dict[int, FailedClientFromDB], client_info: pd.Series
+) -> Tuple[bool, Union[str, None]]:
+    """Checks if the client has a previous, unresolved failure that prevents scheduling.
 
     Args:
-        prev_failed_clients (dict): A dictionary where the keys are client IDs and the values are dictionaries containing
-            client information.
-        client_info (pd.Series): A Pandas Series containing the client to be checked's data.
+        prev_failed_clients (dict): Dictionary of previously failed clients (ID -> FailedClientFromDB object).
+        client_info (pd.Series): Pandas Series containing the client to be checked's data.
 
     Returns:
-        bool: True if the client has failed before, False if not.
-
-    A client is considered to have failed before if their ID is in the prev_failed_clients dictionary and they are looking for the same appointment type as before.
+        tuple[bool, Union[str, None]]: (True, error_reason) if a match is found, otherwise (False, None).
     """
     logger.debug("Checking if client failed previously")
-    if prev_failed_clients == {}:
+
+    if not prev_failed_clients:
         return (False, None)
 
-    client_id = client_info["Client ID"]
-    if client_id and isinstance(prev_failed_clients, dict):
-        client_id = int(client_id)
-        if client_id not in prev_failed_clients:
-            return (False, None)
+    client_id_raw = client_info.get("Client ID")
+    if not client_id_raw:
+        return (False, None)
 
-        prev_failed_client = prev_failed_clients[client_id]
+    try:
+        client_id = int(client_id_raw)
+    except ValueError:
+        logger.warning(f"Client ID '{client_id_raw}' is not a valid integer.")
+        return (False, None)
 
-        if prev_failed_client.failure["reminded"] >= 100:
-            return (False, None)
+    if client_id not in prev_failed_clients:
+        return (False, None)
 
-        prev_daeval = prev_failed_client.failure.get("daEval", None)
-        daeval = client_info["daeval"]
+    prev_failed_client = prev_failed_clients[client_id]
 
+    current_daeval = client_info.get("daeval")
+
+    for failure in prev_failed_client.failure:
+        if failure.get("reminded", 0) >= 100:
+            continue
+
+        prev_daeval = failure.get("daEval", None)
+        reason = failure.get("reason", None)
+
+        # Don't count records failures for QSend
         if prev_daeval == "Records":
-            # Don't count records failures for QSend
-            return (False, None)
+            continue
 
-        error = prev_failed_client.failure.get("reason", None)
-        error = str(error).lower()
-        if daeval == "DA":
+        error = str(reason).lower() if reason else None
+
+        if current_daeval == "DA":
             return (True, error)
-        elif daeval == "EVAL" and prev_daeval == "DA":
-            return (False, error)
-        elif daeval == "EVAL" and prev_daeval != "DA":
-            return (True, error)
-        elif daeval == "DAEVAL":
+
+        elif current_daeval == "EVAL":
+            if prev_daeval == "DA":
+                continue
+            else:
+                return (True, error)
+
+        elif current_daeval == "DAEVAL":
             return (True, error)
 
     return (False, None)

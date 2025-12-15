@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated, Literal, Optional, TypedDict, Union
+from typing import Annotated, List, Literal, Optional, TypedDict, Union
 
 from pydantic import (
     BaseModel,
@@ -232,14 +232,14 @@ class ClientWithQuestionnaires(_ClientBase):
 class FailedClientFromDB(ClientFromDB):
     """A Pydantic model representing a failed client from the database."""
 
-    failure: Failure
+    failure: List[Failure]
     note: Optional[dict] = None
 
     @field_validator("failure")
-    def validate_failure(cls, v: Failure) -> Failure:
-        """Validate that the client has a failure."""
+    def validate_failure(cls, v: List[Failure]) -> List[Failure]:
+        """Validate that the client has at least one failure."""
         if not v:
-            raise ValueError("Client has no failure")
+            raise ValueError("Client has no failures")
         return v
 
 
