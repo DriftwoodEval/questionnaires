@@ -32,11 +32,11 @@ from utils.questionnaires import (
     get_most_recent_not_done,
 )
 from utils.selenium import (
+    check_and_login_ta,
     check_if_docs_signed,
     check_if_opened_portal,
     go_to_client,
     initialize_selenium,
-    login_ta,
     resend_portal_invite,
 )
 
@@ -200,7 +200,7 @@ def check_failures(
     failed_clients: dict[int, FailedClientFromDB],
 ):
     """Checks the failures of clients and updates them in the database."""
-    login_ta(driver, actions, services)
+    check_and_login_ta(driver, actions, services, first_time=True)
 
     two_years_ago = date.today() - relativedelta(years=2)
     five_years_ago = date.today() - relativedelta(years=5)
@@ -210,7 +210,7 @@ def check_failures(
         is_resolved = False
 
         if reason in ["portal not opened", "docs not signed"]:
-            go_to_client(driver, actions, str(client_id))
+            go_to_client(driver, actions, services, str(client_id))
             if reason == "portal not opened":
                 is_resolved = check_if_opened_portal(driver)
             elif reason == "docs not signed":
@@ -328,7 +328,7 @@ def main():
                             if client.failure["reason"] == "portal not opened":
                                 try:
                                     resend_portal_invite(
-                                        driver, actions, str(client.id)
+                                        driver, actions, services, str(client.id)
                                     )
                                 except Exception as e:
                                     logger.error(

@@ -182,11 +182,6 @@ def login_ta(
         services (Services): The configuration object containing the TherapyAppointment credentials.
         admin (bool, optional): Whether to log in as an admin user. Defaults to False.
     """
-    logger.info("Logging in to TherapyAppointment")
-
-    logger.debug("Going to login page")
-    driver.get("https://portal.therapyappointment.com")
-
     logger.debug("Entering username")
     username_field = find_element(driver, By.NAME, "user_username")
     username_field.send_keys(
@@ -208,8 +203,32 @@ def login_ta(
     actions.perform()
 
 
+def check_and_login_ta(
+    driver: WebDriver,
+    actions: ActionChains,
+    services: Services,
+    first_time: bool = False,
+    admin: bool = False,
+) -> None:
+    """Check if logged in to TherapyAppointment and log in if not."""
+    ta_url = "https://portal.therapyappointment.com"
+    if first_time:
+        logger.debug("First time login to TherapyAppointment, logging in now.")
+        driver.get(ta_url)
+        login_ta(driver, actions, services, admin)
+        return
+    try:
+        logger.debug("Checking if logged in to TherapyAppointment")
+        driver.get(ta_url)
+        find_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]", timeout=2)
+        logger.debug("Already logged in to TherapyAppointment")
+    except (NoSuchElementException, TimeoutException):
+        logger.debug("Not logged in to TherapyAppointment, logging in now.")
+        login_ta(driver, actions, services, admin)
+
+
 def go_to_client(
-    driver: WebDriver, actions: ActionChains, client_id: str
+    driver: WebDriver, actions: ActionChains, services: Services, client_id: str
 ) -> str | None:
     """Navigates to the given client in TA and returns the client's URL."""
 
@@ -236,9 +255,9 @@ def go_to_client(
         click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
 
     def _go_to_client_loop(
-        driver: WebDriver, actions: ActionChains, client_id: str
+        driver: WebDriver, actions: ActionChains, services: Services, client_id: str
     ) -> str:
-        driver.get("https://portal.therapyappointment.com")
+        check_and_login_ta(driver, actions, services)
         sleep(1)
         logger.debug("Navigating to Clients section")
         click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
@@ -272,7 +291,7 @@ def go_to_client(
 
     for attempt in range(3):
         try:
-            return _go_to_client_loop(driver, actions, client_id)
+            return _go_to_client_loop(driver, actions, services, client_id)
         except Exception as e:
             if attempt == 2:
                 logger.error(f"Failed to go to client after 3 attempts: {e}")
@@ -310,10 +329,10 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
 
 
 def resend_portal_invite(
-    driver: WebDriver, actions: ActionChains, client_id: str
+    driver: WebDriver, actions: ActionChains, services: Services, client_id: str
 ) -> None:
     """Resend the TA portal invite to the client."""
-    go_to_client(driver, actions, client_id)
+    go_to_client(driver, actions, services, client_id)
     try:
         click_element(
             driver,

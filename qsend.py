@@ -31,13 +31,13 @@ from utils.database import (
 from utils.google import get_punch_list, update_punch_by_column
 from utils.misc import add_failure, load_config
 from utils.selenium import (
+    check_and_login_ta,
     check_if_docs_signed,
     check_if_opened_portal,
     click_element,
     find_element,
     go_to_client,
     initialize_selenium,
-    login_ta,
 )
 
 logger.remove()
@@ -103,9 +103,6 @@ def rearrange_dob(dob: str) -> str:
 
 def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> None:
     """Log in to WPS."""
-    logger.info("Logging in to WPS")
-    driver.get("https://platform.wpspublish.com")
-
     logger.debug("Going to login page")
     click_element(driver, By.ID, "loginID")
 
@@ -120,14 +117,31 @@ def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> N
     actions.perform()
 
 
+def check_and_login_wps(
+    driver: WebDriver,
+    actions: ActionChains,
+    services: Services,
+    first_time: bool = False,
+) -> None:
+    """Check if logged in to WPS and log in if not."""
+    wps_url = "https://platform.wpspublish.com"
+    if first_time:
+        logger.debug("First time login to WPS, logging in now.")
+        driver.get(wps_url)
+        login_wps(driver, actions, services)
+        return
+    try:
+        logger.debug("Checking if logged in to WPS")
+        driver.get(wps_url)
+        find_element(driver, By.XPATH, "h2[text()='Dashboard']", timeout=2)
+        logger.debug("Already logged in to WPS")
+    except (NoSuchElementException, TimeoutException):
+        logger.debug("Not logged in to WPS, logging in now.")
+        login_wps(driver, actions, services)
+
+
 def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) -> None:
     """Log in to QGlobal."""
-    logger.info("Logging in to QGlobal")
-    driver.get("https://qglobal.pearsonassessments.com/")
-
-    logger.debug("Waiting for page to load")
-    sleep(3)
-
     logger.debug("Attempting to escape cookies popup")
     actions.send_keys(Keys.TAB)
     actions.send_keys(Keys.TAB)
@@ -146,11 +160,31 @@ def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) 
     password.send_keys(Keys.ENTER)
 
 
+def check_and_login_qglobal(
+    driver: WebDriver,
+    actions: ActionChains,
+    services: Services,
+    first_time: bool = False,
+) -> None:
+    """Check if logged in to QGlobal and log in if not."""
+    qglobal_url = "https://qglobal.pearsonassessments.com"
+    if first_time:
+        logger.debug("First time login to QGlobal, logging in now.")
+        driver.get(qglobal_url)
+        login_qglobal(driver, actions, services)
+        return
+    try:
+        logger.debug("Checking if logged in to QGlobal")
+        driver.get(qglobal_url)
+        find_element(driver, By.XPATH, "//a[text()='Search']", timeout=2)
+        logger.debug("Already logged in to QGlobal")
+    except (NoSuchElementException, TimeoutException):
+        logger.debug("Not logged in to QGlobal, logging in now.")
+        login_qglobal(driver, actions, services)
+
+
 def login_mhs(driver: WebDriver, actions: ActionChains, services: Services) -> None:
     """Log in to MHS."""
-    logger.info("Logging in to MHS")
-    driver.get("https://assess.mhs.com/Account/Login.aspx")
-
     logger.debug("Entering username")
     username = find_element(driver, By.NAME, "txtUsername")
 
@@ -162,6 +196,34 @@ def login_mhs(driver: WebDriver, actions: ActionChains, services: Services) -> N
     logger.debug("Submitting login form")
     actions.send_keys(Keys.ENTER)
     actions.perform()
+
+
+def check_and_login_mhs(
+    driver: WebDriver,
+    actions: ActionChains,
+    services: Services,
+    first_time: bool = False,
+) -> None:
+    """Check if logged in to MHS and log in if not."""
+    mhs_url = "https://assess.mhs.com"
+    if first_time:
+        logger.debug("First time login to MHS, logging in now.")
+        driver.get(mhs_url)
+        login_mhs(driver, actions, services)
+        return
+    try:
+        logger.debug("Checking if logged in to MHS")
+        driver.get(mhs_url)
+        find_element(
+            driver,
+            By.XPATH,
+            "//h1[normalize-space(text())='START A NEW ASSESSMENT']",
+            timeout=2,
+        )
+        logger.debug("Already logged in to MHS")
+    except (NoSuchElementException, TimeoutException):
+        logger.debug("Not logged in to MHS, logging in now.")
+        login_mhs(driver, actions, services)
 
 
 def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) -> None:
@@ -193,14 +255,14 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 
 
 def check_for_qglobal_account(
-    driver: WebDriver, actions: ActionChains, client: pd.Series
+    driver: WebDriver, actions: ActionChains, services: Services, client: pd.Series
 ) -> bool:
     """Check if a client has an account on QGlobal.
 
     Returns:
         bool: True if the client has an account on QGlobal, False otherwise.
     """
-    driver.get("https://qglobal.pearsonassessments.com/qg/searchExaminee.seam")
+    check_and_login_qglobal(driver, actions, services)
     search_qglobal(driver, actions, client)
 
     logger.info("Checking for QGlobal account")
@@ -641,6 +703,7 @@ def assign_questionnaire(
     driver: WebDriver,
     actions: ActionChains,
     config: Config,
+    services: Services,
     client: pd.Series,
     questionnaire: str,
     accounts_created: dict[str, bool],
@@ -653,6 +716,7 @@ def assign_questionnaire(
        actions (ActionChains): The ActionChains instance used for
            simulating user actions.
        config (Config): The configuration object.
+       services (Services): The services object.
        client (pd.Series): A Pandas Series containing the client's data.
        questionnaire (str): The type of questionnaire to be added to MHS.
        accounts_created (dict[str, bool]): A dictionary containing the
@@ -665,81 +729,74 @@ def assign_questionnaire(
     logger.info(
         f"Assigning questionnaire '{questionnaire}' to {client['TA First Name']} {client['TA Last Name']}"
     )
-    mhs_url = "https://assess.mhs.com/MainPortal.aspx"
-    qglobal_url = "https://qglobal.pearsonassessments.com/qg/searchExaminee.seam"
-    wps_url = "https://platform.wpspublish.com/administration/details/4116148"
 
     if questionnaire == "Conners EC":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        driver.get(mhs_url)
-        return gen_conners_ec(driver, actions, client, accounts_created)
+        return gen_conners_ec(driver, actions, services, client, accounts_created)
     elif questionnaire == "Conners 4":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        driver.get(mhs_url)
-        return gen_conners_4(driver, actions, client, accounts_created)
+        return gen_conners_4(driver, actions, services, client, accounts_created)
     elif questionnaire == "Conners 4 Self":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        driver.get(mhs_url)
-        return gen_conners_4_self(driver, actions, client, accounts_created)
+        return gen_conners_4_self(driver, actions, services, client, accounts_created)
     elif questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        driver.get(qglobal_url)
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, client):
+            if check_for_qglobal_account(driver, actions, services, client):
                 accounts_created["qglobal"] = True
             else:
                 accounts_created["qglobal"] = add_client_to_qglobal(
                     driver, actions, client
                 )
-        return gen_basc_preschool(driver, actions, config, client), accounts_created
+        return gen_basc_preschool(
+            driver, actions, config, services, client
+        ), accounts_created
     elif questionnaire == "BASC Child":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        driver.get(qglobal_url)
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, client):
+            if check_for_qglobal_account(driver, actions, services, client):
                 accounts_created["qglobal"] = True
             else:
                 accounts_created["qglobal"] = add_client_to_qglobal(
                     driver, actions, client
                 )
-        return gen_basc_child(driver, actions, config, client), accounts_created
+        return gen_basc_child(
+            driver, actions, config, services, client
+        ), accounts_created
     elif questionnaire == "BASC Adolescent":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        driver.get(qglobal_url)
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, client):
+            if check_for_qglobal_account(driver, actions, services, client):
                 accounts_created["qglobal"] = True
             else:
                 accounts_created["qglobal"] = add_client_to_qglobal(
                     driver, actions, client
                 )
-        return gen_basc_adolescent(driver, actions, config, client), accounts_created
+        return gen_basc_adolescent(
+            driver, actions, config, services, client
+        ), accounts_created
     elif questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        driver.get(mhs_url)
-        return gen_asrs_2_5(driver, actions, client, accounts_created)
+        return gen_asrs_2_5(driver, actions, services, client, accounts_created)
     elif questionnaire == "ASRS (6-18 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        driver.get(mhs_url)
-        return gen_asrs_6_18(driver, actions, client, accounts_created)
+        return gen_asrs_6_18(driver, actions, services, client, accounts_created)
     elif questionnaire == "Vineland":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        driver.get(qglobal_url)
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, client):
+            if check_for_qglobal_account(driver, actions, services, client):
                 accounts_created["qglobal"] = True
             else:
                 accounts_created["qglobal"] = add_client_to_qglobal(
                     driver, actions, client
                 )
-        return gen_vineland(driver, actions, config, client), accounts_created
+        return gen_vineland(driver, actions, config, services, client), accounts_created
     elif questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        driver.get(mhs_url)
-        return gen_caars_2(driver, actions, client, accounts_created)
+        return gen_caars_2(driver, actions, services, client, accounts_created)
     elif questionnaire == "DP4":
         logger.debug(f"Navigating to WPS for {questionnaire}")
-        driver.get(wps_url)
+        check_and_login_wps(driver, actions, services)
         return gen_dp4(driver, actions, config, client), accounts_created
     else:
         logger.critical("Unexpected questionnaire type encountered")
@@ -915,10 +972,12 @@ def gen_dp4(
 def gen_conners_ec(
     driver: WebDriver,
     actions: ActionChains,
+    services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners EC assessment for the given client and returns the link."""
+    check_and_login_mhs(driver, actions, services)
     logger.info(
         f"Generating Conners EC for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -988,9 +1047,14 @@ def gen_conners_ec(
 
 
 def gen_conners_4(
-    driver: WebDriver, actions: ActionChains, client: pd.Series, accounts_created: dict
+    driver: WebDriver,
+    actions: ActionChains,
+    services: Services,
+    client: pd.Series,
+    accounts_created: dict,
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners 4 assessment for the given client and returns the link."""
+    check_and_login_mhs(driver, actions, services)
     logger.info(
         f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1057,10 +1121,12 @@ def gen_conners_4(
 def gen_conners_4_self(
     driver: WebDriver,
     actions: ActionChains,
+    services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners 4 Self assessment for the given client and returns the link."""
+    check_and_login_mhs(driver, actions, services)
     logger.info(
         f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1131,10 +1197,12 @@ def gen_conners_4_self(
 def gen_asrs_2_5(
     driver: WebDriver,
     actions: ActionChains,
+    services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates an ASRS 2-5 assessment for the given client and returns the link."""
+    check_and_login_mhs(driver, actions, services)
     logger.info(
         f"Generating ASRS (2-5 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1210,10 +1278,12 @@ def gen_asrs_2_5(
 def gen_asrs_6_18(
     driver: WebDriver,
     actions: ActionChains,
+    services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates an ASRS 6-18 assessment for the given client and returns the link."""
+    check_and_login_mhs(driver, actions, services)
     logger.info(
         f"Generating ASRS (6-18 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1317,12 +1387,17 @@ def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
 
 
 def gen_basc_preschool(
-    driver: WebDriver, actions: ActionChains, config: Config, client: pd.Series
+    driver: WebDriver,
+    actions: ActionChains,
+    config: Config,
+    services: Services,
+    client: pd.Series,
 ) -> str:
     """Generates a BASC Preschool assessment for the given client and returns the link."""
     logger.info(
         f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
     )
+    check_and_login_qglobal(driver, actions, services)
     search_qglobal(driver, actions, client)
     sleep(3)
 
@@ -1359,12 +1434,17 @@ def gen_basc_preschool(
 
 
 def gen_basc_child(
-    driver: WebDriver, actions: ActionChains, config: Config, client: pd.Series
+    driver: WebDriver,
+    actions: ActionChains,
+    config: Config,
+    services: Services,
+    client: pd.Series,
 ) -> str:
     """Generates a BASC Child assessment for the given client and returns the link."""
     logger.info(
         f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
     )
+    check_and_login_qglobal(driver, actions, services)
     search_qglobal(driver, actions, client)
     sleep(3)
 
@@ -1401,12 +1481,17 @@ def gen_basc_child(
 
 
 def gen_basc_adolescent(
-    driver: WebDriver, actions: ActionChains, config: Config, client: pd.Series
+    driver: WebDriver,
+    actions: ActionChains,
+    config: Config,
+    services: Services,
+    client: pd.Series,
 ) -> str:
     """Generates a BASC Adolescent assessment for the given client and returns the link."""
     logger.info(
         f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
     )
+    check_and_login_qglobal(driver, actions, services)
     search_qglobal(driver, actions, client)
     sleep(3)
 
@@ -1443,12 +1528,17 @@ def gen_basc_adolescent(
 
 
 def gen_vineland(
-    driver: WebDriver, actions: ActionChains, config: Config, client: pd.Series
+    driver: WebDriver,
+    actions: ActionChains,
+    config: Config,
+    services: Services,
+    client: pd.Series,
 ) -> str:
     """Generates a Vineland assessment for the given client and returns the link."""
     logger.info(
         f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
     )
+    check_and_login_qglobal(driver, actions, services)
     search_qglobal(driver, actions, client)
     sleep(3)
 
@@ -1502,10 +1592,12 @@ def gen_vineland(
 def gen_caars_2(
     driver: WebDriver,
     actions: ActionChains,
+    services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates a CAARS 2 assessment for the given client and returns the link."""
+    check_and_login_mhs(driver, actions, services)
     logger.info(
         f"Generating CAARS 2 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -1829,10 +1921,15 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    for login in [login_ta, login_wps, login_qglobal, login_mhs]:
+    for login in [
+        check_and_login_ta,
+        check_and_login_wps,
+        check_and_login_qglobal,
+        check_and_login_mhs,
+    ]:
         while True:
             try:
-                login(driver, actions, services)
+                login(driver, actions, services, first_time=True)
                 sleep(1)
                 break
             except Exception as e:
@@ -1933,7 +2030,9 @@ def main():
             client_url = ""
             if client["Language"] != "Spanish":
                 # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
-                client_url = go_to_client(driver, actions, client["Client ID"])
+                client_url = go_to_client(
+                    driver, actions, services, client["Client ID"]
+                )
                 if not client_url:
                     logger.error("Client URL not found")
                     add_failure(
@@ -2124,6 +2223,7 @@ def main():
                         driver,
                         actions,
                         config,
+                        services,
                         client,
                         questionnaire,
                         accounts_created,
