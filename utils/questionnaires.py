@@ -200,6 +200,11 @@ def check_questionnaires(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
                     )
                     continue
+                if questionnaire["status"] == "ARCHIVED":
+                    logger.info(
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is archived"
+                    )
+                    continue
                 if not questionnaire["link"]:
                     logger.warning(
                         f"No link found for {client.fullName}'s {questionnaire['questionnaireType']}"
