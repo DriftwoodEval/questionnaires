@@ -580,7 +580,13 @@ def main():
                 update_questionnaires_in_db(config, [client])
             else:
                 client_id, reason, reminded, last_reminded = client
-                update_failure_in_db(config, client_id, reason, reminded, last_reminded)
+                update_failure_in_db(
+                    config,
+                    client_id,
+                    reason,
+                    reminded=reminded,
+                    last_reminded=last_reminded,
+                )
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"
