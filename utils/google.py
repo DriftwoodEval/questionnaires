@@ -6,7 +6,7 @@ import re
 from datetime import date
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import pandas as pd
 from google.auth.transport.requests import Request
@@ -22,6 +22,7 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
 )
+from utils.database import get_most_recent_failure
 from utils.questionnaires import get_most_recent_not_done
 
 # If modifying these scopes, delete the file token.json.
@@ -215,14 +216,14 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             "Call:\n"
             + "\n".join(
                 [
-                    f"- {client.fullName} (sent on {most_recent_q['sent'] and most_recent_q['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
+                    f"- {client.fullName} (sent on {most_recent['sent'] and most_recent['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
                     if isinstance(client, ClientWithQuestionnaires)
-                    else f"- {client.fullName} ({client.failure['reason'].capitalize()} on {client.failure['failedDate'].strftime('%m/%d')}, reminded {str(client.failure['reminded']) + ' times'})"
+                    else f"- {client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
                     for client in email_info["call"]
                     if (
-                        most_recent_q := get_most_recent_not_done(client)
+                        most_recent := get_most_recent_not_done(client)
                         if isinstance(client, ClientWithQuestionnaires)
-                        else None
+                        else get_most_recent_failure(client)
                     )
                 ]
             )
@@ -231,14 +232,14 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_html += (
             "<h2>Call</h2><ul><li>"
             + "</li><li>".join(
-                f"{client.fullName} (sent on {most_recent_q['sent'] and most_recent_q['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent_q['reminded']) + ' times' if most_recent_q else 'unknown number of times'})"
+                f"{client.fullName} (sent on {most_recent['sent'] and most_recent['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
                 if isinstance(client, ClientWithQuestionnaires)
-                else f"{client.fullName} ({client.failure['reason'].capitalize()} on {client.failure['failedDate'].strftime('%m/%d')}, reminded {str(client.failure['reminded']) + ' times'})"
+                else f"{client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times' if get_most_recent_failure(client) else 'unknown number of times'})"
                 for client in email_info["call"]
                 if (
-                    most_recent_q := get_most_recent_not_done(client)
+                    most_recent := get_most_recent_not_done(client)
                     if isinstance(client, ClientWithQuestionnaires)
-                    else None
+                    else get_most_recent_failure(client)
                 )
             )
             + "</li></ul>"

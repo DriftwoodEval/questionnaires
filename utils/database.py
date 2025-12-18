@@ -1,6 +1,6 @@
 import hashlib
 from datetime import date
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, cast
 from urllib.parse import urlparse
 
 import pymysql.cursors
@@ -12,6 +12,7 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     FailedClientFromDB,
+    Failure,
 )
 
 
@@ -419,3 +420,18 @@ def update_failure_in_db(
 
             cursor.execute(sql, values)
             db_connection.commit()
+
+
+def get_most_recent_failure(
+    client: FailedClientFromDB,
+) -> Optional[Failure]:
+    """Get the most recent failure that is still not resolved from the given client by taking max of failure["failedDate"]."""
+    unresolved_failures = (
+        f
+        for f in client.failure
+        if (f["reminded"] < 100) and f["failedDate"] is not None
+    )
+
+    return max(
+        unresolved_failures, key=lambda f: cast(date, f["failedDate"]), default=None
+    )

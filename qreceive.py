@@ -18,6 +18,7 @@ from utils.custom_types import (
     validate_questionnaires,
 )
 from utils.database import (
+    get_most_recent_failure,
     get_previous_clients,
     update_failure_in_db,
     update_questionnaires_in_db,
@@ -236,21 +237,6 @@ def check_failures(
 
 
 ClientType = Union[FailedClientFromDB, ClientWithQuestionnaires]
-
-
-def get_most_recent_failure(
-    client: FailedClientFromDB,
-) -> Optional[Failure]:
-    """Get the most recent failure that is still not resolved from the given client by taking max of failure["failedDate"]."""
-    unresolved_failures = (
-        f
-        for f in client.failure
-        if (f["reminded"] < 100) and f["failedDate"] is not None
-    )
-
-    return max(
-        unresolved_failures, key=lambda f: cast(date, f["failedDate"]), default=None
-    )
 
 
 def main():
