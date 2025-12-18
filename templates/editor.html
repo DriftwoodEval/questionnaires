@@ -236,6 +236,17 @@
         font-weight: 600;
         color: #4a5568;
       }
+      .form-check label {
+        display: inline-block;
+        vertical-align: middle;
+        margin-bottom: 0;
+      }
+      .form-check input[type="checkbox"] {
+        margin-left: 8px;
+        width: auto;
+        margin-top: 0;
+        vertical-align: middle;
+      }
       .form-group label .required {
         color: #e53e3e;
         margin-left: 2px;
@@ -467,6 +478,29 @@
         const grp = document.createElement("div");
         grp.className = "form-group";
 
+        // Checkbox has a special structure and handles its own label.
+        if (field.type === "checkbox") {
+          const checkboxContainer = document.createElement("div");
+          checkboxContainer.className = "form-check";
+
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.name = field.full_name;
+          input.id = field.full_name;
+
+          const label = document.createElement("label");
+          label.htmlFor = field.full_name;
+          label.innerHTML =
+            capitalize(field.name) +
+            (field.required ? ' <span class="required">*</span>' : "");
+
+          checkboxContainer.appendChild(label);
+          checkboxContainer.appendChild(input);
+          grp.appendChild(checkboxContainer);
+          return grp;
+        }
+
+        // All other types get a standard label on top.
         const label = document.createElement("label");
         label.innerHTML =
           capitalize(field.name) +
@@ -526,15 +560,14 @@
           textarea.name = field.full_name;
           textarea.placeholder = "Enter JSON object";
           if (LOCKED_FIELDS.includes(field.full_name)) {
-            el.setAttribute("readonly", true);
-            el.classList.add("locked-input");
-            el.ondblclick = unlockField;
+            textarea.setAttribute("readonly", true);
+            textarea.classList.add("locked-input");
+            textarea.ondblclick = unlockField;
           }
           grp.appendChild(textarea);
         } else {
           // Standard Inputs (Text, Password, Number, Email)
           const input = document.createElement("input");
-          input.name = field.full_name;
           input.name = field.full_name;
 
           let inputType = field.type;
@@ -604,7 +637,12 @@
           .forEach((el) => {
             const val = getValueByPath(data, el.name);
 
-            if (el.tagName === "TEXTAREA" && el.name.endsWith(".users")) {
+            if (el.type === "checkbox") {
+              el.checked = !!val; // Set checked state for checkboxes
+            } else if (
+              el.tagName === "TEXTAREA" &&
+              el.name.endsWith(".users")
+            ) {
               // JSON field population
               el.value =
                 val === undefined || val === null
@@ -966,7 +1004,9 @@
             let val = el.value;
             const path = el.name;
 
-            if (el.type === "number") {
+            if (el.type === "checkbox") {
+              val = el.checked; // For checkboxes, get the checked state
+            } else if (el.type === "number") {
               if (val.trim() === "") {
                 val = null; // Treat empty number field as null
               } else {

@@ -75,10 +75,7 @@ def send_gmail(
     from_addr: str,
     cc_addr: Optional[str] = None,
     html: Optional[str] = None,
-    pdf_stream0: Optional[io.BytesIO] = None,
-    filename0: Optional[str] = None,
-    pdf_stream1: Optional[io.BytesIO] = None,
-    filename1: Optional[str] = None,
+    attachments: Optional[list[dict[str, Any]]] = None,
 ):
     """Send an email using the Gmail API.
 
@@ -89,10 +86,7 @@ def send_gmail(
         from_addr (str): The sender's email address
         cc_addr (Optional[str]): The CC recipient's email address, can be a comma-separated list (optional)
         html (Optional[str]): The HTML version of the message (optional)
-        pdf_stream0 (Optional[io.BytesIO]): Possible pdf attachment taken from memory (optional)
-        filename0 (Optional[str]): Name of pdf0 taken from memory (optional)
-        pdf_stream1 (Optional[io.BytesIO]): Possible pdf attachment taken from memory (optional)
-        filename1 (Optional[str]): Name of pdf1 taken from memory (optional)
+        attachments (Optional[list[dict]]): A list of attachments, where each attachment is a dict with "stream" and "filename" keys (optional)
     """
     creds = google_authenticate()
 
@@ -109,15 +103,17 @@ def send_gmail(
 
         if html:
             message.add_alternative(html, subtype="html")
-        if pdf_stream0 and pdf_stream1 and filename0 and filename1:
-            pdf_bytes0 = pdf_stream0.getvalue()
-            pdf_bytes1 = pdf_stream1.getvalue()
-            message.add_attachment(
-                pdf_bytes0, maintype="application", subtype="pdf", filename=filename0
-            )
-            message.add_attachment(
-                pdf_bytes1, maintype="application", subtype="pdf", filename=filename1
-            )
+
+        if attachments:
+            for attachment in attachments:
+                if attachment.get("stream") and attachment.get("filename"):
+                    pdf_bytes = attachment["stream"].getvalue()
+                    message.add_attachment(
+                        pdf_bytes,
+                        maintype="application",
+                        subtype="pdf",
+                        filename=attachment["filename"],
+                    )
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 

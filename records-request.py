@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pymupdf
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
@@ -27,7 +28,7 @@ from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from utils.custom_types import ClientFromDB, Config, Services
+from utils.custom_types import ClientFromDB, Config, RecordsContact, Services
 from utils.database import get_previous_clients
 from utils.google import (
     get_punch_list,
@@ -235,7 +236,7 @@ class TherapyAppointmentBot:
             raise Exception("docs not signed")
 
     def download_consent_forms(
-        self, client: ClientFromDB, school_contacts: dict
+        self, client: ClientFromDB, school_contacts: dict[str, RecordsContact]
     ) -> bool:
         """Navigates to Docs & Forms and saves consent forms as PDFs."""
         creds = google_authenticate()
@@ -278,7 +279,7 @@ class TherapyAppointmentBot:
             raise (Exception("District on receive does not match district on send"))
         else:
             try:
-                school_address = school_contacts[sending_school.lower()]
+                school_contact = school_contacts[sending_school.lower()]
             except KeyError:
                 raise (
                     Exception(
@@ -288,15 +289,26 @@ class TherapyAppointmentBot:
 
         message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
+        attachments = [
+            {"stream": receiving_stream, "filename": receiving_filename},
+            {"stream": sending_stream, "filename": sending_filename},
+        ]
+
+        if school_contact.fax:
+            logger.info("Fax number found, creating and prepending cover sheet...")
+            fax_cover_stream, fax_cover_filename = self.create_fax_cover_sheet(client)
+            if fax_cover_stream and fax_cover_filename:
+                attachments.insert(
+                    0,
+                    {"stream": fax_cover_stream, "filename": fax_cover_filename},
+                )
+
         send_gmail(
             message_text=message_text,
             subject=f"Re: Student: {client.firstName} {client.lastName}",
-            to_addr=school_address,
+            to_addr=school_contact.email,
             from_addr="records@driftwoodeval.com",
-            pdf_stream0=receiving_stream,
-            filename0=receiving_filename,
-            pdf_stream1=sending_stream,
-            filename1=sending_filename,
+            attachments=attachments,
         )
 
         try:
@@ -441,6 +453,39 @@ class TherapyAppointmentBot:
             return files[0]["id"]  # return the ID of the first matching file
         return None
 
+    def create_fax_cover_sheet(
+        self, client: ClientFromDB
+    ) -> tuple[io.BytesIO, str] | tuple[None, None]:
+        """Create a fax cover sheet from a template, appending text to labels."""
+        try:
+            doc = pymupdf.open("templates/Fax Records.pdf")
+            page = doc[0]
+
+            def append_text(search_term, text_to_append):
+                text_instances = page.search_for(search_term)
+                for inst in text_instances:
+                    page.insert_text(
+                        (inst.x1, inst.y0 + 10),
+                        f" {text_to_append}",
+                        fontsize=11,
+                        fontname="helv",
+                    )
+
+            append_text("Student-", client.fullName)
+
+            append_text("Date of Birth-", client.dob.strftime("%m/%d/%Y"))
+
+            pdf_stream = io.BytesIO(doc.tobytes())
+            doc.close()
+            pdf_stream.seek(0)
+
+            filename = f"Fax Cover for {client.fullName}.pdf"
+            return pdf_stream, filename
+
+        except Exception as e:
+            logger.error(f"Error creating fax cover sheet: {e}")
+            return None, None
+
 
 def main():
     """Main function to run the automation script."""
@@ -448,6 +493,7 @@ def main():
 
     school_contacts = config.records_emails
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}
+    print(school_contacts)
 
     clients_to_process = get_clients_to_request(config)
 

@@ -47,8 +47,8 @@ def init_db():
 init_db()
 app = FastAPI()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+app.mount("/templates", StaticFiles(directory=TEMPLATES_DIR), name="templates")
 
 
 def get_db():
@@ -232,7 +232,7 @@ def update_config(new_data: FullConfig, db: Session = Depends(get_db)):
 @app.get("/", response_class=HTMLResponse)
 async def serve_editor():
     """Serve the configuration editor page."""
-    html_file_path = os.path.join(STATIC_DIR, "editor.html")
+    html_file_path = os.path.join(TEMPLATES_DIR, "editor.html")
     if not os.path.exists(html_file_path):
         raise HTTPException(status_code=500, detail="Editor HTML file not found.")
 

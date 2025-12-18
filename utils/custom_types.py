@@ -114,6 +114,13 @@ class PieceworkConfig(BaseModel):
         return self.name_map.get(initials_lower, initials)
 
 
+class RecordsContact(BaseModel):
+    """A Pydantic containing records contact information."""
+
+    email: EmailStr
+    fax: bool = False
+
+
 class Config(BaseModel):
     """A Pydantic model representing the configuration of the application."""
 
@@ -136,7 +143,7 @@ class Config(BaseModel):
     excluded_ta: list[str]
     records_folder_id: str
     sent_records_folder_id: str
-    records_emails: dict[str, EmailStr]
+    records_emails: dict[str, RecordsContact]
     piecework: PieceworkConfig
 
 
