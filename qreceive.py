@@ -305,6 +305,10 @@ def main():
                         )
                         continue
 
+                    if client.autismStop:
+                        logger.warning(f"{client.fullName} has autism stop, skipping")
+                        continue
+
                     reason = most_recent_failure["reason"]
                     reminded_count = most_recent_failure["reminded"]
                     last_reminded = most_recent_failure["lastReminded"]
@@ -408,6 +412,10 @@ def main():
 
                 if any(client.fullName in error for error in email_info["errors"]):
                     logger.warning(f"{client.fullName} has an error, skipping")
+                    continue
+
+                if client.autismStop:
+                    logger.warning(f"{client.fullName} has autism stop, skipping")
                     continue
 
                 if not done:

@@ -223,7 +223,7 @@ class ClientFromDB(_ClientBase):
     ifspDownloaded: bool
 
 
-class ClientWithQuestionnaires(_ClientBase):
+class ClientWithQuestionnaires(ClientFromDB):
     """A Pydantic model representing a client with questionnaires."""
 
     questionnaires: list[Questionnaire]
