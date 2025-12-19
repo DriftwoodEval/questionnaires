@@ -109,7 +109,7 @@ def click_element(
             if attempt == max_attempts - 1:
                 raise e
             else:
-                logger.warning(f"Click element failed: trying again after 1s.")
+                logger.warning("Click element failed: trying again after 1s.")
                 sleep(1)
 
 

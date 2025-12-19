@@ -218,7 +218,7 @@ def check_and_login_mhs(
         find_element(
             driver,
             By.XPATH,
-            "//h1[normalize-space(text())='START A NEW ASSESSMENT']",
+            "//span[normalize-space(text())='My Assessments']",
             timeout=2,
         )
         logger.debug("Already logged in to MHS")
