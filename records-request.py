@@ -272,6 +272,12 @@ class TherapyAppointmentBot:
             )
         )
 
+        if "your relationship to client" in sending_school.lower():
+            raise (Exception("No school found on consent to send"))
+
+        if "your relationship to client" in receiving_school.lower():
+            raise (Exception("No school found on consent to receive"))
+
         if sending_school.lower() != receiving_school.lower():
             logger.warning(
                 f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
