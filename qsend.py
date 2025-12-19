@@ -2170,8 +2170,18 @@ def main():
             if prev_clients != {}:
                 previous_questionnaires = check_client_previous(prev_clients, client)
                 previous_questionnaire_info = {}
+                just_added_questionnaires = []
 
                 if previous_questionnaires:
+                    for q in previous_questionnaires:
+                        if q["status"] == "JUST_ADDED":
+                            logger.info(
+                                f"Found existing JUST_ADDED questionnaire: {q['questionnaireType']}"
+                            )
+                            just_added_questionnaires.append(
+                                {"link": q["link"], "type": q["questionnaireType"]}
+                            )
+
                     previous_questionnaire_info = {
                         q["questionnaireType"]: q["status"]
                         for q in previous_questionnaires
@@ -2221,7 +2231,12 @@ def main():
                     for q_type in questionnaires_needed:
                         if q_type in previous_questionnaire_info:
                             status = previous_questionnaire_info[q_type]
-                            if status not in ["COMPLETED", "EXTERNAL", "ARCHIVED"]:
+                            if status not in [
+                                "COMPLETED",
+                                "EXTERNAL",
+                                "ARCHIVED",
+                                "JUST_ADDED",
+                            ]:
                                 remaining_overlaps.append(f"{q_type} - {status}")
 
                     if remaining_overlaps:
@@ -2245,9 +2260,20 @@ def main():
             )
 
             questionnaires = []
+            questionnaires_to_generate = []
+            if "just_added_questionnaires" in locals():
+                questionnaires.extend(just_added_questionnaires)
+                questionnaires_to_generate = [
+                    q
+                    for q in questionnaires_needed
+                    if q not in [item["type"] for item in just_added_questionnaires]
+                ]
+            else:
+                questionnaires_to_generate = questionnaires_needed
+
             send = True
-            for questionnaire in questionnaires_needed:
-                logger.debug(f"Genned questionnaires so far: {questionnaires}")
+            for questionnaire in questionnaires_to_generate:
+                logger.debug(f"Questionnaires so far: {questionnaires}")
                 try:
                     link, accounts_created = assign_questionnaire(
                         driver,
