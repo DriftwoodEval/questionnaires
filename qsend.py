@@ -1,3 +1,4 @@
+import argparse
 import re
 import sys
 from datetime import date, datetime
@@ -1922,6 +1923,12 @@ def main():
     the client.
 
     """
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--client", type=str, help="Process specific client by ID or name"
+    )
+    args = parser.parse_args()
+
     services, config = load_config()
     driver, actions = initialize_selenium()
 
@@ -1930,6 +1937,18 @@ def main():
 
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
+        return
+
+    if args.client:
+        if args.client.isdigit():
+            logger.info(f"Filtering clients by ID: {args.client}")
+            clients = clients[clients["Client ID"] == args.client]
+        else:
+            logger.info(f"Filtering clients by name: {args.client}")
+            clients = clients[clients["Client Name"].str.lower() == args.client.lower()]
+
+    if clients is None or clients.empty:
+        logger.critical("No clients matched, exiting")
         return
 
     for login in [
