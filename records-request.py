@@ -78,6 +78,12 @@ def get_clients_to_request(config: Config) -> pd.DataFrame | None:
         (punch_list["Records Needed"] == "TRUE")
         & (~exclude_requested_condition)
         & (punch_list["For"] != "ADHD")
+        & (
+            punch_list["Language"]
+            .fillna("")
+            .apply(lambda x: x.lower() if isinstance(x, str) else "")
+            .isin(["", "english"])
+        )
     ]
 
     return punch_list
