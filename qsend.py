@@ -330,7 +330,9 @@ def add_client_to_qglobal(
 
     logger.debug("Entering birthdate")
     dob = rearrange_dob(dob)
-    birth.send_keys(dob)
+    for character in dob:
+        birth.send_keys(character)
+        sleep(0.3)
 
     logger.debug("Saving new examinee")
     click_element(driver, By.ID, "save")
