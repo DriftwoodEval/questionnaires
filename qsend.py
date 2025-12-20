@@ -624,7 +624,7 @@ def get_questionnaires(age: int, check: str, daeval: str) -> list[str] | str:
             if age < 2:  # 1.5
                 return "Too young"
             elif age < 6:
-                qs = ["Conners EC", "DP4", "BASC Preschool", "Vineland"]
+                qs = ["Conners EC", "DP-4", "BASC Preschool", "Vineland"]
                 return qs
             elif age < 12:
                 qs = ["Conners 4", "BASC Child", "Vineland"]
@@ -648,12 +648,12 @@ def get_questionnaires(age: int, check: str, daeval: str) -> list[str] | str:
             return [
                 "Conners EC",
                 "ASRS (2-5 Years)",
-                "DP4",
+                "DP-4",
                 "BASC Preschool",
                 "Vineland",
             ]
         elif age < 7:
-            return ["Conners 4", "ASRS (6-18 Years)", "DP4", "BASC Child", "Vineland"]
+            return ["Conners 4", "ASRS (6-18 Years)", "DP-4", "BASC Child", "Vineland"]
         elif age < 12:
             return [
                 "Conners 4",
@@ -795,7 +795,7 @@ def assign_questionnaire(
     elif questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_caars_2(driver, actions, services, client, accounts_created)
-    elif questionnaire == "DP4":
+    elif questionnaire == "DP-4":
         logger.debug(f"Navigating to WPS for {questionnaire}")
         check_and_login_wps(driver, actions, services)
         return gen_dp4(driver, actions, config, client), accounts_created
@@ -807,9 +807,9 @@ def assign_questionnaire(
 def gen_dp4(
     driver: WebDriver, actions: ActionChains, config: Config, client: pd.Series
 ) -> str:
-    """Generates a DP4 assessment for the given client and returns the link."""
+    """Generates a DP-4 assessment for the given client and returns the link."""
     logger.info(
-        f"Generating DP4 for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating DP-4 for {client['TA First Name']} {client['TA Last Name']}"
     )
     firstname = client["TA First Name"]
     lastname = client["TA Last Name"]
