@@ -2368,10 +2368,23 @@ def main():
 
                 if client["Language"] == "Spanish":
                     print(
-                        f"{client['TA First Name']} {client['TA Last Name']} speaks Spanish, not sending a TA message. Here are their questionnaires:"
+                        f"{client['TA First Name']} {client['TA Last Name']} speaks Spanish, not sending a TA message, pretending they failed."
                     )
-                    print(message)
-                    input("\nPress enter to continue")
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="Spanish Qs generated to send",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                        questionnaires_generated=questionnaires,
+                        questionnaires_needed=questionnaires_needed
+                        if type(questionnaires_needed) is list
+                        else [],
+                        add_to_db=False,
+                        add_to_sheet=True,
+                    )
 
                 if client["Language"] != "Spanish":
                     send_message_ta(driver, client_url, message)
