@@ -321,7 +321,7 @@ def add_client_to_qglobal(
     elif gender == "Female":
         gender_select.select_by_visible_text("Female")
     else:
-        print("edge case")
+        gender_select.select_by_visible_text("Unspecified")
 
     logger.debug("Entering birthdate")
     dob = rearrange_dob(dob)
