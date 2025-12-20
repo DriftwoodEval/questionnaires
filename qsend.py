@@ -73,6 +73,11 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
         & (punch_list["EVAL Qs Sent"] != "TRUE")
     ]
 
+    # Remove extra whitespace from the "Client Name" column
+    punch_list["Client Name"] = (
+        punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
+    )
+
     # Add the "daeval" column to the DataFrame
     punch_list["daeval"] = punch_list.apply(
         # Use a lambda function to determine the value of the "daeval" column
