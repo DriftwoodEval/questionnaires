@@ -29,7 +29,7 @@ from utils.database import (
     update_failure_in_db,
     update_questionnaire_in_db,
 )
-from utils.google import get_punch_list, update_punch_by_column
+from utils.google import get_punch_list, update_punch_list
 from utils.misc import add_failure, load_config
 from utils.selenium import (
     check_and_login_ta,
@@ -2350,9 +2350,15 @@ def main():
                     client["Gender"],
                     client["Phone Number"],
                 )
-                update_punch_by_column(
-                    config, client["Client ID"], client["daeval"], "sent"
-                )
+                daeval = client["daeval"]
+                client_id = client["Client ID"]
+                if daeval == "DA":
+                    update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+                elif daeval == "EVAL":
+                    update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+                elif daeval == "DAEVAL":
+                    update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+                    update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
 
                 if client["Language"] != "Spanish":
                     for questionnaire in questionnaires:

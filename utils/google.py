@@ -391,41 +391,6 @@ def update_punch_list(
         logger.exception("Failed to update Punch List")
 
 
-def update_punch_by_column(
-    config: Config,
-    client_id: str,
-    daeval: Literal["DA", "EVAL", "DAEVAL"],
-    sent_done: Literal["sent", "done"],
-):
-    """Updates the punch list for the given client ID.
-
-    Args:
-        config: The application configuration.
-        client_id: The ID of the client to update.
-        daeval: The type of questionnaire to update ("DA", "EVAL", or "DAEVAL").
-        sent_done: Whether to update the "Sent" or "Done" column for the given type of questionnaire.
-    """
-    logger.info(f"Updating punch list for {client_id}: {daeval} {sent_done}")
-    client_id = str(client_id)
-    if daeval == "DA":
-        if sent_done == "sent":
-            update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
-        if sent_done == "done":
-            update_punch_list(config, client_id, "DA Qs Done", "TRUE")
-    elif daeval == "EVAL":
-        if sent_done == "sent":
-            update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
-        if sent_done == "done":
-            update_punch_list(config, client_id, "EVAL Qs Done", "TRUE")
-    elif daeval == "DAEVAL" and sent_done == "sent":
-        if sent_done == "sent":
-            update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
-            update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
-        if sent_done == "done":
-            update_punch_list(config, client_id, "DA Qs Done", "TRUE")
-            update_punch_list(config, client_id, "EVAL Qs Done", "TRUE")
-
-
 def add_to_failure_sheet(
     config: Config,
     client_id: int,

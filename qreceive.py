@@ -23,7 +23,7 @@ from utils.database import (
     update_failure_in_db,
     update_questionnaires_in_db,
 )
-from utils.google import build_admin_email, send_gmail, update_punch_by_column
+from utils.google import build_admin_email, send_gmail, update_punch_list
 from utils.misc import check_distance, load_config
 from utils.openphone import NotEnoughCreditsError, OpenPhone
 from utils.questionnaires import (
@@ -497,10 +497,10 @@ def main():
                                 break
                 elif client in email_info["completed"]:
                     if len(client.questionnaires) > 2:
-                        update_punch_by_column(config, str(client.id), "DA", "done")
-                        update_punch_by_column(config, str(client.id), "EVAL", "done")
+                        update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")
+                        update_punch_list(config, str(client.id), "EVAL Qs Done", "TRUE")
                     else:
-                        update_punch_by_column(config, str(client.id), "DA", "done")
+                        update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")
 
         # Check message status
         logger.info(f"Starting status check for {len(messages_sent)} messages.")
