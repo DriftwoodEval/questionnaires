@@ -1,8 +1,11 @@
 import os
 import re
+import socket
 import sys
 from datetime import date
+from functools import cache
 from typing import Literal, Optional
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -17,6 +20,7 @@ from utils.database import add_failure_to_db
 from utils.google import add_to_failure_sheet
 
 
+@cache
 def load_local_settings() -> LocalSettings:
     """Load local settings from local_config.yml."""
     local_config_path = "./config/local_config.yml"
@@ -68,6 +72,21 @@ def load_config() -> tuple[Services, Config]:
 
     logger.info("Configuration successfully loaded, merged, and validated.")
     return services, config
+
+
+class NetworkSink:
+    """Class for sending log data to a network socket."""
+
+    def __init__(self, api_url, port):
+        self.ip = urlparse(api_url).hostname
+        self.port = port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect((self.ip, port))
+
+    def write(self, message):
+        """Write a message to the network socket."""
+        if message.strip():
+            self.sock.sendall(message.encode("utf-8"))
 
 
 def add_failure(

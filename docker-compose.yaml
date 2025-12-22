@@ -18,3 +18,12 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+
+  log-server:
+    image: ghcr.io/driftwoodeval/questionnaires-log-server:main
+    container_name: log-server
+    volumes:
+      - ./logs:/app/logs
+    ports:
+      - "9999:9999"
+    restart: unless-stopped

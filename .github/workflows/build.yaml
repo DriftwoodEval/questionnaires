@@ -64,6 +64,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Extract metadata for log-server image
+        id: meta-log-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-log-server
+
+      - name: Build and push log-server image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: log-server
+          push: true
+          tags: ${{ steps.meta-log-server.outputs.tags }}
+          labels: ${{ steps.meta-log-server.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - uses: actions/delete-package-versions@v5
         with:
           package-name: "questionnaires-qreceive"
@@ -73,5 +90,11 @@ jobs:
       - uses: actions/delete-package-versions@v5
         with:
           package-name: "questionnaires-config-server"
+          package-type: "container"
+          min-versions-to-keep: 5
+
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: "questionnaires-log-server"
           package-type: "container"
           min-versions-to-keep: 5

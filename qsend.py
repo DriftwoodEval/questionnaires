@@ -30,7 +30,7 @@ from utils.database import (
     update_questionnaire_in_db,
 )
 from utils.google import get_punch_list, update_punch_list
-from utils.misc import add_failure, load_config
+from utils.misc import NetworkSink, add_failure, load_config, load_local_settings
 from utils.selenium import (
     check_and_login_ta,
     check_if_docs_signed,
@@ -48,6 +48,16 @@ logger.add(
 )
 
 logger.add("logs/qsend.log", rotation="500 MB")
+
+api_url = load_local_settings().api_url
+
+network_sink = NetworkSink(api_url, 9999)
+
+logger.add(
+    network_sink.write,
+    format="{time} | {level: <8} | {message}",
+    enqueue=True,
+)
 
 
 def get_clients_to_send(config: Config) -> pd.DataFrame | None:

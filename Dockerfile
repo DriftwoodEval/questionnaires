@@ -47,3 +47,17 @@ ENV TZ=America/New_York \
     PYTHONUNBUFFERED=1
 
 CMD ["uv", "run", "config-server.py"]
+
+FROM builder AS log-server
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
+
+COPY . .
+
+ENV TZ=America/New_York \
+    PYTHONUNBUFFERED=1
+
+CMD ["uv", "run", "log-server.py"]

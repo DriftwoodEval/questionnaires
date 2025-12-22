@@ -498,7 +498,9 @@ def main():
                 elif client in email_info["completed"]:
                     if len(client.questionnaires) > 2:
                         update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")
-                        update_punch_list(config, str(client.id), "EVAL Qs Done", "TRUE")
+                        update_punch_list(
+                            config, str(client.id), "EVAL Qs Done", "TRUE"
+                        )
                     else:
                         update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")
 
