@@ -2227,7 +2227,7 @@ def main():
                         q_type
                         for q_type, status in previous_questionnaire_info.items()
                         if q_type in questionnaires_needed
-                        and status in ["COMPLETED", "EXTERNAL", "ARCHIVED"]
+                        and status in ["COMPLETED", "EXTERNAL"]
                     ]
 
                     questionnaires_needed = list(
