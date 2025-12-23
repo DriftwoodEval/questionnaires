@@ -2423,5 +2423,4 @@ def main():
 
 
 if __name__ == "__main__":
-    logger.add("logs/qsend.log", rotation="500 MB")
     main()
