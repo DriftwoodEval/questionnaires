@@ -149,7 +149,7 @@ def check_and_login_wps(
     try:
         logger.debug("Checking if logged in to WPS")
         driver.get(wps_url)
-        find_element(driver, By.XPATH, "h2[text()='Dashboard']", timeout=2)
+        find_element(driver, By.ID, "newCase", timeout=2)
         logger.debug("Already logged in to WPS")
     except (NoSuchElementException, TimeoutException):
         logger.debug("Not logged in to WPS, logging in now.")
