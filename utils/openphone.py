@@ -160,6 +160,10 @@ class OpenPhone:
 
             response_data = response.json().get("data")
             return response_data
+
+        except NotEnoughCreditsError:
+            logger.error("Not enough credits to send message")
+            raise
         except Exception:
-            logger.exception(f"Failed to get message info")
+            logger.exception("Failed to get message info")
             return None
