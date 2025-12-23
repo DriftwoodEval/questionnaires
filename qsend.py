@@ -266,8 +266,7 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
     _search_helper(driver, client["Human Friendly ID"])
 
     logger.debug("Submitting search form")
-    actions.send_keys(Keys.ENTER)
-    actions.perform()
+    click_element(driver, By.ID, "editExamineeForm:search")
 
 
 def check_for_qglobal_account(
