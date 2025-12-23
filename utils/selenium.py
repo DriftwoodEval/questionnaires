@@ -74,10 +74,11 @@ def find_element_exists(
     by: str,
     locator: str,
     timeout: int = 5,
+    condition=EC.presence_of_element_located,
 ) -> bool:
     """Check if a web element exists using an explicit wait."""
     try:
-        find_element(driver, by, locator, timeout)
+        find_element(driver, by, locator, timeout, condition)
         return True
     except (NoSuchElementException, TimeoutException):
         return False
@@ -305,11 +306,19 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
     """Check if the TA portal has been opened by the client."""
     logger.info("Checking if portal has been opened...")
     try:
-        find_element(
-            driver, By.XPATH, "//div[contains(normalize-space(text()), 'Username:')]", 3
-        )
-        return True
-    except (NoSuchElementException, TimeoutException):
+        xpath = "//*[contains(normalize-space(.), 'Send Portal Invitation') or contains(normalize-space(.), 'Resend Portal Invitation') or contains(normalize-space(.), 'Username:')]"
+        element = find_element(driver, By.XPATH, xpath, 3)
+        element_text = element.text
+        if (
+            "Send Portal Invitation" in element_text
+            or "Resend Portal Invitation" in element_text
+        ):
+            return False
+        elif "Username:" in element_text:
+            return True
+        else:  # Unknown element
+            return False
+    except TimeoutException:
         return False
 
 
@@ -317,14 +326,14 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
     """Check if the TA docs have been signed by the client."""
     logger.info("Checking if docs have been signed...")
     try:
-        find_element(
-            driver,
-            By.XPATH,
-            "//div[contains(normalize-space(text()), 'has completed registration')]",
-            3,
-        )
-        return True
-    except (NoSuchElementException, TimeoutException):
+        xpath = "//div[contains(normalize-space(.), 'has completed registration') or contains(normalize-space(.), 'has not completed registration')]"
+        element = find_element(driver, By.XPATH, xpath, 3)
+        element_text = element.text
+        if "has completed registration" in element_text:
+            return True
+        else:
+            return False
+    except TimeoutException:
         return False
 
 
