@@ -345,6 +345,9 @@ def add_client_to_qglobal(
 
     logger.debug("Saving new examinee")
     click_element(driver, By.ID, "save")
+
+    logger.debug("Waiting for search page to load")
+    find_element(driver, By.ID, "searchForm:newExamineeButton")
     return True
 
 
