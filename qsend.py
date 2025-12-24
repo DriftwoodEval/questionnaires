@@ -1421,8 +1421,24 @@ def gen_basc_preschool(
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logger.debug("Selecting client")
-    click_element(driver, By.XPATH, "//tr[2]/td[5]")
+    try:
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.warning("Failed to select client, searching again")
+        driver.refresh()
+        search_qglobal(driver, actions, client)
+        sleep(3)
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -1468,8 +1484,24 @@ def gen_basc_child(
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logger.debug("Selecting client")
-    click_element(driver, By.XPATH, "//tr[2]/td[5]")
+    try:
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.warning("Failed to select client, searching again")
+        driver.refresh()
+        search_qglobal(driver, actions, client)
+        sleep(3)
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -1515,8 +1547,24 @@ def gen_basc_adolescent(
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logger.debug("Selecting client")
-    click_element(driver, By.XPATH, "//tr[2]/td[5]")
+    try:
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.warning("Failed to select client, searching again")
+        driver.refresh()
+        search_qglobal(driver, actions, client)
+        sleep(3)
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -1562,8 +1610,24 @@ def gen_vineland(
     search_qglobal(driver, actions, client)
     sleep(3)
 
-    logger.debug("Selecting client")
-    click_element(driver, By.XPATH, "//tr[2]/td[5]")
+    try:
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.warning("Failed to select client, searching again")
+        driver.refresh()
+        search_qglobal(driver, actions, client)
+        sleep(3)
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -2186,10 +2250,11 @@ def main():
                 )
                 continue
 
+            just_added_questionnaires = []
+
             if prev_clients != {}:
                 previous_questionnaires = check_client_previous(prev_clients, client)
                 previous_questionnaire_info = {}
-                just_added_questionnaires = []
 
                 if previous_questionnaires:
                     for q in previous_questionnaires:
@@ -2280,7 +2345,7 @@ def main():
 
             questionnaires = []
             questionnaires_to_generate = []
-            if "just_added_questionnaires" in locals():
+            if len(just_added_questionnaires) > 0:
                 questionnaires.extend(just_added_questionnaires)
                 questionnaires_to_generate = [
                     q
