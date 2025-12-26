@@ -175,6 +175,13 @@ def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) 
     password.send_keys(services.qglobal.password)
     password.send_keys(Keys.ENTER)
 
+    try:
+        logger.debug("Checking if password is about to expire window is present")
+        click_element(driver, By.ID, "passwordAboutToExpireForm:cancel")
+        logger.debug("Password is about to expire, cancelled popup")
+    except (NoSuchElementException, TimeoutException):
+        logger.debug("Password is not about to expire, moving on")
+
 
 def check_and_login_qglobal(
     driver: WebDriver,
