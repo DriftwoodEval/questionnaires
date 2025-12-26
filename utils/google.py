@@ -212,6 +212,16 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             + "</li></ul>"
         )
     if email_info["call"]:
+        call_clients_data = []
+        for client in email_info["call"]:
+            most_recent = (
+                get_most_recent_not_done(client)
+                if isinstance(client, ClientWithQuestionnaires)
+                else get_most_recent_failure(client)
+            )
+            if most_recent:
+                call_clients_data.append((client, most_recent))
+
         email_text += (
             "Call:\n"
             + "\n".join(
@@ -219,12 +229,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
                     f"- {client.fullName} (sent on {most_recent['sent'] and most_recent['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
                     if isinstance(client, ClientWithQuestionnaires)
                     else f"- {client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
-                    for client in email_info["call"]
-                    if (
-                        most_recent := get_most_recent_not_done(client)
-                        if isinstance(client, ClientWithQuestionnaires)
-                        else get_most_recent_failure(client)
-                    )
+                    for client, most_recent in call_clients_data
                 ]
             )
             + "\n"
@@ -234,13 +239,8 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             + "</li><li>".join(
                 f"{client.fullName} (sent on {most_recent['sent'] and most_recent['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
                 if isinstance(client, ClientWithQuestionnaires)
-                else f"{client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times' if get_most_recent_failure(client) else 'unknown number of times'})"
-                for client in email_info["call"]
-                if (
-                    most_recent := get_most_recent_not_done(client)
-                    if isinstance(client, ClientWithQuestionnaires)
-                    else get_most_recent_failure(client)
-                )
+                else f"{client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
+                for client, most_recent in call_clients_data
             )
             + "</li></ul>"
         )
