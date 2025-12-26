@@ -2,6 +2,7 @@ services:
   qreceive:
     image: ghcr.io/driftwoodeval/questionnaires-qreceive:main
     container_name: qreceive
+    network_mode: host
     environment:
       - HEADLESS=true
     volumes:
