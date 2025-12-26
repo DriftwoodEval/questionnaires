@@ -284,6 +284,7 @@ def get_punch_list(config: Config):
                     "Language",
                     "Records Needed",
                     "Records Requested?",
+                    "Records Reviewed?",
                     "DA Qs Needed",
                     "DA Qs Sent",
                     "EVAL Qs Needed",

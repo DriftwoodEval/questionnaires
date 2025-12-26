@@ -83,6 +83,9 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
         & (punch_list["EVAL Qs Sent"] != "TRUE")
     ]
 
+    # Exclude clients who haven't had records reviewed
+    punch_list = punch_list[(punch_list["Records Reviewed?"] != "FALSE")]
+
     # Remove extra whitespace from the "Client Name" column
     punch_list["Client Name"] = (
         punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
