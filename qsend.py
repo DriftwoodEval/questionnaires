@@ -180,7 +180,7 @@ def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) 
 
     try:
         logger.debug("Checking if password is about to expire window is present")
-        click_element(driver, By.ID, "passwordAboutToExpireForm:cancel")
+        click_element(driver, By.ID, "passwordAboutToExpireForm:cancel", max_attempts=1)
         logger.debug("Password is about to expire, cancelled popup")
     except (NoSuchElementException, TimeoutException):
         logger.debug("Password is not about to expire, moving on")
