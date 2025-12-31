@@ -1,6 +1,6 @@
 import hashlib
 from datetime import date
-from typing import Dict, List, Literal, Optional, cast
+from typing import Literal, cast
 from urllib.parse import urlparse
 
 import pymysql.cursors
@@ -79,8 +79,8 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
     """Get the failed clients from the database."""
     db_connection = get_db(config)
 
-    client_failures: Dict[int, List[Dict]] = {}
-    client_notes: Dict[int, Dict] = {}
+    client_failures: dict[int, list[dict]] = {}
+    client_notes: dict[int, dict] = {}
 
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -101,7 +101,7 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
             cursor.execute(sql)
             clients_data = cursor.fetchall()
 
-    failed_clients: Dict[int, FailedClientFromDB] = {}
+    failed_clients: dict[int, FailedClientFromDB] = {}
     for client_data in clients_data:
         client_id = client_data["id"]
         failures = client_failures.get(client_id, [])
@@ -127,7 +127,7 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
     return failed_clients
 
 
-def get_evaluator_npi(config: Config, evaluator_email) -> Optional[str]:
+def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
     """Get the NPI of an evaluator from the database.
 
     Args:
@@ -169,7 +169,7 @@ def get_all_evaluators_info(config: Config) -> dict[int, dict]:
 
 def get_appointments(
     config: Config, start_date: date, end_date: date
-) -> Optional[list[Appointment]]:
+) -> list[Appointment] | None:
     """Fetch appointments within the given date range and associated client names."""
     try:
         connection = get_db(config)
@@ -358,7 +358,7 @@ def add_failure_to_db(
     client_id: int,
     error: str,
     failed_date: date,
-    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
+    da_eval: Literal["DA", "EVAL", "DAEVAL", "Records"] | None = None,
 ):
     """Adds the information given to the DB."""
     db_connection = get_db(config)
@@ -379,11 +379,11 @@ def update_failure_in_db(
     config: Config,
     client_id: int,
     reason: str,
-    da_eval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
-    resolved: Optional[bool] = None,
-    failed_date: Optional[date] = None,
-    reminded: Optional[int] = None,
-    last_reminded: Optional[date] = None,
+    da_eval: Literal["DA", "EVAL", "DAEVAL", "Records"] | None = None,
+    resolved: bool | None = None,
+    failed_date: date | None = None,
+    reminded: int | None = None,
+    last_reminded: date | None = None,
 ):
     """Updates the failure in the DB."""
     db_connection = get_db(config)
@@ -424,7 +424,7 @@ def update_failure_in_db(
 
 def get_most_recent_failure(
     client: FailedClientFromDB,
-) -> Optional[Failure]:
+) -> Failure | None:
     """Get the most recent failure that is still not resolved from the given client by taking max of failure["failedDate"]."""
     unresolved_failures = (
         f

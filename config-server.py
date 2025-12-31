@@ -38,7 +38,7 @@ def init_db():
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
     if db.query(ConfigRecord).count() == 0:
-        initial_config_data = json.dumps(yaml.safe_load(open("./config/info.yml", "r")))
+        initial_config_data = json.dumps(yaml.safe_load(open("./config/info.yml")))
         db.add(ConfigRecord(config_data=initial_config_data))
         db.commit()
     db.close()

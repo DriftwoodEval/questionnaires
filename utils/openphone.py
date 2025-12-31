@@ -101,7 +101,7 @@ class OpenPhone:
             raise ConnectionError("Failed to retrieve response from OpenPhone API")
 
         if response.status_code >= 400:
-            raise requests.HTTPError("API response: {}".format(response.status_code))
+            raise requests.HTTPError(f"API response: {response.status_code}")
 
         response_data = response.json().get("data")
         return response_data
@@ -124,9 +124,9 @@ class OpenPhone:
         self,
         message: str,
         to_number: str,
-        from_number: Optional[str] = None,
-        user_blame: Optional[str] = None,
-    ) -> Optional[dict]:
+        from_number: str | None = None,
+        user_blame: str | None = None,
+    ) -> dict | None:
         """Sends a text message, retrying exponentially on failure."""
         if from_number is None:
             from_number = self.main_number
@@ -154,9 +154,7 @@ class OpenPhone:
                 raise NotEnoughCreditsError()
 
             if response.status_code >= 400:
-                raise requests.HTTPError(
-                    "API response: {}".format(response.status_code)
-                )
+                raise requests.HTTPError(f"API response: {response.status_code}")
 
             response_data = response.json().get("data")
             return response_data

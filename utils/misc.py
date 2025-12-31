@@ -30,7 +30,7 @@ def load_local_settings() -> LocalSettings:
         )
         sys.exit(1)
 
-    with open(local_config_path, "r") as f:
+    with open(local_config_path) as f:
         local_data = yaml.safe_load(f)
 
     try:
@@ -95,12 +95,12 @@ def add_failure(
     error: str,
     failed_date: date,
     full_name: str,
-    add_to_sheet: Optional[bool] = True,
-    add_to_db: Optional[bool] = True,
-    asd_adhd: Optional[str] = None,
-    daeval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]] = None,
-    questionnaires_needed: Optional[list[str]] = None,
-    questionnaires_generated: Optional[list[dict[str, str]]] = None,
+    add_to_sheet: bool | None = True,
+    add_to_db: bool | None = True,
+    asd_adhd: str | None = None,
+    daeval: Literal["DA", "EVAL", "DAEVAL", "Records"] | None = None,
+    questionnaires_needed: list[str] | None = None,
+    questionnaires_generated: list[dict[str, str]] | None = None,
 ) -> None:
     """Add a client to the failure sheet and database."""
     logger.debug(

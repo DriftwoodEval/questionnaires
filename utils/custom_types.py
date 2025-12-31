@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated, List, Literal, Optional, TypedDict, Union
+from typing import Annotated, Literal, TypedDict
 
 from pydantic import (
     BaseModel,
@@ -13,7 +13,7 @@ from pydantic import (
 class LocalConfigOverrides(BaseModel, extra="forbid"):
     """Optional configuration overrides."""
 
-    database_url: Optional[str] = None
+    database_url: str | None = None
 
 
 class LocalSettings(BaseModel):
@@ -65,10 +65,10 @@ class Services(BaseModel):
 class PieceworkCosts(BaseModel):
     """Cost configuration for different work types."""
 
-    DA: Optional[float] = None
-    EVAL: Optional[float] = None
-    DAEVAL: Optional[float] = None
-    REPORT: Optional[float] = None
+    DA: float | None = None
+    EVAL: float | None = None
+    DAEVAL: float | None = None
+    REPORT: float | None = None
 
 
 class PieceworkConfig(BaseModel):
@@ -159,8 +159,8 @@ class Questionnaire(TypedDict):
 
     clientId: int
     questionnaireType: str
-    link: Optional[str]
-    sent: Optional[date]
+    link: str | None
+    sent: date | None
     status: Literal[
         "PENDING",
         "COMPLETED",
@@ -174,7 +174,7 @@ class Questionnaire(TypedDict):
         "JUST_ADDED",
     ]
     reminded: int
-    lastReminded: Optional[date]
+    lastReminded: date | None
 
 
 class Failure(TypedDict):
@@ -182,9 +182,9 @@ class Failure(TypedDict):
 
     failedDate: date
     reason: str
-    daEval: Optional[Literal["DA", "EVAL", "DAEVAL", "Records"]]
+    daEval: Literal["DA", "EVAL", "DAEVAL", "Records"] | None
     reminded: int
-    lastReminded: Optional[date]
+    lastReminded: date | None
 
 
 class FailedClient(TypedDict):
@@ -197,8 +197,8 @@ class FailedClient(TypedDict):
     daEval: str
     failedDate: str
     error: str
-    questionnaires_needed: Optional[list[str] | str]
-    questionnaire_links_generated: Optional[list[dict[str, bool | str]]]
+    questionnaires_needed: list[str] | str | None
+    questionnaire_links_generated: list[dict[str, bool | str]] | None
 
 
 class _ClientBase(BaseModel):
@@ -206,24 +206,32 @@ class _ClientBase(BaseModel):
     dob: date
     firstName: str
     lastName: str
-    preferredName: Optional[str] = None
+    preferredName: str | None = None
     fullName: str
-    phoneNumber: Optional[str] = None
-    gender: Optional[str] = None
-    asdAdhd: Optional[str] = None
+    phoneNumber: str | None = None
+    gender: str | None = None
+    asdAdhd: str | None = None
     status: bool
 
 
-class ClientFromDB(_ClientBase):
-    """A Pydantic model representing a client from the database."""
+class _SharedClientFromDB(_ClientBase):
+    """Common fields for clients from the database. Not intended to be used direcly."""
 
-    questionnaires: Optional[list[Questionnaire]] = None
     autismStop: bool
     ifsp: bool
     ifspDownloaded: bool
+    latitude: float | None = None
+    longitude: float | None = None
+    address: str | None = None
 
 
-class ClientWithQuestionnaires(ClientFromDB):
+class ClientFromDB(_SharedClientFromDB):
+    """A Pydantic model representing a client from the database."""
+
+    questionnaires: list[Questionnaire] | None = None
+
+
+class ClientWithQuestionnaires(_SharedClientFromDB):
     """A Pydantic model representing a client with questionnaires."""
 
     questionnaires: list[Questionnaire]
@@ -239,11 +247,11 @@ class ClientWithQuestionnaires(ClientFromDB):
 class FailedClientFromDB(ClientFromDB):
     """A Pydantic model representing a failed client from the database."""
 
-    failure: List[Failure]
-    note: Optional[dict] = None
+    failure: list[Failure]
+    note: dict | None = None
 
     @field_validator("failure")
-    def validate_failure(cls, v: List[Failure]) -> List[Failure]:
+    def validate_failure(cls, v: list[Failure]) -> list[Failure]:
         """Validate that the client has at least one failure."""
         if not v:
             raise ValueError("Client has no failures")
@@ -254,8 +262,8 @@ class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
     ignoring: list[ClientWithQuestionnaires]
-    failed: list[tuple[Union[ClientWithQuestionnaires, FailedClientFromDB], str]]
-    call: list[Union[ClientWithQuestionnaires, FailedClientFromDB]]
+    failed: list[tuple[ClientWithQuestionnaires | FailedClientFromDB, str]]
+    call: list[ClientWithQuestionnaires | FailedClientFromDB]
     completed: list[ClientWithQuestionnaires]
     errors: list[str]
     ifsp_download_needed: list[ClientFromDB]

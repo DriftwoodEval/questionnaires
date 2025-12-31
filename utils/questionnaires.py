@@ -1,7 +1,7 @@
 import os
 import re
 from datetime import date, datetime
-from typing import Optional, Tuple, cast
+from typing import cast
 from urllib.parse import urlparse
 
 from loguru import logger
@@ -177,7 +177,7 @@ def check_questionnaires(
     driver: WebDriver,
     config: Config,
     clients: dict[int, ClientWithQuestionnaires],
-) -> Tuple[
+) -> tuple[
     list[ClientWithQuestionnaires],
     list[str],
 ]:
@@ -243,7 +243,7 @@ def check_questionnaires(
 
 def get_most_recent_not_done(
     client: ClientWithQuestionnaires,
-) -> Optional[Questionnaire]:
+) -> Questionnaire | None:
     """Get the most recent questionnaire that is still PENDING or POSTEVAL_PENDING from the given client by taking max of q["sent"]."""
     pending_and_sent = (
         q

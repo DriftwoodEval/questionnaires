@@ -74,9 +74,9 @@ def send_gmail(
     subject: str,
     to_addr: str,
     from_addr: str,
-    cc_addr: Optional[str] = None,
-    html: Optional[str] = None,
-    attachments: Optional[list[dict[str, Any]]] = None,
+    cc_addr: str | None = None,
+    html: str | None = None,
+    attachments: list[dict[str, Any]] | None = None,
 ):
     """Send an email using the Gmail API.
 
@@ -398,10 +398,10 @@ def add_to_failure_sheet(
     error: str,
     failed_date: date,
     full_name: str,
-    asd_adhd: Optional[str] = None,
-    daeval: Optional[str] = None,
-    questionnaires_needed: Optional[list[str]] = None,
-    questionnaires_generated: Optional[list[dict[str, str]]] = None,
+    asd_adhd: str | None = None,
+    daeval: str | None = None,
+    questionnaires_needed: list[str] | None = None,
+    questionnaires_generated: list[dict[str, str]] | None = None,
 ):
     """Adds the given failed client to the failure sheet."""
     creds = google_authenticate()
@@ -465,7 +465,7 @@ def find_or_create_drive_folder(service, parent_folder_id: str, folder_name: str
 
 
 def upload_file_to_drive(
-    file_path: Path, base_folder_id: str, subfolder: Optional[str] = None
+    file_path: Path, base_folder_id: str, subfolder: str | None = None
 ):
     """Uploads a file to Google Drive in the specified folder."""
 

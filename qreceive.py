@@ -56,7 +56,7 @@ def build_q_message(
     client: ClientWithQuestionnaires,
     most_recent_q: Questionnaire,
     distance: int,
-) -> Optional[str]:
+) -> str | None:
     """Builds the message to be sent to the client based on their most recent questionnaire."""
     if not most_recent_q["sent"]:
         logger.warning(
@@ -165,7 +165,7 @@ def build_q_message(
     return message
 
 
-def build_failure_message(config: Config, client: FailedClientFromDB) -> Optional[str]:
+def build_failure_message(config: Config, client: FailedClientFromDB) -> str | None:
     """Builds a message to be sent to the client based on their failure."""
     for failure_data in client.failure:
         reason = failure_data["reason"]
@@ -236,7 +236,7 @@ def check_failures(
                 update_failure_in_db(config, client_id, reason)
 
 
-ClientType = Union[FailedClientFromDB, ClientWithQuestionnaires]
+ClientType = FailedClientFromDB | ClientWithQuestionnaires
 
 
 def main():

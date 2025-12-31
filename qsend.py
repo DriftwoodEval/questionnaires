@@ -3,7 +3,6 @@ import re
 import sys
 from datetime import date, datetime
 from time import sleep, strftime, strptime
-from typing import Dict, Tuple, Union
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -1899,7 +1898,7 @@ def write_file(filepath: str, data: str) -> None:
     data = data.strip("\n")
     try:
         logger.debug(f"Opening file {filepath} for reading")
-        with open(filepath, "r") as file:
+        with open(filepath) as file:
             existing_content = file.read().strip("\n")
             if data == existing_content or data in existing_content.split(", "):
                 logger.warning("Data already exists in file, skipping write")
@@ -1919,8 +1918,8 @@ def write_file(filepath: str, data: str) -> None:
 
 
 def check_client_failed(
-    prev_failed_clients: Dict[int, FailedClientFromDB], client_info: pd.Series
-) -> Tuple[bool, Union[str, None]]:
+    prev_failed_clients: dict[int, FailedClientFromDB], client_info: pd.Series
+) -> tuple[bool, str | None]:
     """Checks if the client has a previous, unresolved failure that prevents scheduling.
 
     Args:

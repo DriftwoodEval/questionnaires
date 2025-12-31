@@ -37,8 +37,7 @@ dev = [
 ]
 
 [tool.ruff.lint]
-select = ["D"]
-ignore = ["D100", "D106", "D107"]
+select = ["UP", "FURB"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
