@@ -1997,6 +1997,13 @@ def check_client_previous(
         return questionnaires
 
 
+def normalize_q_name(name: str) -> str:
+    if "Self" in name:
+        return name
+    else:
+        return name[0]
+
+
 def main():
     """Main function for qsend.py.
 
@@ -2288,10 +2295,13 @@ def main():
                     )
 
                     if isinstance(theoretical_da_qs, list):
+                        normalized_previous = {
+                            normalize_q_name(q) for q in previous_questionnaire_info
+                        }
                         missing_da_qs = [
                             q
                             for q in theoretical_da_qs
-                            if q not in previous_questionnaire_info
+                            if normalize_q_name(q) not in normalized_previous
                         ]
 
                         if missing_da_qs:
