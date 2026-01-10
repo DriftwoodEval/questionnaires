@@ -505,7 +505,6 @@ def main():
 
     school_contacts = config.records_emails
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}
-    print(school_contacts)
 
     clients_to_process = get_clients_to_request(config)
 
