@@ -49,7 +49,7 @@ def load_config() -> tuple[Services, Config]:
 
     logger.debug(f"Fetching config from {api_url}")
     try:
-        response = requests.get(api_url)
+        response = requests.get(api_url, timeout=10)
         response.raise_for_status()
         remote_data = response.json()
     except requests.exceptions.RequestException as e:
