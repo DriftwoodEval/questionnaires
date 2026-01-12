@@ -132,6 +132,37 @@ def send_gmail(
     return send_message
 
 
+def create_gmail_draft(
+    subject: str,
+    to_addr: str,
+    from_addr: str,
+    message_text: str,
+    html: str | None = None,
+):
+    """Create a draft email using the Gmail API."""
+    creds = google_authenticate()
+    try:
+        service = build("gmail", "v1", credentials=creds)
+        message = EmailMessage()
+        message.set_content(message_text)
+        if html:
+            message.add_alternative(html, subtype="html")
+        message["To"] = to_addr
+        message["From"] = from_addr
+        message["Subject"] = subject
+
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        create_message = {"message": {"raw": encoded_message}}
+        draft = (
+            service.users().drafts().create(userId="me", body=create_message).execute()
+        )
+        logger.info(f"Draft created for {to_addr}: {subject}")
+        return draft
+    except HttpError:
+        logger.exception("Failed to create draft")
+        return None
+
+
 def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
     """Builds an email to admin based on the grouped clients.
 
@@ -466,8 +497,8 @@ def find_or_create_drive_folder(service, parent_folder_id: str, folder_name: str
 
 def upload_file_to_drive(
     file_path: Path, base_folder_id: str, subfolder: str | None = None
-):
-    """Uploads a file to Google Drive in the specified folder."""
+) -> str | None:
+    """Uploads a file to Google Drive in the specified folder, returning the file's web view link."""
 
     def _get_filetype(filepath: Path) -> str:
         try:
@@ -484,7 +515,7 @@ def upload_file_to_drive(
         service = build("drive", "v3", credentials=creds)
     except Exception:
         logger.exception("Skipping Drive upload: Could not build Drive service")
-        return
+        return None
 
     target_folder_id = base_folder_id
     if subfolder:
@@ -505,11 +536,12 @@ def upload_file_to_drive(
             .create(body=file_metadata, media_body=media, fields="id,webViewLink")
             .execute()
         )
-        logger.success(
-            f"File uploaded successfully to Drive: {file.get('webViewLink')}"
-        )
+        link = file.get("webViewLink")
+        logger.success(f"File uploaded successfully to Drive: {link}")
+        return link
     except Exception:
         logger.exception("An unexpected error occurred during Drive upload.")
+        return None
 
 
 def move_file_in_drive(service, file_id: str, dest_folder_id: str):

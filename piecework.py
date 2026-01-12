@@ -3,7 +3,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import inquirer
 import pandas as pd
@@ -12,7 +12,7 @@ from openpyxl.styles import Alignment, Font
 
 from utils.custom_types import Appointment, Config
 from utils.database import get_all_evaluators_info, get_appointments
-from utils.google import get_punch_list, upload_file_to_drive
+from utils.google import create_gmail_draft, get_punch_list, upload_file_to_drive
 from utils.misc import load_config
 
 TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
@@ -24,7 +24,7 @@ def load_tracked_reports() -> dict[str, str]:
         return {}
 
     try:
-        with open(TRACKING_FILE, "r") as f:
+        with open(TRACKING_FILE) as f:
             data = json.load(f)
             client_ids = data.get("client_ids", {})
             if not isinstance(client_ids, dict):
@@ -56,7 +56,7 @@ def extract_writer_initials(assigned_to: str) -> str:
     return re.sub(r"[^a-zA-Z]", "", assigned_to)
 
 
-def get_report_clients(config: Config) -> Optional[pd.DataFrame]:
+def get_report_clients(config: Config) -> pd.DataFrame | None:
     """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
     punch_list = get_punch_list(config)
 
@@ -139,7 +139,7 @@ def get_report_clients(config: Config) -> Optional[pd.DataFrame]:
     return result
 
 
-def get_date_range() -> Optional[tuple[date, date]]:
+def get_date_range() -> tuple[date, date] | None:
     """Prompt the user to select a date range (last week or week before)."""
     today = date.today()
     days_since_last_sunday = (today.weekday() + 1) % 7
@@ -179,7 +179,7 @@ def get_date_range() -> Optional[tuple[date, date]]:
 def get_work_counts(
     appointments: list[Appointment],
     evaluators: dict[int, dict],
-    report_clients: Optional[pd.DataFrame] = None,
+    report_clients: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, int]]:
     """Aggregates appointment counts by evaluator by type.
 
@@ -310,10 +310,10 @@ def prepare_detail_data(
     appointments: list[Appointment],
     evaluators: dict[int, dict],
     config: Config,
-    report_clients: Optional[pd.DataFrame],
-) -> Dict[str, List[Dict[str, Any]]]:
+    report_clients: pd.DataFrame | None,
+) -> dict[str, list[dict[str, Any]]]:
     """Prepares detail data, returning a dictionary mapping worker names to their detail rows."""
-    worker_details: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    worker_details: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for appointment in appointments:
         if appointment.get("cancelled"):
@@ -472,10 +472,11 @@ def generate_main_report(
 
 
 def generate_individual_detail_reports(
-    worker_details: Dict[str, List[Dict[str, Any]]],
+    worker_details: dict[str, list[dict[str, Any]]],
     start_date: date,
     end_date: date,
     config: Config,
+    evaluators: dict[int, dict],
 ):
     """Generates a separate Excel file for each worker's detail data."""
     base_output_folder = Path("piecework_output")
@@ -510,7 +511,34 @@ def generate_individual_detail_reports(
                     ].width = adjusted_width
 
             logger.info(f"Wrote individual detail file locally for: {worker_name}")
-            upload_file_to_drive(filename, config.payroll_folder_id, safe_worker_name)
+            link = upload_file_to_drive(
+                filename, config.payroll_folder_id, safe_worker_name
+            )
+
+            if not link:
+                logger.error(f"Failed to upload {filename} to Google Drive.")
+                continue
+
+            worker_email = None
+            for _, evaluator_info in evaluators.items():
+                if evaluator_info.get("providerName") == worker_name:
+                    worker_email = evaluator_info.get("email")
+                    break
+
+            if not worker_email:
+                logger.warning(
+                    f"Could not find email for {worker_name}. Skipping Gmail draft."
+                )
+                continue
+
+            subject = f"Pay Spreadsheet for {start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}"
+            message_text = f"Please refer to the following file to reconcile work completed and pay. Please reach out if you find any discrepancies.\n\n{link}"
+            create_gmail_draft(
+                subject=subject,
+                to_addr=worker_email,
+                from_addr=config.email,
+                message_text=message_text,
+            )
 
         except Exception:
             logger.exception(
@@ -565,7 +593,9 @@ def main():
     generate_main_report(
         summary_data, combined_detail_data, start_date, end_date, config
     )
-    generate_individual_detail_reports(worker_details, start_date, end_date, config)
+    generate_individual_detail_reports(
+        worker_details, start_date, end_date, config, evaluators
+    )
 
 
 if __name__ == "__main__":
