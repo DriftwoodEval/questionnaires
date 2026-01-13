@@ -223,6 +223,7 @@ class _SharedClientFromDB(_ClientBase):
     latitude: float | None = None
     longitude: float | None = None
     address: str | None = None
+    schoolDistrict: str | None = None
 
 
 class ClientFromDB(_SharedClientFromDB):

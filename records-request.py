@@ -299,6 +299,26 @@ class TherapyAppointmentBot:
                     )
                 )
 
+        if client.schoolDistrict is None:
+            raise (
+                Exception(
+                    "Client has no school district in DB, cannot verify if they are the same."
+                )
+            )
+
+        if (
+            sending_school.lower()
+            != client.schoolDistrict.lower()
+            .replace(" County School District", "")
+            .replace(" School District", "")
+            .strip()
+        ):
+            raise (
+                Exception(
+                    "School district on consent form does not match client's school district in DB."
+                )
+            )
+
         message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
 
         attachments = [
@@ -547,15 +567,12 @@ def main():
                     logger.error(
                         f"An error occurred while processing {client_name}: {e}"
                     )
-                    add_to_sheet = False
-                    if str(e) == "portal not opened" or str(e) == "docs not signed":
-                        add_to_sheet = True
                     add_failure(
                         config=config,
                         client_id=client_id,
                         error=str(e),
                         failed_date=today,
-                        add_to_sheet=add_to_sheet,
+                        add_to_sheet=True,
                         full_name=client_name,
                         asd_adhd=asdAdhd,
                         daeval="Records",
