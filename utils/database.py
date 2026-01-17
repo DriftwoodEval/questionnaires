@@ -127,6 +127,101 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
     return failed_clients
 
 
+def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
+    """Fetch clients who need records requested from the database."""
+    logger.info("Fetching clients needing record requests from DB")
+    db_connection = get_db(config)
+    clients_needing_records = []
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            sql = """
+                SELECT c.*, er.requested, er.needsSecondRequest, er.secondRequestDate
+                FROM emr_client c
+                LEFT JOIN emr_external_record er ON c.id = er.clientId
+                WHERE c.recordsNeeded = "Needed"
+                AND ((er.requested IS NULL) OR (er.needsSecondRequest IS TRUE AND er.secondRequestDate IS NULL))
+                AND c.status IS NOT FALSE
+                AND (c.asdAdhd != 'ADHD' OR c.asdAdhd IS NULL)
+            """
+            cursor.execute(sql)
+            results = cursor.fetchall()
+
+            for client_data in results:
+                try:
+                    # We don't need questionnaires for this process, so we can leave it as None
+                    client_data["questionnaires"] = None
+                    pydantic_client = ClientFromDB(**client_data)
+                    clients_needing_records.append(pydantic_client)
+                except Exception:
+                    logger.exception(
+                        f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}"
+                    )
+
+    return clients_needing_records
+
+
+def get_record_ready_client_ids(config: Config) -> set[int]:
+    """Fetch client IDs for whom records are ready.
+
+    Ready means:
+    1. They do NOT need records.
+    2. OR They DO need records, and the external_record table has non-null content.
+    """
+    logger.info("Fetching record-compliant client IDs from DB")
+    db_connection = get_db(config)
+
+    valid_ids = set()
+
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            # Join client with external_record to check content presence
+            sql = """
+                SELECT c.id
+                FROM emr_client c
+                LEFT JOIN emr_external_record er ON c.id = er.clientId
+                WHERE
+                    -- Case 1: Client does not need records
+                    (c.recordsNeeded = "Not Needed")
+                    OR
+                    -- Case 2: Client needs records AND has content in the record table
+                    (c.recordsNeeded = "Needed" AND er.content IS NOT NULL)
+            """
+            cursor.execute(sql)
+            results = cursor.fetchall()
+
+            valid_ids = {row["id"] for row in results}
+
+    print(len(valid_ids))
+    return valid_ids
+
+
+def update_external_record_in_db(
+    config: Config,
+    client_id: int,
+    requested_date: date,
+    is_second_request: bool = False,
+):
+    """Update the external record in the database."""
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            if is_second_request:
+                sql = """
+                    UPDATE emr_external_record
+                    SET secondRequestDate=%s, updated_at = NOW()
+                    WHERE clientId=%s
+                """
+                cursor.execute(sql, (requested_date, client_id))
+            else:
+                sql = """
+                    INSERT INTO emr_external_record (clientId, requested)
+                    VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE requested=VALUES(requested), updated_at = NOW()
+                """
+                cursor.execute(sql, (client_id, requested_date))
+        db_connection.commit()
+
+
 def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
     """Get the NPI of an evaluator from the database.
 
