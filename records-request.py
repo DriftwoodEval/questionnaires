@@ -6,8 +6,6 @@ from base64 import b64decode
 from datetime import date
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
 import pymupdf
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -29,13 +27,14 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.custom_types import ClientFromDB, Config, RecordsContact, Services
-from utils.database import get_previous_clients
+from utils.database import (
+    get_clients_needing_records,
+    update_external_record_in_db,
+)
 from utils.google import (
-    get_punch_list,
     google_authenticate,
     move_file_in_drive,
     send_gmail,
-    update_punch_list,
 )
 from utils.misc import add_failure, load_config
 
@@ -48,45 +47,6 @@ logger.add(
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")
 WAIT_TIMEOUT = 15  # seconds
-
-
-def get_clients_to_request(config: Config) -> pd.DataFrame | None:
-    """Gets a list of clients from the punch list who need to have their records requested.
-
-    The list is filtered to only include clients who have a "TRUE" value in the "Records Needed" column, but not in the "Records Requested?" or "Records Reviewed?" columns.
-
-    Returns:
-        pandas.DataFrame | None: A DataFrame containing the punch list data, or None if the punch list is empty.
-    """
-    punch_list = get_punch_list(config)
-
-    if punch_list is None:
-        logger.critical("Punch list is empty")
-        return None
-
-    requested_date_converted = pd.to_datetime(
-        punch_list["Records Requested?"], errors="coerce"
-    )
-
-    requested_is_a_date = ~np.isnat(requested_date_converted)
-
-    exclude_requested_condition = (
-        punch_list["Records Requested?"] == "TRUE"
-    ) | requested_is_a_date
-
-    punch_list = punch_list[
-        (punch_list["Records Needed"] == "TRUE")
-        & (~exclude_requested_condition)
-        & (punch_list["For"] != "ADHD")
-        & (
-            punch_list["Language"]
-            .fillna("")
-            .apply(lambda x: x.lower() if isinstance(x, str) else "")
-            .isin(["", "english"])
-        )
-    ]
-
-    return punch_list
 
 
 def append_to_csv_file(filepath: Path, data: str):
@@ -358,11 +318,11 @@ class TherapyAppointmentBot:
             logger.exception("Error moving files to sent folder")
             return False
 
-        update_punch_list(
+        update_external_record_in_db(
             self.config,
-            str(client.id),
-            "Records Requested?",
-            date.today().strftime("%m/%d/%y"),
+            client.id,
+            date.today(),
+            is_second_request=bool(client.requested),
         )
 
         return False
@@ -526,9 +486,9 @@ def main():
     school_contacts = config.records_emails
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}
 
-    clients_to_process = get_clients_to_request(config)
+    clients_to_process = get_clients_needing_records(config)
 
-    if clients_to_process is None or clients_to_process.empty:
+    if not clients_to_process:
         logger.critical("No clients found.")
         return
 
@@ -538,23 +498,13 @@ def main():
     new_success_count = 0
     new_failure_count = 0
 
-    prev_clients, _ = get_previous_clients(config)
-
     with TherapyAppointmentBot(services, config) as bot:
         bot.login()
-        for _, client in clients_to_process.iterrows():
-            client_id = client["Client ID"]
-            asdAdhd = client["For"]
-            try:
-                client = prev_clients[int(client_id)]
-            except KeyError:
-                logger.error(
-                    f"Client with ID {client_id} is not an active client in the database"
-                )
-                continue
+        for client in clients_to_process:
+            asdAdhd = client.asdAdhd or "Unknown"
             client_name = client.fullName
 
-            if bot.go_to_client(client_id):
+            if bot.go_to_client(str(client.id)):
                 try:
                     bot.check_if_opened_portal()
                     bot.check_if_docs_signed()
@@ -569,7 +519,7 @@ def main():
                     )
                     add_failure(
                         config=config,
-                        client_id=client_id,
+                        client_id=client.id,
                         error=str(e),
                         failed_date=today,
                         add_to_sheet=True,
@@ -581,7 +531,7 @@ def main():
             else:
                 add_failure(
                     config=config,
-                    client_id=client_id,
+                    client_id=client.id,
                     error="unable to find client",
                     failed_date=today,
                     full_name=client_name,

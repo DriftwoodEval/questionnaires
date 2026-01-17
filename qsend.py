@@ -22,7 +22,9 @@ from selenium.webdriver.support.ui import Select
 
 from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
+    get_clients_needing_records,
     get_previous_clients,
+    get_record_ready_client_ids,
     insert_basic_client,
     put_questionnaire_in_db,
     update_failure_in_db,
@@ -82,12 +84,18 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
         & (punch_list["EVAL Qs Sent"] != "TRUE")
     ]
 
-    # Exclude clients who haven't had records reviewed, but only if records needed is TRUE
-    punch_list = punch_list[
-        (punch_list["Records Needed"] != "TRUE")
-        | (punch_list["Records Needed"] == "TRUE")
-        & (punch_list["Records Reviewed?"] != "FALSE")
-    ]
+    if punch_list.empty:
+        return None
+
+    valid_client_ids = get_record_ready_client_ids(config)
+
+    if "Client ID" in punch_list.columns:
+        punch_list["Client ID"] = pd.to_numeric(
+            punch_list["Client ID"], errors="coerce"
+        )
+        punch_list = punch_list.dropna(subset=["Client ID"])
+
+        punch_list = punch_list[punch_list["Client ID"].isin(valid_client_ids)]
 
     # Remove extra whitespace from the "Client Name" column
     punch_list["Client Name"] = (

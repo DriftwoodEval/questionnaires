@@ -224,6 +224,10 @@ class _SharedClientFromDB(_ClientBase):
     longitude: float | None = None
     address: str | None = None
     schoolDistrict: str | None = None
+    recordsNeeded: bool
+    requested: date | None = None
+    needsSecondRequest: bool = False
+    secondRequestDate: date | None = None
 
 
 class ClientFromDB(_SharedClientFromDB):
