@@ -81,11 +81,16 @@ class NetworkSink:
         self.ip = urlparse(api_url).hostname
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((self.ip, port))
+        try:
+            self.sock.connect((self.ip, port))
+        except (OSError, ConnectionRefusedError, TimeoutError) as e:
+            logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
+            self.sock = None
+            exit(1)
 
     def write(self, message):
         """Write a message to the network socket."""
-        if message.strip():
+        if self.sock and message.strip():
             self.sock.sendall(message.encode("utf-8"))
 
 
