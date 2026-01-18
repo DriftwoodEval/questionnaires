@@ -246,20 +246,23 @@ class TherapyAppointmentBot:
             )
         )
 
-        if "your relationship to client" in sending_school.lower():
+        sending_school = sending_school.lower().strip()
+        receiving_school = receiving_school.lower().strip()
+
+        if "your relationship to client" in sending_school:
             raise (Exception("No school found on consent to send"))
 
-        if "your relationship to client" in receiving_school.lower():
+        if "your relationship to client" in receiving_school:
             raise (Exception("No school found on consent to receive"))
 
-        if sending_school.lower() != receiving_school.lower():
+        if sending_school != receiving_school:
             logger.warning(
                 f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
             )
             raise (Exception("District on receive does not match district on send"))
         else:
             try:
-                school_contact = school_contacts[sending_school.lower()]
+                school_contact = school_contacts[sending_school]
             except KeyError:
                 raise (
                     Exception(
@@ -274,16 +277,17 @@ class TherapyAppointmentBot:
                 )
             )
 
-        if (
-            sending_school.lower()
-            != client.schoolDistrict.lower()
+        db_district = (
+            client.schoolDistrict.lower()
             .replace(" County School District", "")
             .replace(" School District", "")
             .strip()
-        ):
+        )
+
+        if sending_school != db_district:
             raise (
                 Exception(
-                    "School district on consent form does not match client's school district in DB."
+                    f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
                 )
             )
 
