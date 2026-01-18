@@ -36,7 +36,7 @@ from utils.google import (
     move_file_in_drive,
     send_gmail,
 )
-from utils.misc import add_failure, load_config
+from utils.misc import NetworkSink, add_failure, load_config, load_local_settings
 
 logger.remove()
 logger.add(
@@ -45,6 +45,16 @@ logger.add(
 )
 
 logger.add("logs/records-request.log", rotation="500 MB")
+
+api_url = load_local_settings().api_url
+
+network_sink = NetworkSink(api_url, 9999, app_name="records-request")
+
+logger.add(
+    network_sink.write,
+    format="{time} | {level: <8} | {message}",
+    enqueue=True,
+)
 
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")

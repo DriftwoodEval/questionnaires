@@ -77,9 +77,10 @@ def load_config() -> tuple[Services, Config]:
 class NetworkSink:
     """Class for sending log data to a network socket."""
 
-    def __init__(self, api_url, port):
+    def __init__(self, api_url: str, port: int, app_name: str):
         self.ip = urlparse(api_url).hostname
         self.port = port
+        self.app_name = app_name
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.sock.connect((self.ip, port))
@@ -88,10 +89,13 @@ class NetworkSink:
             self.sock = None
             exit(1)
 
-    def write(self, message):
+    def write(self, message: str):
         """Write a message to the network socket."""
         if self.sock and message.strip():
-            self.sock.sendall(message.encode("utf-8"))
+            if not message.endswith("\n"):
+                message += "\n"
+            formatted_message = f"{self.app_name}:{message}"
+            self.sock.sendall(formatted_message.encode("utf-8"))
 
 
 def add_failure(
