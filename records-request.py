@@ -219,6 +219,18 @@ class TherapyAppointmentBot:
         except (NoSuchElementException, TimeoutException):
             raise Exception("docs not signed")
 
+    def resolve_school_contact(
+        self, name: str, school_contacts: dict[str, RecordsContact]
+    ) -> tuple[str, RecordsContact] | tuple[None, None]:
+        """Helper to find a contact by name or alias."""
+        name = name.lower().strip()
+        if name in school_contacts:
+            return name, school_contacts[name]
+        for canonical_name, contact in school_contacts.items():
+            if name in [a.lower().strip() for a in contact.aliases]:
+                return canonical_name, contact
+        return None, None
+
     def download_consent_forms(
         self, client: ClientFromDB, school_contacts: dict[str, RecordsContact]
     ) -> bool:
@@ -270,15 +282,17 @@ class TherapyAppointmentBot:
                 f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
             )
             raise (Exception("District on receive does not match district on send"))
-        else:
-            try:
-                school_contact = school_contacts[sending_school]
-            except KeyError:
-                raise (
-                    Exception(
-                        f"School found, {sending_school}, has no email address assigned."
-                    )
+
+        canonical_sending, school_contact = self.resolve_school_contact(
+            sending_school, school_contacts
+        )
+
+        if not school_contact:
+            raise (
+                Exception(
+                    f"School found, {sending_school}, has no email address assigned."
                 )
+            )
 
         if client.schoolDistrict is None:
             raise (
@@ -294,7 +308,7 @@ class TherapyAppointmentBot:
             .strip()
         )
 
-        if sending_school != db_district:
+        if canonical_sending != db_district:
             raise (
                 Exception(
                     f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."

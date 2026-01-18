@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import requests
 import yaml
+from icecream import ic
 from loguru import logger
 
 from utils.custom_types import (
@@ -99,6 +100,8 @@ def load_config() -> tuple[Services, Config]:
         sys.exit(1)
 
     logger.info("Configuration successfully loaded, merged, and validated.")
+    ic(final_config)
+    ic(final_services)
     return final_services, final_config
 
 
