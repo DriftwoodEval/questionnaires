@@ -112,7 +112,10 @@ class PieceworkConfig(BaseModel):
             Full name if found, otherwise returns the original initials
         """
         initials_lower = initials.lower()
-        return self.name_map.get(initials_lower, initials)
+        for k, v in self.name_map.items():
+            if k.lower() == initials_lower:
+                return v
+        return initials
 
 
 class RecordsContact(BaseModel):
