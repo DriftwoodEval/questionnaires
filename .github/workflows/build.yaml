@@ -47,23 +47,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract metadata for config-server image
-        id: meta-config-server
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}-config-server
-
-      - name: Build and push config-server image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: config-server
-          push: true
-          tags: ${{ steps.meta-config-server.outputs.tags }}
-          labels: ${{ steps.meta-config-server.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Extract metadata for log-server image
         id: meta-log-server
         uses: docker/metadata-action@v5
@@ -84,12 +67,6 @@ jobs:
       - uses: actions/delete-package-versions@v5
         with:
           package-name: "questionnaires-qreceive"
-          package-type: "container"
-          min-versions-to-keep: 5
-
-      - uses: actions/delete-package-versions@v5
-        with:
-          package-name: "questionnaires-config-server"
           package-type: "container"
           min-versions-to-keep: 5
 
