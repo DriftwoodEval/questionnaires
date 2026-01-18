@@ -41,7 +41,6 @@ class OpenPhoneUser(BaseModel):
     """A BaseModel containing OpenPhone user information."""
 
     id: str
-    phone: str
 
 
 class OpenPhoneService(BaseModel):

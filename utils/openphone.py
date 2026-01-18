@@ -74,7 +74,11 @@ class OpenPhone:
         self.config = config
         self.services = services
         self.main_number = services.openphone.main_number
-        self.default_user = services.openphone.users[config.name.lower()].id
+
+        first_name = config.name.lower().split()[0]
+        users_lower = {name.lower(): user for name, user in services.openphone.users.items()}
+        self.default_user = users_lower[first_name].id
+
         self.limited_request = LimitedRequest()
 
     def _get_auth_headers(self) -> dict:
