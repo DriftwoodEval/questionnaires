@@ -120,6 +120,7 @@ class RecordsContact(BaseModel):
 
     email: EmailStr
     fax: bool = False
+    aliases: list[str]
 
 
 class Config(BaseModel):
