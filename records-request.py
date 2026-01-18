@@ -10,7 +10,7 @@ import pymupdf
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from selenium import webdriver
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
