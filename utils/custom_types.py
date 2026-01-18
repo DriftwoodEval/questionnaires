@@ -226,7 +226,7 @@ class _SharedClientFromDB(_ClientBase):
     schoolDistrict: str | None = None
     recordsNeeded: str | None = None
     requested: date | None = None
-    needsSecondRequest: bool = False
+    needsSecondRequest: bool | None = None
     secondRequestDate: date | None = None
 
 

@@ -147,7 +147,6 @@ def create_gmail_draft(
         message.set_content(message_text)
         if html:
             message.add_alternative(html, subtype="html")
-        message["To"] = to_addr
         message["From"] = from_addr
         message["Subject"] = subject
 
