@@ -536,7 +536,6 @@ def generate_individual_detail_reports(
             create_gmail_draft(
                 subject=subject,
                 to_addr=worker_email,
-                from_addr=config.email,
                 message_text=message_text,
             )
 

@@ -135,7 +135,6 @@ def send_gmail(
 def create_gmail_draft(
     subject: str,
     to_addr: str,
-    from_addr: str,
     message_text: str,
     html: str | None = None,
 ):
@@ -147,7 +146,6 @@ def create_gmail_draft(
         message.set_content(message_text)
         if html:
             message.add_alternative(html, subtype="html")
-        message["From"] = from_addr
         message["Subject"] = subject
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()

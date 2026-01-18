@@ -595,10 +595,10 @@ def main():
         if admin_email_text != "":
             try:
                 send_gmail(
-                    admin_email_text,
-                    f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
-                    ",".join(config.qreceive_emails),
-                    config.automated_email,
+                    message_text=admin_email_text,
+                    subject=f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
+                    to_addr=",".join(config.qreceive_emails),
+                    from_addr=config.automated_email,
                     html=admin_email_html,
                 )
             except Exception:
