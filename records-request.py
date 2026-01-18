@@ -44,6 +44,8 @@ logger.add(
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
 )
 
+logger.add("logs/records-request.log", rotation="500 MB")
+
 SUCCESS_FILE = Path("put/savedrecords.txt")
 FAILURE_FILE = Path("put/recordfailures.txt")
 WAIT_TIMEOUT = 15  # seconds
@@ -166,6 +168,12 @@ class TherapyAppointmentBot:
         except NoSuchElementException as e:
             logger.warning(f"Could not find a search element for: {client_id}: {e}")
             return False
+        except ElementClickInterceptedException as e:
+            logger.error(
+                f"Could not enter client page, another element is in the way: {e}"
+            )
+            input(f"Press enter after entering {client_id}'s page yourself...")
+            return True
 
     def check_if_opened_portal(self) -> bool:
         """Check if the TA portal has been opened by the client."""
