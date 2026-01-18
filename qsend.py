@@ -50,9 +50,9 @@ logger.add(
 
 logger.add("logs/qsend.log", rotation="500 MB")
 
-api_url = load_local_settings().api_url
+log_host = load_local_settings().log_host
 
-network_sink = NetworkSink(api_url, 9999, app_name="qsend")
+network_sink = NetworkSink(log_host, 9999, app_name="qsend")
 
 logger.add(
     network_sink.write,

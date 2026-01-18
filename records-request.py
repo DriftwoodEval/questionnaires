@@ -46,9 +46,9 @@ logger.add(
 
 logger.add("logs/records-request.log", rotation="500 MB")
 
-api_url = load_local_settings().api_url
+log_host = load_local_settings().log_host
 
-network_sink = NetworkSink(api_url, 9999, app_name="records-request")
+network_sink = NetworkSink(log_host, 9999, app_name="records-request")
 
 logger.add(
     network_sink.write,

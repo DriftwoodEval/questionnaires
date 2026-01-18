@@ -13,6 +13,7 @@ from loguru import logger
 
 from utils.custom_types import (
     Config,
+    FullConfig,
     LocalSettings,
     Services,
 )
@@ -24,6 +25,7 @@ from utils.google import add_to_failure_sheet
 def load_local_settings() -> LocalSettings:
     """Load local settings from local_config.yml."""
     local_config_path = "./config/local_config.yml"
+
     if not os.path.exists(local_config_path):
         logger.error(
             f"Local config file not found at {local_config_path}. Cannot determine API URL."
@@ -45,40 +47,66 @@ def load_local_settings() -> LocalSettings:
 def load_config() -> tuple[Services, Config]:
     """Load config from API and apply local overrides."""
     local_settings = load_local_settings()
-    api_url = local_settings.api_url + "/api/config"
 
-    logger.debug(f"Fetching config from {api_url}")
+    secret = local_settings.api_secret
+
+    if not secret:
+        logger.error("Missing API token in local settings.")
+
+    endpoint = f"{local_settings.api_url.rstrip('/')}/api/internal/py-config"
+    headers = {
+        "Authorization": f"Bearer {secret}",
+        "Content-Type": "application/json",
+    }
+
+    logger.debug(f"Fetching config from {endpoint}")
     try:
-        response = requests.get(api_url, timeout=10)
+        response = requests.get(endpoint, headers=headers, timeout=10)
+
+        if response.status_code == 401:
+            logger.error("Authentication failed. Check your token.")
+            sys.exit(1)
+
         response.raise_for_status()
         remote_data = response.json()
+
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch config from API: {e}")
         sys.exit(1)
 
-    services_data = remote_data.get("services", {})
-    config_data = remote_data.get("config", {})
+    try:
+        full_config = FullConfig.model_validate(remote_data)
+    except Exception:
+        logger.exception("Remote config failed validation against FullConfig schema.")
+        sys.exit(1)
 
+    config_dict = full_config.config.model_dump()
     overrides = local_settings.config_overrides.model_dump(exclude_none=True)
-    config_data.update(overrides)
+
+    if overrides:
+        logger.info(f"Applying local overrides: {list(overrides.keys())}")
+        config_dict.update(overrides)
 
     try:
-        services = Services.model_validate(services_data)
-        config = Config.model_validate(config_data)
+        # Re-validate the 'config' portion with overrides applied
+        final_config = Config.model_validate(config_dict)
+        final_services = (
+            full_config.services
+        )  # Services are usually not overridden locally
 
     except Exception:
         logger.exception("Final merged config failed Pydantic validation.")
         sys.exit(1)
 
     logger.info("Configuration successfully loaded, merged, and validated.")
-    return services, config
+    return final_services, final_config
 
 
 class NetworkSink:
     """Class for sending log data to a network socket."""
 
-    def __init__(self, api_url: str, port: int, app_name: str):
-        self.ip = urlparse(api_url).hostname
+    def __init__(self, log_host: str, port: int, app_name: str):
+        self.ip = log_host
         self.port = port
         self.app_name = app_name
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
