@@ -146,6 +146,7 @@ def create_gmail_draft(
         message.set_content(message_text)
         if html:
             message.add_alternative(html, subtype="html")
+        message["To"] = to_addr
         message["Subject"] = subject
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
