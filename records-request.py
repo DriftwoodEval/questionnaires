@@ -10,7 +10,6 @@ import pymupdf
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
-from pypdf import PdfReader
 from selenium import webdriver
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
@@ -396,12 +395,20 @@ class TherapyAppointmentBot:
 
     def extract_school_district_name(self, pdf_stream: io.BytesIO) -> str:
         """Use regex to extract the school district name from the PDF."""
-        reader = PdfReader(pdf_stream)
+        pdf_stream.seek(0)
 
-        # Collect all text from the PDF
+        doc = pymupdf.open(stream=pdf_stream, filetype="pdf")
+
         full_text = ""
-        for page in reader.pages:
-            full_text += page.extract_text() or ""
+        for page in doc:
+            text = page.get_text()
+            if isinstance(text, str):
+                full_text += text
+
+        doc.close()
+
+        # Reset stream position to 0 so it can be uploaded to Drive later
+        pdf_stream.seek(0)
 
         # Search for the line containing "School District"
         if "\nSchool District" in full_text:

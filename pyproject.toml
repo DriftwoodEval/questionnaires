@@ -27,7 +27,6 @@ dependencies = [
     "uvicorn>=0.38.0",
     "rich>=14.2.0",
     "pymupdf>=1.26.7",
-    "pypdf>=6.6.0",
 ]
 
 [dependency-groups]
