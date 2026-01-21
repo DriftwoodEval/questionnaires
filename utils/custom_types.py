@@ -77,6 +77,7 @@ class PieceworkConfig(BaseModel):
 
     costs: dict[str, PieceworkCosts]
     name_map: dict[str, str]
+    payroll_emails: dict[str, EmailStr]
 
     def get_unit_cost(self, evaluator_name: str, appointment_type: str) -> float:
         """Get the unit cost for a specific evaluator and appointment type.

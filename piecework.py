@@ -520,10 +520,15 @@ def generate_individual_detail_reports(
                 continue
 
             worker_email = None
+
             for _, evaluator_info in evaluators.items():
                 if evaluator_info.get("providerName") == worker_name:
                     worker_email = evaluator_info.get("email")
                     break
+
+            worker_email = config.piecework.payroll_emails.get(
+                worker_name, worker_email
+            )
 
             if not worker_email:
                 logger.warning(
