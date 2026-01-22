@@ -41,6 +41,7 @@ def start_server():
             conn, addr = s.accept()
             with conn:
                 logger.info(f"Connection accepted from {addr}")
+                last_app_name = "unknown"
                 while True:
                     data = conn.recv(4096)
                     if not data:
@@ -54,11 +55,18 @@ def start_server():
                                 continue
 
                             if ":" in line:
-                                app_name, message = line.split(":", 1)
-                                log_to_app(app_name, message)
+                                possible_app_name, message = line.split(":", 1)
+                                if (
+                                    " " not in possible_app_name
+                                    and len(possible_app_name) < 32
+                                ):
+                                    last_app_name = possible_app_name
+                                    log_to_app(last_app_name, message)
+                                else:
+                                    log_to_app(last_app_name, line)
                             else:
-                                # Fallback if no app_name is provided
-                                log_to_app("unknown", line)
+                                # Fallback to the last known app name for this connection
+                                log_to_app(last_app_name, line)
                     except Exception as e:
                         logger.error(f"Error processing data: {e}")
 

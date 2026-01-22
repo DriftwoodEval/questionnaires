@@ -120,10 +120,12 @@ class NetworkSink:
     def write(self, message: str):
         """Write a message to the network socket."""
         if self.sock and message.strip():
-            if not message.endswith("\n"):
-                message += "\n"
-            formatted_message = f"{self.app_name}:{message}"
-            self.sock.sendall(formatted_message.encode("utf-8"))
+            for line in message.splitlines():
+                if line.strip():
+                    formatted_line = f"{self.app_name}:{line}\n"
+                    self.sock.sendall(formatted_line.encode("utf-8"))
+                else:
+                    self.sock.sendall(f"{self.app_name}:\n".encode())
 
 
 def add_failure(
