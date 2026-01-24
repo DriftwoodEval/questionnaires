@@ -160,7 +160,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     return clients_needing_records
 
 
-def get_record_ready_client_ids(config: Config) -> set[int]:
+def get_record_ready_client_ids(config: Config) -> set[str]:
     """Fetch client IDs for whom records are ready.
 
     Ready means:
@@ -189,9 +189,8 @@ def get_record_ready_client_ids(config: Config) -> set[int]:
             cursor.execute(sql)
             results = cursor.fetchall()
 
-            valid_ids = {row["id"] for row in results}
+            valid_ids = {str(row["id"]) for row in results}
 
-    print(len(valid_ids))
     return valid_ids
 
 

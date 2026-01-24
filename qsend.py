@@ -90,9 +90,6 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
     valid_client_ids = get_record_ready_client_ids(config)
 
     if "Client ID" in punch_list.columns:
-        punch_list["Client ID"] = pd.to_numeric(
-            punch_list["Client ID"], errors="coerce"
-        )
         punch_list = punch_list.dropna(subset=["Client ID"])
 
         punch_list = punch_list[punch_list["Client ID"].isin(valid_client_ids)]
@@ -2385,6 +2382,20 @@ def main():
                 ]
             else:
                 questionnaires_to_generate = questionnaires_needed
+
+            if len(questionnaires_to_generate) == 0:
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error=f"All questionnaires have already been sent, but sent box not checked",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
+                    questionnaires_needed=questionnaires_needed,
+                    add_to_db=False,
+                )
+                continue
 
             send = True
             for questionnaire in questionnaires_to_generate:
