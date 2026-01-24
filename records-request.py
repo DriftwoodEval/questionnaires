@@ -52,8 +52,6 @@ logger.add(
     enqueue=True,
 )
 
-SUCCESS_FILE = Path("put/savedrecords.txt")
-FAILURE_FILE = Path("put/recordfailures.txt")
 WAIT_TIMEOUT = 15  # seconds
 
 
@@ -411,7 +409,6 @@ def main():
                     skipped = download_consent_forms(
                         driver, client, school_contacts, config
                     )
-                    append_to_csv_file(Path(SUCCESS_FILE), client_name)
                     if not skipped:
                         new_success_count += 1
 
