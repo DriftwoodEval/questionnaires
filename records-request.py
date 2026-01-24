@@ -260,19 +260,21 @@ def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
     # Reset stream position to 0 so it can be uploaded to Drive later
     pdf_stream.seek(0)
 
-    # Search for the line containing "School District"
-    if "\nSchool District" in full_text:
-        match = re.search(r"School District\r?\n(.+)", full_text)
-        if match is not None:
-            match = match.group(1).strip()
-    elif "to receive educational records from:" in full_text:
-        match = re.search(r"First, Last\r?\n(.+)", full_text)
-        if match is not None:
-            match = match.group(1)[:-15].strip()
-    else:
-        match = re.search(r"Other\r?\n(.+)", full_text)
-        if match is not None:
-            match = match.group(1)[:-15].strip()
+    match = None
+    if "School District" in full_text:
+        after_match = re.search(r"School District\r?\n(.+)", full_text)
+        before_match = re.search(r"(.+)\r?\nSchool District", full_text)
+
+        cand_after = after_match.group(1).strip() if after_match else None
+        cand_before = before_match.group(1).strip() if before_match else None
+
+        if cand_after and "self" not in cand_after.lower():
+            match = cand_after
+        elif cand_before:
+            match = cand_before
+        elif cand_after:
+            match = cand_after
+
     if match:
         return normalize_district(match)
     else:
