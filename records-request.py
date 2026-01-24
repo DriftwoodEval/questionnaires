@@ -149,10 +149,7 @@ def download_consent_forms(
         )
 
     db_district = (
-        client.schoolDistrict.lower()
-        .replace(" County School District", "")
-        .replace(" School District", "")
-        .strip()
+        client.schoolDistrict.lower().replace(" (county )?school district", "").strip()
     )
 
     if canonical_sending != db_district:
