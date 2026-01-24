@@ -250,7 +250,6 @@ def main():
         "call": [],
         "completed": [],
         "errors": [],
-        "ifsp_download_needed": [],
     }
 
     try:
@@ -259,12 +258,6 @@ def main():
         if clients is None:
             logger.critical("Failed to get previous clients")
             return
-
-        email_info["ifsp_download_needed"] = [
-            client
-            for client_id, client in clients.items()
-            if client.ifsp and not client.ifspDownloaded
-        ]
 
         clients = validate_questionnaires(clients)
         clients = filter_inactive_and_not_pending(clients)

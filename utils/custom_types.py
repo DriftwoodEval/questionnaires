@@ -224,8 +224,8 @@ class _SharedClientFromDB(_ClientBase):
     """Common fields for clients from the database. Not intended to be used direcly."""
 
     autismStop: bool
-    ifsp: bool
-    ifspDownloaded: bool
+    babyNetERNeeded: bool
+    babyNetERDownloaded: bool
     latitude: float | None = None
     longitude: float | None = None
     address: str | None = None
@@ -277,7 +277,6 @@ class AdminEmailInfo(TypedDict):
     call: list[ClientWithQuestionnaires | FailedClientFromDB]
     completed: list[ClientWithQuestionnaires]
     errors: list[str]
-    ifsp_download_needed: list[ClientFromDB]
 
 
 class Appointment(TypedDict):
