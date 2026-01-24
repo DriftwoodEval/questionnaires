@@ -1,7 +1,6 @@
 import io
 import re
 import sys
-import time
 from base64 import b64decode
 from datetime import date
 from pathlib import Path
@@ -10,22 +9,13 @@ import pymupdf
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
-from selenium import webdriver
-from selenium.common.exceptions import (
-    ElementClickInterceptedException,
-    NoSuchElementException,
-    TimeoutException,
-)
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.webdriver import WebDriver
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.print_page_options import PrintOptions
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from utils.custom_types import ClientFromDB, Config, RecordsContact, Services
+from utils.custom_types import ClientFromDB, Config, RecordsContact
 from utils.database import (
     get_clients_needing_records,
     update_external_record_in_db,
@@ -36,6 +26,13 @@ from utils.google import (
     send_gmail,
 )
 from utils.misc import NetworkSink, add_failure, load_config, load_local_settings
+from utils.selenium import (
+    check_and_login_ta,
+    check_if_docs_signed,
+    check_if_opened_portal,
+    go_to_client,
+    initialize_selenium,
+)
 
 logger.remove()
 logger.add(
@@ -71,455 +68,312 @@ def append_to_csv_file(filepath: Path, data: str):
         f.write(f"{prefix}{data}")
 
 
-class TherapyAppointmentBot:
-    """A bot to automate downloading client documents from TherapyAppointment."""
+def resolve_school_contact(
+    name: str, school_contacts: dict[str, RecordsContact]
+) -> tuple[str, RecordsContact] | tuple[None, None]:
+    """Helper to find a contact by name or alias."""
+    name = name.lower().strip()
+    if name in school_contacts:
+        return name, school_contacts[name]
+    for canonical_name, contact in school_contacts.items():
+        if name in [a.lower().strip() for a in contact.aliases]:
+            return canonical_name, contact
+    return None, None
 
-    def __init__(self, services: Services, config: Config):
-        """Initializes the TherapyAppointmentBot."""
-        self.taconfig = services.therapyappointment
-        self.config = config
-        self.driver = self._initialize_driver()
-        self.wait = WebDriverWait(self.driver, WAIT_TIMEOUT)
 
-    def _initialize_driver(self) -> WebDriver:
-        """Initializes the Chrome WebDriver."""
-        logger.debug("Initializing WebDriver...")
-        chrome_options = Options()
-        driver = webdriver.Chrome(options=chrome_options)
-        return driver
+def download_consent_forms(
+    driver: WebDriver,
+    client: ClientFromDB,
+    school_contacts: dict[str, RecordsContact],
+    config: Config,
+) -> bool:
+    """Navigates to Docs & Forms and saves consent forms as PDFs."""
+    creds = google_authenticate()
 
-    def __enter__(self):
-        """Allows using the bot as a context manager."""
-        return self
+    service = build("drive", "v3", credentials=creds)
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Ensures the driver is closed properly on exit."""
-        logger.debug("Closing WebDriver.")
-        if self.driver:
-            self.driver.quit()
+    logger.debug("Checking if files already exist...")
+    check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Receiving.pdf"
+    prev_receive = file_exists(service, check_filename, config.records_folder_id)
+    check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Sending.pdf"
+    prev_send = file_exists(service, check_filename, config.records_folder_id)
 
-    def login(self):
-        """Logs into the TherapyAppointment portal."""
-        logger.info("Logging into TherapyAppointment...")
-        self.driver.get("https://portal.therapyappointment.com")
-        self.driver.maximize_window()
-
-        username_field = self.wait.until(
-            EC.presence_of_element_located((By.NAME, "user_username"))
+    if prev_receive or prev_send:
+        logger.warning(
+            f"Files already exist for {client.firstName} {client.lastName}, skipping download."
         )
-        username_field.send_keys(self.taconfig.username)
+        return True
 
-        password_field = self.driver.find_element(By.NAME, "user_password")
-        password_field.send_keys(self.taconfig.password)
-        password_field.submit()
-        logger.success("Login successful.")
+    logger.info("Navigating to Docs & Forms...")
 
-    def go_to_client(self, client_id: str) -> bool:
-        """Navigates to a specific client in TherapyAppointment."""
-        logger.info(f"Searching for client: {client_id}...")
-        try:
-            clients_button = self.wait.until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//*[contains(text(), 'Clients')]")
-                )
-            )
-            clients_button.click()
-
-            client_id_field = self.wait.until(
-                EC.visibility_of_element_located(
-                    (
-                        By.XPATH,
-                        "//label[text()='Account Number']/following-sibling::input",
-                    )
-                )
-            )
-            client_id_field.send_keys(client_id)
-
-            search_button = self.wait.until(
-                EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, "button[aria-label='Search']")
-                )
-            )
-            search_button.click()
-
-            logger.debug("Entering client's page...")
-            client_link = self.wait.until(
-                EC.element_to_be_clickable(
-                    (
-                        By.CSS_SELECTOR,
-                        "a[aria-description*='Press Enter to view the profile of']",
-                    )
-                )
-            )
-            try:
-                client_link.click()
-            except ElementClickInterceptedException:
-                logger.warning(
-                    "Click intercepted by popup, trying ESC and clicking again..."
-                )
-                actions = ActionChains(self.driver)
-                actions.send_keys(Keys.ESCAPE)
-                actions.perform()
-                time.sleep(1)
-                client_link = self.wait.until(
-                    EC.element_to_be_clickable(
-                        (
-                            By.CSS_SELECTOR,
-                            "a[aria-description*='Press Enter to view the profile of']",
-                        )
-                    )
-                )
-                client_link.click()
-            return True
-        except TimeoutException as e:
-            logger.error(f"Client not found or search failed for: {client_id}: {e}")
-            return False
-        except NoSuchElementException as e:
-            logger.warning(f"Could not find a search element for: {client_id}: {e}")
-            return False
-        except ElementClickInterceptedException as e:
-            logger.error(
-                f"Could not enter client page, another element is in the way: {e}"
-            )
-            input(f"Press enter after entering {client_id}'s page yourself...")
-            return True
-
-    def check_if_opened_portal(self) -> bool:
-        """Check if the TA portal has been opened by the client."""
-        logger.info("Checking if portal has been opened...")
-        try:
-            self.wait.until(
-                EC.visibility_of_element_located(
-                    (
-                        By.XPATH,
-                        "//div[contains(normalize-space(text()), 'Username:')]",
-                    )
-                )
-            )
-            logger.debug("Client has opened portal")
-            return True
-        except (NoSuchElementException, TimeoutException):
-            raise Exception("portal not opened")
-
-    def check_if_docs_signed(self) -> bool:
-        """Check if the TA docs have been signed by the client."""
-        logger.info("Checking if docs have been signed...")
-        try:
-            self.wait.until(
-                EC.visibility_of_element_located(
-                    (
-                        By.XPATH,
-                        "//div[contains(normalize-space(text()), 'has completed registration')]",
-                    )
-                )
-            )
-            logger.debug("Docs have been signed")
-            return True
-        except (NoSuchElementException, TimeoutException):
-            raise Exception("docs not signed")
-
-    def resolve_school_contact(
-        self, name: str, school_contacts: dict[str, RecordsContact]
-    ) -> tuple[str, RecordsContact] | tuple[None, None]:
-        """Helper to find a contact by name or alias."""
-        name = name.lower().strip()
-        if name in school_contacts:
-            return name, school_contacts[name]
-        for canonical_name, contact in school_contacts.items():
-            if name in [a.lower().strip() for a in contact.aliases]:
-                return canonical_name, contact
-        return None, None
-
-    def download_consent_forms(
-        self, client: ClientFromDB, school_contacts: dict[str, RecordsContact]
-    ) -> bool:
-        """Navigates to Docs & Forms and saves consent forms as PDFs."""
-        creds = google_authenticate()
-
-        service = build("drive", "v3", credentials=creds)
-
-        logger.debug("Checking if files already exist...")
-        check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Receiving.pdf"
-        prev_receive = self.file_exists(
-            service, check_filename, self.config.records_folder_id
+    receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
+        save_document_as_pdf(
+            driver, "Receiving Consent to Release of Information", client, config
         )
-        check_filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} Sending.pdf"
-        prev_send = self.file_exists(
-            service, check_filename, self.config.records_folder_id
+    )
+    sending_stream, sending_filename, sending_school, sending_drive_file = (
+        save_document_as_pdf(
+            driver, "Sending Consent to Release of Information", client, config
+        )
+    )
+
+    sending_school = sending_school.lower().strip()
+    receiving_school = receiving_school.lower().strip()
+
+    if "your relationship to client" in sending_school:
+        raise (Exception("No school found on consent to send"))
+
+    if "your relationship to client" in receiving_school:
+        raise (Exception("No school found on consent to receive"))
+
+    if sending_school != receiving_school:
+        logger.warning(
+            f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
+        )
+        raise (Exception("District on receive does not match district on send"))
+
+    canonical_sending, school_contact = resolve_school_contact(
+        sending_school, school_contacts
+    )
+
+    if not school_contact:
+        raise (
+            Exception(f"School found, {sending_school}, has no email address assigned.")
         )
 
-        if prev_receive or prev_send:
-            logger.warning(
-                f"Files already exist for {client.firstName} {client.lastName}, skipping download."
-            )
-            return True
-
-        logger.info("Navigating to Docs & Forms...")
-
-        receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
-            self.save_document_as_pdf(
-                "Receiving Consent to Release of Information", client
-            )
-        )
-        sending_stream, sending_filename, sending_school, sending_drive_file = (
-            self.save_document_as_pdf(
-                "Sending Consent to Release of Information", client
+    if client.schoolDistrict is None:
+        raise (
+            Exception(
+                "Client has no school district in DB, cannot verify if they are the same."
             )
         )
 
-        sending_school = sending_school.lower().strip()
-        receiving_school = receiving_school.lower().strip()
+    db_district = (
+        client.schoolDistrict.lower()
+        .replace(" County School District", "")
+        .replace(" School District", "")
+        .strip()
+    )
 
-        if "your relationship to client" in sending_school:
-            raise (Exception("No school found on consent to send"))
-
-        if "your relationship to client" in receiving_school:
-            raise (Exception("No school found on consent to receive"))
-
-        if sending_school != receiving_school:
-            logger.warning(
-                f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
+    if canonical_sending != db_district:
+        raise (
+            Exception(
+                f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
             )
-            raise (Exception("District on receive does not match district on send"))
-
-        canonical_sending, school_contact = self.resolve_school_contact(
-            sending_school, school_contacts
         )
 
-        if not school_contact:
-            raise (
-                Exception(
-                    f"School found, {sending_school}, has no email address assigned."
-                )
+    message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
+
+    attachments = [
+        {"stream": receiving_stream, "filename": receiving_filename},
+        {"stream": sending_stream, "filename": sending_filename},
+    ]
+
+    if school_contact.fax:
+        logger.info("Fax number found, creating and prepending cover sheet...")
+        fax_cover_stream, fax_cover_filename = create_fax_cover_sheet(client)
+        if fax_cover_stream and fax_cover_filename:
+            attachments.insert(
+                0,
+                {"stream": fax_cover_stream, "filename": fax_cover_filename},
             )
 
-        if client.schoolDistrict is None:
-            raise (
-                Exception(
-                    "Client has no school district in DB, cannot verify if they are the same."
-                )
-            )
+    send_gmail(
+        message_text=message_text,
+        subject=f"Re: Student: {client.firstName} {client.lastName}",
+        to_addr=school_contact.email,
+        from_addr="records@driftwoodeval.com",
+        attachments=attachments,
+    )
 
-        db_district = (
-            client.schoolDistrict.lower()
-            .replace(" County School District", "")
-            .replace(" School District", "")
-            .strip()
+    try:
+        move_file_in_drive(
+            service,
+            receiving_drive_file["id"],
+            config.sent_records_folder_id,
         )
-
-        if canonical_sending != db_district:
-            raise (
-                Exception(
-                    f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
-                )
-            )
-
-        message_text = f"Re: Student: {client.firstName} {client.lastName}\nDate of Birth: {client.dob.strftime('%m/%d/%Y')}\n\nPlease find Consent to Release of Information attached for the above referenced student. Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation.\n\nThank you for your time!"
-
-        attachments = [
-            {"stream": receiving_stream, "filename": receiving_filename},
-            {"stream": sending_stream, "filename": sending_filename},
-        ]
-
-        if school_contact.fax:
-            logger.info("Fax number found, creating and prepending cover sheet...")
-            fax_cover_stream, fax_cover_filename = self.create_fax_cover_sheet(client)
-            if fax_cover_stream and fax_cover_filename:
-                attachments.insert(
-                    0,
-                    {"stream": fax_cover_stream, "filename": fax_cover_filename},
-                )
-
-        send_gmail(
-            message_text=message_text,
-            subject=f"Re: Student: {client.firstName} {client.lastName}",
-            to_addr=school_contact.email,
-            from_addr="records@driftwoodeval.com",
-            attachments=attachments,
+        move_file_in_drive(
+            service,
+            sending_drive_file["id"],
+            config.sent_records_folder_id,
         )
-
-        try:
-            move_file_in_drive(
-                service,
-                receiving_drive_file["id"],
-                self.config.sent_records_folder_id,
-            )
-            move_file_in_drive(
-                service,
-                sending_drive_file["id"],
-                self.config.sent_records_folder_id,
-            )
-        except Exception:
-            logger.exception("Error moving files to sent folder")
-            return False
-
-        update_external_record_in_db(
-            self.config,
-            client.id,
-            date.today(),
-            is_second_request=bool(client.requested),
-        )
-
+    except Exception:
+        logger.exception("Error moving files to sent folder")
         return False
 
-    def upload_pdf_from_driver(
-        self, filename: str, folder_id: str
-    ) -> tuple[io.BytesIO, str, str, dict]:
-        """Prints page as PDF (in memory) and uploads to Drive."""
-        pdf_options = PrintOptions()
-        pdf_options.orientation = "portrait"
+    update_external_record_in_db(
+        config,
+        client.id,
+        date.today(),
+        is_second_request=bool(client.requested),
+    )
 
-        pdf_base64 = self.driver.print_page(pdf_options)
+    return False
 
-        pdf_bytes = b64decode(pdf_base64)
-        pdf_stream = io.BytesIO(pdf_bytes)
 
-        school = self.extract_school_district_name(pdf_stream)
+def upload_pdf_from_driver(
+    driver: WebDriver, filename: str, folder_id: str
+) -> tuple[io.BytesIO, str, str, dict]:
+    """Prints page as PDF (in memory) and uploads to Drive."""
+    pdf_options = PrintOptions()
+    pdf_options.orientation = "portrait"
 
-        creds = google_authenticate()
+    pdf_base64 = driver.print_page(pdf_options)
 
-        service = build("drive", "v3", credentials=creds)
-        file_metadata = {
-            "name": filename,
-            "parents": [folder_id],
-        }
-        media = MediaIoBaseUpload(pdf_stream, mimetype="application/pdf")
+    pdf_bytes = b64decode(pdf_base64)
+    pdf_stream = io.BytesIO(pdf_bytes)
 
-        uploaded_file = (
-            service.files()
-            .create(body=file_metadata, media_body=media, fields="id, webViewLink")
-            .execute()
+    school = extract_school_district_name(pdf_stream)
+
+    creds = google_authenticate()
+
+    service = build("drive", "v3", credentials=creds)
+    file_metadata = {
+        "name": filename,
+        "parents": [folder_id],
+    }
+    media = MediaIoBaseUpload(pdf_stream, mimetype="application/pdf")
+
+    uploaded_file = (
+        service.files()
+        .create(body=file_metadata, media_body=media, fields="id, webViewLink")
+        .execute()
+    )
+
+    return pdf_stream, filename, school, uploaded_file
+
+
+def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
+    """Use regex to extract the school district name from the PDF."""
+    pdf_stream.seek(0)
+
+    doc = pymupdf.open(stream=pdf_stream, filetype="pdf")
+
+    full_text = ""
+    for page in doc:
+        text = page.get_text()
+        if isinstance(text, str):
+            full_text += text
+
+    doc.close()
+
+    # Reset stream position to 0 so it can be uploaded to Drive later
+    pdf_stream.seek(0)
+
+    # Search for the line containing "School District"
+    if "\nSchool District" in full_text:
+        match = re.search(r"School District\r?\n(.+)", full_text)
+        if match is not None:
+            match = match.group(1).strip()
+    elif "to receive educational records from:" in full_text:
+        match = re.search(r"First, Last\r?\n(.+)", full_text)
+        if match is not None:
+            match = match.group(1)[:-15].strip()
+    else:
+        match = re.search(r"Other\r?\n(.+)", full_text)
+        if match is not None:
+            match = match.group(1)[:-15].strip()
+    if match:
+        return match.lower()
+    else:
+        return "Not Found"
+
+
+def save_document_as_pdf(
+    driver: WebDriver, link_text: str, client: ClientFromDB, config: Config
+) -> tuple[io.BytesIO, str, str, dict]:
+    """Helper function to find, print, and save a single document."""
+    logger.info(f"Opening {link_text}...")
+    wait = WebDriverWait(driver, WAIT_TIMEOUT)
+
+    # Default values
+    stream = io.BytesIO()
+    stream_name = ""
+    school = "Not Found"
+    drive_file = {}
+
+    try:
+        docs_button = wait.until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Docs & Forms"))
+        )
+        docs_button.click()
+
+        document_link = wait.until(
+            EC.element_to_be_clickable((By.LINK_TEXT, link_text))
+        )
+        document_link.click()
+
+        wait.until(
+            EC.visibility_of_element_located(
+                (By.XPATH, "//*[contains(text(), 'I authorize')]")
+            )
         )
 
-        return pdf_stream, filename, school, uploaded_file
+        doc_type = link_text.split(" ")[0]
 
-    def extract_school_district_name(self, pdf_stream: io.BytesIO) -> str:
-        """Use regex to extract the school district name from the PDF."""
-        pdf_stream.seek(0)
+        filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} {doc_type}.pdf"
 
-        doc = pymupdf.open(stream=pdf_stream, filetype="pdf")
+        logger.info(f"Saving {filename}...")
+        stream, stream_name, school, drive_file = upload_pdf_from_driver(
+            driver, filename, config.records_folder_id
+        )
 
-        full_text = ""
-        for page in doc:
-            text = page.get_text()
-            if isinstance(text, str):
-                full_text += text
+    except Exception:
+        logger.exception(f"Could not find or load document: {link_text}")
+    finally:
+        # Go back to the Docs & Forms list
+        driver.back()
 
-        doc.close()
+    return stream, stream_name, school, drive_file
 
-        # Reset stream position to 0 so it can be uploaded to Drive later
-        pdf_stream.seek(0)
 
-        # Search for the line containing "School District"
-        if "\nSchool District" in full_text:
-            match = re.search(r"School District\r?\n(.+)", full_text)
-            if match is not None:
-                match = match.group(1).strip()
-        elif "to receive educational records from:" in full_text:
-            match = re.search(r"First, Last\r?\n(.+)", full_text)
-            if match is not None:
-                match = match.group(1)[:-15].strip()
-        else:
-            match = re.search(r"Other\r?\n(.+)", full_text)
-            if match is not None:
-                match = match.group(1)[:-15].strip()
-        if match:
-            return match.lower()
-        else:
-            return "Not Found"
+def file_exists(service, filename, folder_id):
+    """Helper function to check if a file exists in Drive."""
+    query = f"name = '{filename.replace("'", "\\'")}' and '{folder_id}' in parents and trashed = false"
+    results = (
+        service.files()
+        .list(q=query, spaces="drive", fields="files(id, name)", pageSize=1)
+        .execute()
+    )
 
-    def save_document_as_pdf(
-        self, link_text: str, client: ClientFromDB
-    ) -> tuple[io.BytesIO, str, str, dict]:
-        """Helper function to find, print, and save a single document."""
-        logger.info(f"Opening {link_text}...")
+    files = results.get("files", [])
+    if files:
+        return files[0]["id"]  # return the ID of the first matching file
+    return None
 
-        # Default values
-        stream = io.BytesIO()
-        stream_name = ""
-        school = "Not Found"
-        drive_file = {}
 
-        try:
-            docs_button = self.wait.until(
-                EC.element_to_be_clickable((By.LINK_TEXT, "Docs & Forms"))
-            )
-            docs_button.click()
+def create_fax_cover_sheet(
+    client: ClientFromDB,
+) -> tuple[io.BytesIO, str] | tuple[None, None]:
+    """Create a fax cover sheet from a template, appending text to labels."""
+    try:
+        doc = pymupdf.open("templates/Fax Records.pdf")
+        page = doc[0]
 
-            document_link = self.wait.until(
-                EC.element_to_be_clickable((By.LINK_TEXT, link_text))
-            )
-            document_link.click()
-
-            self.wait.until(
-                EC.visibility_of_element_located(
-                    (By.XPATH, "//*[contains(text(), 'I authorize')]")
+        def append_text(search_term, text_to_append):
+            text_instances = page.search_for(search_term)
+            for inst in text_instances:
+                page.insert_text(
+                    (inst.x1, inst.y0 + 10),
+                    f" {text_to_append}",
+                    fontsize=11,
+                    fontname="helv",
                 )
-            )
 
-            doc_type = link_text.split(" ")[0]
+        append_text("Student-", client.fullName)
 
-            filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} {doc_type}.pdf"
+        append_text("Date of Birth-", client.dob.strftime("%m/%d/%Y"))
 
-            logger.info(f"Saving {filename}...")
-            stream, stream_name, school, drive_file = self.upload_pdf_from_driver(
-                filename, self.config.records_folder_id
-            )
+        pdf_stream = io.BytesIO(doc.tobytes())
+        doc.close()
+        pdf_stream.seek(0)
 
-        except TimeoutException:
-            logger.error(f"Could not find or load document: {link_text}")
-        finally:
-            # Go back to the Docs & Forms list
-            self.driver.back()
+        filename = f"Fax Cover for {client.fullName}.pdf"
+        return pdf_stream, filename
 
-        return stream, stream_name, school, drive_file
-
-    def file_exists(self, service, filename, folder_id):
-        """Helper function to check if a file exists in Drive."""
-        query = f"name = '{filename.replace("'", "\\'")}' and '{folder_id}' in parents and trashed = false"
-        results = (
-            service.files()
-            .list(q=query, spaces="drive", fields="files(id, name)", pageSize=1)
-            .execute()
-        )
-
-        files = results.get("files", [])
-        if files:
-            return files[0]["id"]  # return the ID of the first matching file
-        return None
-
-    def create_fax_cover_sheet(
-        self, client: ClientFromDB
-    ) -> tuple[io.BytesIO, str] | tuple[None, None]:
-        """Create a fax cover sheet from a template, appending text to labels."""
-        try:
-            doc = pymupdf.open("templates/Fax Records.pdf")
-            page = doc[0]
-
-            def append_text(search_term, text_to_append):
-                text_instances = page.search_for(search_term)
-                for inst in text_instances:
-                    page.insert_text(
-                        (inst.x1, inst.y0 + 10),
-                        f" {text_to_append}",
-                        fontsize=11,
-                        fontname="helv",
-                    )
-
-            append_text("Student-", client.fullName)
-
-            append_text("Date of Birth-", client.dob.strftime("%m/%d/%Y"))
-
-            pdf_stream = io.BytesIO(doc.tobytes())
-            doc.close()
-            pdf_stream.seek(0)
-
-            filename = f"Fax Cover for {client.fullName}.pdf"
-            return pdf_stream, filename
-
-        except Exception as e:
-            logger.error(f"Error creating fax cover sheet: {e}")
-            return None, None
+    except Exception as e:
+        logger.error(f"Error creating fax cover sheet: {e}")
+        return None, None
 
 
 def main():
@@ -541,17 +395,25 @@ def main():
     new_success_count = 0
     new_failure_count = 0
 
-    with TherapyAppointmentBot(services, config) as bot:
-        bot.login()
+    driver, actions = initialize_selenium()
+    driver.maximize_window()
+
+    try:
+        check_and_login_ta(driver, actions, services, first_time=True)
         for client in clients_to_process:
             asdAdhd = client.asdAdhd or "Unknown"
             client_name = client.fullName
 
-            if bot.go_to_client(str(client.id)):
+            if go_to_client(driver, actions, services, str(client.id)):
                 try:
-                    bot.check_if_opened_portal()
-                    bot.check_if_docs_signed()
-                    skipped = bot.download_consent_forms(client, school_contacts)
+                    if not check_if_opened_portal(driver):
+                        raise Exception("portal not opened")
+                    if not check_if_docs_signed(driver):
+                        raise Exception("docs not signed")
+
+                    skipped = download_consent_forms(
+                        driver, client, school_contacts, config
+                    )
                     append_to_csv_file(Path(SUCCESS_FILE), client_name)
                     if not skipped:
                         new_success_count += 1
@@ -582,6 +444,9 @@ def main():
                     daeval="Records",
                 )
                 new_failure_count += 1
+    finally:
+        logger.debug("Closing WebDriver.")
+        driver.quit()
 
     logger.info(
         f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
