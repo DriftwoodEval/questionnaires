@@ -55,6 +55,13 @@ logger.add(
 WAIT_TIMEOUT = 15  # seconds
 
 
+def normalize_district(name: str | None) -> str:
+    """Normalizes school district name by removing common suffixes."""
+    if not name:
+        return ""
+    return name.lower().replace("county", "").replace("school district", "").strip()
+
+
 def append_to_csv_file(filepath: Path, data: str):
     """Appends data to a comma-separated file, handling separators correctly."""
     prefix = ""
@@ -146,11 +153,9 @@ def download_consent_forms(
             )
         )
 
-    db_district = (
-        client.schoolDistrict.lower().replace(" (county )?school district", "").strip()
-    )
+    db_district = normalize_district(client.schoolDistrict)
 
-    if canonical_sending != db_district:
+    if normalize_district(canonical_sending) != db_district:
         raise (
             Exception(
                 f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
@@ -269,7 +274,7 @@ def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
         if match is not None:
             match = match.group(1)[:-15].strip()
     if match:
-        return match.lower()
+        return normalize_district(match)
     else:
         return "Not Found"
 
