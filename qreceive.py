@@ -368,7 +368,7 @@ def main():
 
                             try:
                                 attempt_text = openphone.send_text(
-                                    message, client.phoneNumber
+                                    message, client.phoneNumber, mark_done=True
                                 )
 
                                 if attempt_text and "id" in attempt_text:
@@ -465,7 +465,7 @@ def main():
 
                             try:
                                 attempt_text = openphone.send_text(
-                                    message, client.phoneNumber
+                                    message, client.phoneNumber, mark_done=True
                                 )
 
                                 if attempt_text and "id" in attempt_text:

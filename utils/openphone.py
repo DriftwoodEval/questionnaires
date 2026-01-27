@@ -131,6 +131,7 @@ class OpenPhone:
         to_number: str,
         from_number: str | None = None,
         user_blame: str | None = None,
+        mark_done: bool = False,
     ) -> dict | None:
         """Sends a text message, retrying exponentially on failure."""
         if from_number is None:
@@ -146,6 +147,10 @@ class OpenPhone:
             "to": [to_number],
             "userId": user_blame,
         }
+
+        if mark_done:
+            data["setInboxStatus"] = "done"
+
         try:
             logger.info(f"Attempting to send message '{message}' to {to_number}")
             response = self.limited_request.post(
