@@ -2513,6 +2513,10 @@ def main():
 
                 if client["Language"] != "Spanish":
                     send_message_ta(driver, client_url, message)
+            if not send and questionnaires:
+                logger.warning(
+                    f"Questionnaires were generated, but no message was sent: {questionnaires}"
+                )
 
         except Exception as e:
             logger.error(f"Error for {client['Client Name']}: {e}")
