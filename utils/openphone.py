@@ -1,70 +1,64 @@
-from typing import Optional
-
 import requests
-from backoff import expo, on_exception, on_predicate
 from loguru import logger
 from ratelimit import RateLimitException, limits
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception_type,
+    retry_if_result,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from utils.custom_types import Config, Services
 
+API_BASE = "https://api.openphone.com/v1/"
+RATE_LIMIT_CALLS = 10
+RATE_LIMIT_PERIOD = 1
 
-def log_backoff(details):
-    """Logging function for backoff library."""
+
+def before_sleep_loguru(retry_state: RetryCallState) -> None:
+    """Custom callback to log retries using Loguru."""
+    if retry_state.outcome is None:
+        return
+
+    fn_name = retry_state.fn.__name__ if retry_state.fn else "unknown_function"
+
+    if retry_state.outcome.failed:
+        verb = "raised"
+        value = retry_state.outcome.exception()
+    else:
+        verb = "returned"
+        value = retry_state.outcome.result()
+
+    if retry_state.next_action:
+        sleep_time = retry_state.next_action.sleep
+    else:
+        sleep_time = 0.0
+
     logger.debug(
-        "Backing off {wait:0.1f} seconds after {tries} tries "
-        "calling function {target} with args {args} and kwargs "
-        "{kwargs}".format(**details)
+        f"Retrying {fn_name} "
+        f"in {sleep_time:0.2f}s "
+        f"after attempt {retry_state.attempt_number}. "
+        f"Last attempt {verb}: {value}"
     )
 
 
-def log_giveup(details):
-    """Logging function for giving up with backoff library."""
-    logger.error(
-        "Gave up after {tries} tries "
-        "calling function {target} with args {args} and kwargs "
-        "{kwargs}".format(**details)
-    )
-
-
-def _decorated_request(func):
-    """Applies the common backoff and rate-limiting deorators."""
-    return on_exception(
-        expo,
-        RateLimitException,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
-    )(limits(calls=10, period=1)(func))
-
-
-class LimitedRequest:
-    """Custom request class with rate limiting."""
-
-    @_decorated_request
-    def get(self, url: str, params=None, headers=None, **kwargs) -> requests.Response:
-        """Custom get request with rate limiting."""
-        return requests.get(url, params, headers=headers, **kwargs)
-
-    @_decorated_request
-    def post(self, url: str, data=None, headers=None, **kwargs) -> requests.Response:
-        """Custom post request with rate limiting."""
-        return requests.post(url, data, headers=headers, **kwargs)
+def should_continue_polling(status: str) -> bool:
+    """
+    Retry Condition:
+    - Return True (Retry) if status is pending (queued, sent).
+    - Return False (Stop) if status is final (delivered, undelivered).
+    """
+    pending_statuses = {"queued", "sent"}
+    return status in pending_statuses
 
 
 class NotEnoughCreditsError(requests.HTTPError):
-    """Custom exception for when not enough credits are available."""
+    """Custom exception for payment/credit limits."""
 
-    def __init__(self, *args, **kwargs):
-        """Initializes the NotEnoughCreditsError exception."""
-        default_message = (
-            "The organization does not have enough prepaid credits to send the message."
-        )
-
-        # If the user provides a custom message, use it; otherwise, use the default.
-        if not args:
-            args = (default_message,)
-
-        super().__init__(*args, **kwargs)
+    def __init__(self, message="Organization has insufficient prepaid credits."):
+        super().__init__(message)
 
 
 class OpenPhone:
@@ -72,59 +66,81 @@ class OpenPhone:
 
     def __init__(self, config: Config, services: Services):
         self.config = config
-        self.services = services
         self.main_number = services.openphone.main_number
+        self.default_user = self._resolve_user_id(config.name, services.openphone.users)
 
-        users_lower_first = {
-            name.lower().split(" ")[0]: user
-            for name, user in services.openphone.users.items()
-        }
-        self.default_user = users_lower_first[config.name.lower()].id
-        self.limited_request = LimitedRequest()
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "Content-Type": "application/json",
+                "Authorization": services.openphone.key,
+            }
+        )
 
-    def _get_auth_headers(self) -> dict:
-        return {
-            "Content-Type": "application/json",
-            "Authorization": self.services.openphone.key,
-        }
+    def _resolve_user_id(self, config_name: str, users: dict) -> str | None:
+        """Matches config name to OpenPhone user ID by first name."""
+        target_name = config_name.lower()
+        for name, user in users.items():
+            if name.lower().split()[0] == target_name:
+                return user.id
+        logger.error(f"User '{config_name} not found in OpenPhone. Using number owner.")
+        return None
 
-    @on_exception(
-        expo,
-        (ConnectionError, requests.HTTPError),
-        factor=2,
-        base=2,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
+    _retry_network = retry(
+        retry=retry_if_exception_type(
+            (requests.ConnectionError, requests.HTTPError, RateLimitException)
+        ),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(5),
+        before_sleep=before_sleep_loguru,
     )
+
+    _retry_poll_delivery = retry(
+        retry=retry_if_result(should_continue_polling),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(10),
+        before_sleep=before_sleep_loguru,
+    )
+
+    @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
+    @_retry_network
     def get_text_info(self, message_id: str) -> dict:
-        """Retrieves information about a text message, retrying exponentially on failure."""
-        url = f"https://api.openphone.com/v1/messages/{message_id}"
-        response = self.limited_request.get(url, headers=self._get_auth_headers())
+        """Retrieves raw info dict. Retries only on network errors."""
+        url = f"{API_BASE}messages/{message_id}"
+        response = self.session.get(url)
+        response.raise_for_status()
+        return response.json().get("data", {})
 
-        if response is None:
-            raise ConnectionError("Failed to retrieve response from OpenPhone API")
+    @_retry_poll_delivery
+    def _poll_delivery_status(self, message_id: str) -> str:
+        """
+        Internal helper: Fetches status.
+        Tenacity retries if status is 'queued'/'sent'.
+        Stops immediately if 'delivered' or 'undelivered'.
+        """
+        info = self.get_text_info(message_id)
+        status = info.get("status", "unknown")
+        return status
 
-        if response.status_code >= 400:
-            raise requests.HTTPError(f"API response: {response.status_code}")
-
-        response_data = response.json().get("data")
-        return response_data
-
-    @on_predicate(
-        expo,
-        factor=2,
-        base=2,
-        max_tries=5,
-        on_backoff=log_backoff,
-        on_giveup=log_giveup,
-    )
     def check_text_delivered(self, message_id: str) -> bool:
-        """Checks if a text message has been delivered, retrying exponentially on failure."""
-        message_info = self.get_text_info(message_id)
-        message_status = message_info["status"]
-        return message_status == "delivered"
+        """
+        Blocks until message is delivered, failed, or times out.
+        Returns True only if strictly 'delivered'.
+        """
+        try:
+            final_status = self._poll_delivery_status(message_id)
+            if final_status == "delivered":
+                return True
 
+            logger.warning(f"Message {message_id} ended with status: {final_status}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to verify delivery for {message_id}: {e}")
+            return False
+
+    @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
+    @_retry_network
     def send_text(
         self,
         message: str,
@@ -133,45 +149,36 @@ class OpenPhone:
         user_blame: str | None = None,
         mark_done: bool = False,
     ) -> dict | None:
-        """Sends a text message, retrying exponentially on failure."""
+        """Sends text. Retries on network errors. Fails fast on payment errors."""
         if from_number is None:
             from_number = self.main_number
         if user_blame is None:
             user_blame = self.default_user
 
-        to_number = "+1" + "".join(filter(str.isdigit, to_number))
-        url = "https://api.openphone.com/v1/messages"
-        data = {
+        to_number_clean = "+1" + "".join(filter(str.isdigit, to_number))
+        url = f"{API_BASE}messages"
+
+        payload = {
             "content": message,
             "from": from_number,
-            "to": [to_number],
+            "to": [to_number_clean],
             "userId": user_blame,
         }
 
         if mark_done:
-            data["setInboxStatus"] = "done"
+            payload["setInboxStatus"] = "done"
 
         try:
-            logger.info(f"Attempting to send message '{message}' to {to_number}")
-            response = self.limited_request.post(
-                url, headers=self._get_auth_headers(), json=data
-            )
+            logger.info(f"Sending message to {to_number_clean}...")
+            response = self.session.post(url, json=payload)
 
-            if response is None:
-                raise ConnectionError("Failed to retrieve response from OpenPhone API")
-
-            if response.status_code == 402:  # Payment Required
+            if response.status_code == 402:
                 raise NotEnoughCreditsError()
 
-            if response.status_code >= 400:
-                raise requests.HTTPError(f"API response: {response.status_code}")
-
-            response_data = response.json().get("data")
-            return response_data
+            response.raise_for_status()
+            return response.json().get("data")
 
         except NotEnoughCreditsError:
-            logger.error("Not enough credits to send message")
+            # Catch explicitly to avoid the Retry decorator handling it
+            logger.error("Organization has insufficient credits. Cannot send.")
             raise
-        except Exception:
-            logger.exception("Failed to get message info")
-            return None
