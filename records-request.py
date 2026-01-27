@@ -56,10 +56,14 @@ WAIT_TIMEOUT = 15  # seconds
 
 
 def normalize_district(name: str | None) -> str:
-    """Normalizes school district name by removing common suffixes."""
     if not name:
         return ""
-    return name.lower().replace("county", "").replace("school district", "").strip()
+
+    pattern = r"\b(county school district|school district|county)\b"
+
+    clean = re.sub(rf"(?i){pattern}", "", name)
+
+    return " ".join(clean.split()).lower()
 
 
 def append_to_csv_file(filepath: Path, data: str):
