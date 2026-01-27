@@ -447,35 +447,41 @@ def add_to_failure_sheet(
 
 
 def find_or_create_drive_folder(service, parent_folder_id: str, folder_name: str):
-    """Finds an existing folder or creates a new one inside the parent folder and returns its ID."""
+    """Finds an existing folder or creates a new one inside the parent folder and returns its ID and webViewLink."""
     try:
         query = f"name='{folder_name}' and '{parent_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         response = (
-            service.files().list(q=query, spaces="drive", fields="files(id)").execute()
+            service.files()
+            .list(q=query, spaces="drive", fields="files(id, webViewLink)")
+            .execute()
         )
         files = response.get("files", [])
 
         if files:
-            return files[0]["id"]
+            return files[0]["id"], files[0].get("webViewLink")
 
         file_metadata = {
             "name": folder_name,
             "mimeType": "application/vnd.google-apps.folder",
             "parents": [parent_folder_id],
         }
-        folder = service.files().create(body=file_metadata, fields="id").execute()
+        folder = (
+            service.files()
+            .create(body=file_metadata, fields="id, webViewLink")
+            .execute()
+        )
         logger.success(f"Created new Drive folder '{folder_name}'.")
-        return folder.get("id")
+        return folder.get("id"), folder.get("webViewLink")
 
     except Exception:
         logger.exception("An unexpected error occurred in Drive folder search/creation")
-        return None
+        return None, None
 
 
 def upload_file_to_drive(
     file_path: Path, base_folder_id: str, subfolder: str | None = None
-) -> str | None:
-    """Uploads a file to Google Drive in the specified folder, returning the file's web view link."""
+) -> tuple[str | None, str | None]:
+    """Uploads a file to Google Drive in the specified folder, returning the file's and folder's web view links."""
 
     def _get_filetype(filepath: Path) -> str:
         try:
@@ -492,13 +498,17 @@ def upload_file_to_drive(
         service = build("drive", "v3", credentials=creds)
     except Exception:
         logger.exception("Skipping Drive upload: Could not build Drive service")
-        return None
+        return None, None
 
     target_folder_id = base_folder_id
+    folder_link = None
     if subfolder:
-        subfolder_id = find_or_create_drive_folder(service, base_folder_id, subfolder)
+        subfolder_id, subfolder_link = find_or_create_drive_folder(
+            service, base_folder_id, subfolder
+        )
         if subfolder_id:
             target_folder_id = subfolder_id
+            folder_link = subfolder_link
         else:
             logger.warning(
                 f"Failed to create/find Drive subfolder for '{subfolder}'. Uploading to base folder."
@@ -513,12 +523,12 @@ def upload_file_to_drive(
             .create(body=file_metadata, media_body=media, fields="id,webViewLink")
             .execute()
         )
-        link = file.get("webViewLink")
-        logger.success(f"File uploaded successfully to Drive: {link}")
-        return link
+        file_link = file.get("webViewLink")
+        logger.success(f"File uploaded successfully to Drive: {file_link}")
+        return file_link, folder_link
     except Exception:
         logger.exception("An unexpected error occurred during Drive upload.")
-        return None
+        return None, None
 
 
 def move_file_in_drive(service, file_id: str, dest_folder_id: str):

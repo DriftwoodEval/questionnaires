@@ -480,7 +480,7 @@ def generate_individual_detail_reports(
 ):
     """Generates a separate Excel file for each worker's detail data."""
     base_output_folder = Path("piecework_output")
-    worker_details.pop("__COMBINED_DETAIL_DATA__")
+    worker_details.pop("__COMBINED_DETAIL_DATA__", [])
 
     for worker_name, detail_data in worker_details.items():
         if not detail_data:
@@ -511,11 +511,11 @@ def generate_individual_detail_reports(
                     ].width = adjusted_width
 
             logger.info(f"Wrote individual detail file locally for: {worker_name}")
-            link = upload_file_to_drive(
+            file_link, folder_link = upload_file_to_drive(
                 filename, config.payroll_folder_id, safe_worker_name
             )
 
-            if not link:
+            if not file_link:
                 logger.error(f"Failed to upload {filename} to Google Drive.")
                 continue
 
@@ -536,8 +536,9 @@ def generate_individual_detail_reports(
                 )
                 continue
 
+            link = folder_link or file_link
             subject = f"Pay Spreadsheet for {start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}"
-            message_text = f"Please refer to the following file to reconcile work completed and pay. Please reach out if you find any discrepancies.\n\n{link}"
+            message_text = f"Please refer to the following folder to reconcile work completed and pay. Please reach out if you find any discrepancies.\n\n{link}"
             create_gmail_draft(
                 subject=subject,
                 to_addr=worker_email,
