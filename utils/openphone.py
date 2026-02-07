@@ -61,6 +61,22 @@ class NotEnoughCreditsError(requests.HTTPError):
         super().__init__(message)
 
 
+class InvalidPhoneNumberError(ValueError):
+    """Custom exception for invalid phone numbers."""
+
+    def __init__(self, message="Invalid phone number format."):
+        super().__init__(message)
+
+
+def is_transient_error(exception: Exception) -> bool:
+    """Check if the exception is a transient error that should be retried."""
+    if isinstance(exception, requests.HTTPError):
+        if exception.response is not None:
+            # Do not retry on 400, 401, 403, 404, 422
+            return exception.response.status_code not in [400, 401, 403, 404, 422]
+    return isinstance(exception, (requests.ConnectionError, RateLimitException))
+
+
 class OpenPhone:
     """Custom class for interacting with the OpenPhone API."""
 
@@ -87,9 +103,7 @@ class OpenPhone:
         return None
 
     _retry_network = retry(
-        retry=retry_if_exception_type(
-            (requests.ConnectionError, requests.HTTPError, RateLimitException)
-        ),
+        retry=retry_if_exception_type(Exception) & retry_if_result(is_transient_error),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(5),
         before_sleep=before_sleep_loguru,
@@ -155,7 +169,25 @@ class OpenPhone:
         if user_blame is None:
             user_blame = self.default_user
 
-        to_number_clean = "+1" + "".join(filter(str.isdigit, to_number))
+        digits = "".join(filter(str.isdigit, to_number))
+
+        if len(digits) == 10:
+            if digits.startswith("1"):
+                raise InvalidPhoneNumberError(
+                    f"10-digit number starts with 1: {to_number}"
+                )
+            to_number_clean = "+1" + digits
+        elif len(digits) == 11:
+            if not digits.startswith("1"):
+                raise InvalidPhoneNumberError(
+                    f"11-digit number does not start with 1: {to_number}"
+                )
+            to_number_clean = "+" + digits
+        else:
+            raise InvalidPhoneNumberError(
+                f"Phone number has invalid length ({len(digits)}): {to_number}"
+            )
+
         url = f"{API_BASE}messages"
 
         payload = {
@@ -174,6 +206,9 @@ class OpenPhone:
 
             if response.status_code == 402:
                 raise NotEnoughCreditsError()
+
+            if response.status_code == 400:
+                logger.error(f"Bad Request to OpenPhone: {response.text}")
 
             response.raise_for_status()
             return response.json().get("data")

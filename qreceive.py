@@ -25,7 +25,7 @@ from utils.database import (
 )
 from utils.google import build_admin_email, send_gmail, update_punch_list
 from utils.misc import check_distance, load_config
-from utils.openphone import NotEnoughCreditsError, OpenPhone
+from utils.openphone import InvalidPhoneNumberError, NotEnoughCreditsError, OpenPhone
 from utils.questionnaires import (
     all_questionnaires_done,
     check_if_ignoring,
@@ -384,6 +384,11 @@ def main():
                                     email_info["failed"].append(
                                         (client, "Failed to send text request")
                                     )
+                            except InvalidPhoneNumberError as e:
+                                logger.error(f"Invalid phone number for {client.fullName}: {e}")
+                                email_info["failed"].append(
+                                    (client, f"Invalid phone number: {client.phoneNumber}")
+                                )
                             except NotEnoughCreditsError:
                                 logger.critical(
                                     "Aborting all further message sends due to insufficient credits."
@@ -480,6 +485,11 @@ def main():
                                     email_info["failed"].append(
                                         (client, "Failed to send text request")
                                     )
+                            except InvalidPhoneNumberError as e:
+                                logger.error(f"Invalid phone number for {client.fullName}: {e}")
+                                email_info["failed"].append(
+                                    (client, f"Invalid phone number: {client.phoneNumber}")
+                                )
                             except NotEnoughCreditsError:
                                 logger.critical(
                                     "Aborting all further message sends due to insufficient credits."
