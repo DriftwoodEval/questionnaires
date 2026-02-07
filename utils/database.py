@@ -160,38 +160,51 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     return clients_needing_records
 
 
-def get_record_ready_client_ids(config: Config) -> set[str]:
-    """Fetch client IDs for whom records are ready.
+def get_record_ready_client_ids(config: Config) -> dict[str, str]:
+    """Fetch client IDs and their record statuses.
 
-    Ready means:
-    1. They do NOT need records.
-    2. OR They DO need records, and the external_record table has non-null content.
+    Status can be "Ready" or a descriptive string explaining why it's not ready.
     """
-    logger.info("Fetching record-compliant client IDs from DB")
+    logger.info("Fetching record statuses from DB")
     db_connection = get_db(config)
 
-    valid_ids = set()
+    statuses = {}
 
     with db_connection:
         with db_connection.cursor() as cursor:
             # Join client with external_record to check content presence
             sql = """
-                SELECT c.id
+                SELECT c.id, c.recordsNeeded, er.requested, er.secondRequestDate, er.content
                 FROM emr_client c
                 LEFT JOIN emr_external_record er ON c.id = er.clientId
-                WHERE
-                    -- Case 1: Client does not need records
-                    (c.recordsNeeded = "Not Needed")
-                    OR
-                    -- Case 2: Client needs records AND has content in the record table
-                    (c.recordsNeeded = "Needed" AND er.content IS NOT NULL)
             """
             cursor.execute(sql)
             results = cursor.fetchall()
 
-            valid_ids = {str(row["id"]) for row in results}
+            for row in results:
+                client_id = str(row["id"])
+                records_needed = row["recordsNeeded"]
+                requested = row["requested"]
+                second_requested = row["secondRequestDate"]
+                content = row["content"]
 
-    return valid_ids
+                if records_needed == "Not Needed":
+                    statuses[client_id] = "Ready"
+                elif content is not None:
+                    statuses[client_id] = "Ready"
+                elif requested is not None:
+                    if second_requested is not None:
+                        statuses[client_id] = (
+                            f"Records needed, second request sent on {second_requested}, but not yet received"
+                        )
+                    else:
+                        statuses[client_id] = (
+                            f"Records needed, requested on {requested}, but not yet received"
+                        )
+                else:
+                    statuses[client_id] = "Records needed but not yet requested"
+
+    return statuses
 
 
 def update_external_record_in_db(

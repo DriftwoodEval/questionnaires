@@ -8,7 +8,6 @@ import typer
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 from rich import print
-from rich.prompt import Confirm
 from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
@@ -63,7 +62,9 @@ logger.add(
 )
 
 
-def get_clients_to_send(config: Config) -> pd.DataFrame | None:
+def get_clients_to_send(
+    config: Config, interactive: bool = False, client_filter: str | None = None
+) -> pd.DataFrame | None:
     """Gets a list of clients from the punch list who need to have their questionnaire(s) sent to them.
 
     The list is filtered to only include clients who have a "TRUE" value in the "DA Qs Needed" column, but not in the "DA Qs Sent" column, or who have a "TRUE" value in the "EVAL Qs Needed" column, but not in the "EVAL Qs Sent" column.
@@ -89,12 +90,48 @@ def get_clients_to_send(config: Config) -> pd.DataFrame | None:
     if punch_list.empty:
         return None
 
-    valid_client_ids = get_record_ready_client_ids(config)
+    record_statuses = get_record_ready_client_ids(config)
 
     if "Client ID" in punch_list.columns:
         punch_list = punch_list.dropna(subset=["Client ID"])
 
-        punch_list = punch_list[punch_list["Client ID"].isin(valid_client_ids)]
+        if client_filter:
+            if client_filter.isdigit():
+                logger.info(f"Filtering punch list by ID: {client_filter}")
+                punch_list = punch_list[punch_list["Client ID"] == client_filter]
+            else:
+                logger.info(f"Filtering punch list by name: {client_filter}")
+                punch_list = punch_list[
+                    punch_list["Client Name"].str.lower() == client_filter.lower()
+                ]
+
+        if punch_list.empty:
+            return None
+
+        is_filtered = client_filter is not None
+
+        if not interactive and not is_filtered:
+            punch_list = punch_list[
+                punch_list["Client ID"].apply(
+                    lambda x: record_statuses.get(str(x)) == "Ready"
+                )
+            ]
+        else:
+            keep_clients = []
+            for _, client in punch_list.iterrows():
+                client_id = str(client["Client ID"])
+                status = record_statuses.get(client_id, "Unknown status")
+                if status == "Ready":
+                    keep_clients.append(True)
+                else:
+                    print(
+                        f"\n[yellow]{client['Client Name']} ({client_id}): {status}[/yellow]"
+                    )
+                    should_continue = typer.confirm(
+                        f"Do you want to continue sending questionnaires for {client['Client Name']} anyway?"
+                    )
+                    keep_clients.append(should_continue)
+            punch_list = punch_list[keep_clients]
 
     # Remove extra whitespace from the "Client Name" column
     punch_list["Client Name"] = (
@@ -2020,6 +2057,12 @@ def main(
     client_filter: str = typer.Option(
         None, "--client", help="Process specific client by ID or name"
     ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="Interactively allow clients with bad records",
+    ),
 ):
     """Main function for qsend.py.
 
@@ -2041,23 +2084,13 @@ def main(
     services, config = load_config()
     driver, actions = initialize_selenium()
 
-    clients = get_clients_to_send(config)
+    clients = get_clients_to_send(
+        config, interactive=interactive, client_filter=client_filter
+    )
     prev_clients, prev_failed_clients = get_previous_clients(config, failed=True)
 
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
-        return
-
-    if client_filter:
-        if client_filter.isdigit():
-            logger.info(f"Filtering clients by ID: {client_filter}")
-            clients = clients[clients["Client ID"] == client_filter]
-        else:
-            logger.info(f"Filtering clients by name: {client_filter}")
-            clients = clients[clients["Client Name"].str.lower() == client_filter.lower()]
-
-    if clients is None or clients.empty:
-        logger.critical("No clients matched, exiting")
         return
 
     for login in [
@@ -2318,10 +2351,8 @@ def main(
                             print(
                                 f"\n[red]{client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}[/red]"
                             )
-                            should_add = Confirm.ask(
-                                "Do you want to add these to the list?",
-                                default=False,
-                                case_sensitive=False,
+                            should_add = typer.confirm(
+                                "Do you want to add these to the list?"
                             )
 
                             if should_add:
