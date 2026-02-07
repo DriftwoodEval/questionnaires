@@ -25,7 +25,6 @@ from utils.custom_types import (
 from utils.database import get_most_recent_failure
 from utils.questionnaires import get_most_recent_not_done
 
-# If modifying these scopes, delete the file token.json.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/calendar.readonly",
@@ -47,6 +46,10 @@ def google_authenticate():
     # time.
     if os.path.exists("./config/token.json"):
         creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
+        # Check if the scopes in the token match the current scopes
+        if creds and set(creds.scopes or []) != set(SCOPES):
+            logger.info("Scopes have changed, re-authenticating...")
+            creds = None
     # If there are no valid credentials, start the authorization flow
     else:
         creds = None
