@@ -1,10 +1,10 @@
-import argparse
 import re
 import sys
 from datetime import date, datetime
 from time import sleep, strftime, strptime
 
 import pandas as pd
+import typer
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 from rich import print
@@ -41,6 +41,8 @@ from utils.selenium import (
     go_to_client,
     initialize_selenium,
 )
+
+app = typer.Typer()
 
 logger.remove()
 logger.add(
@@ -2013,7 +2015,12 @@ def normalize_q_name(name: str) -> str:
         return name[0]
 
 
-def main():
+@app.command()
+def main(
+    client_filter: str = typer.Option(
+        None, "--client", help="Process specific client by ID or name"
+    ),
+):
     """Main function for qsend.py.
 
     Loads the configuration and services objects, sets up the Selenium WebDriver,
@@ -2031,12 +2038,6 @@ def main():
     the client.
 
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--client", type=str, help="Process specific client by ID or name"
-    )
-    args = parser.parse_args()
-
     services, config = load_config()
     driver, actions = initialize_selenium()
 
@@ -2047,13 +2048,13 @@ def main():
         logger.critical("No clients marked to send, exiting")
         return
 
-    if args.client:
-        if args.client.isdigit():
-            logger.info(f"Filtering clients by ID: {args.client}")
-            clients = clients[clients["Client ID"] == args.client]
+    if client_filter:
+        if client_filter.isdigit():
+            logger.info(f"Filtering clients by ID: {client_filter}")
+            clients = clients[clients["Client ID"] == client_filter]
         else:
-            logger.info(f"Filtering clients by name: {args.client}")
-            clients = clients[clients["Client Name"].str.lower() == args.client.lower()]
+            logger.info(f"Filtering clients by name: {client_filter}")
+            clients = clients[clients["Client Name"].str.lower() == client_filter.lower()]
 
     if clients is None or clients.empty:
         logger.critical("No clients matched, exiting")
@@ -2536,4 +2537,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    app()
