@@ -6,6 +6,7 @@ from pydantic import (
     EmailStr,
     Field,
     StringConstraints,
+    TypeAdapter,
     field_validator,
 )
 
@@ -122,9 +123,18 @@ class PieceworkConfig(BaseModel):
 class RecordsContact(BaseModel):
     """A Pydantic containing records contact information."""
 
-    email: EmailStr
+    email: str
     fax: bool = False
     aliases: list[str]
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        """Validate that the email is a single valid email or a comma-separated list of valid emails."""
+        adapter = TypeAdapter(EmailStr)
+        for email in v.split(","):
+            adapter.validate_python(email.strip())
+        return v
 
 
 class Config(BaseModel):
