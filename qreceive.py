@@ -243,7 +243,6 @@ def main():
     """Main function for qreceive.py."""
     services, config = load_config()
     openphone = OpenPhone(config, services)
-    driver, actions = initialize_selenium()
     email_info: AdminEmailInfo = {
         "ignoring": [],
         "failed": [],
@@ -263,9 +262,8 @@ def main():
         clients = filter_inactive_and_not_pending(clients)
 
         email_info["completed"], email_info["errors"] = check_questionnaires(
-            driver, config, clients
+            config, clients
         )
-        driver.quit()
 
         # Check failures and update in DB
         driver, actions = initialize_selenium()

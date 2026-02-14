@@ -1,5 +1,6 @@
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import cast
 from urllib.parse import urlparse
@@ -22,10 +23,13 @@ from utils.custom_types import (
 )
 from utils.database import update_questionnaires_in_db
 from utils.selenium import (
+    initialize_selenium,
     save_screenshot_to_path,
     wait_for_page_load,
     wait_for_url_stability,
 )
+
+MAX_WORKERS = 5
 
 
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
@@ -174,70 +178,101 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
 
 def check_questionnaires(
-    driver: WebDriver,
     config: Config,
     clients: dict[int, ClientWithQuestionnaires],
 ) -> tuple[
     list[ClientWithQuestionnaires],
     list[str],
 ]:
-    """Check if all questionnaires for the given clients are completed. This loops over the clients dictionary and runs check_q_done for each questionnaire. It then updates the database."""
+    """Check if all questionnaires for the given clients are completed using parallel execution."""
     if not clients:
         return [], []
-    completed_clients = []
-    updated_clients = []
-    error_clients: list[str] = []
-    for id in clients:
-        client = clients[id]
-        if all_questionnaires_done(client):
+
+    # Get the initially completed clients to track progress
+    initially_completed_ids = {
+        client_id
+        for client_id, client in clients.items()
+        if all_questionnaires_done(client)
+    }
+
+    tasks = []
+    for client in clients.values():
+        if client.id in initially_completed_ids:
             logger.info(f"{client.fullName} has already completed their questionnaires")
             continue
-        client_updated = False
-        try:
-            for questionnaire in client.questionnaires:
-                if questionnaire["status"] == "COMPLETED":
-                    logger.info(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
-                    )
-                    continue
-                if questionnaire["status"] == "ARCHIVED":
-                    logger.info(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is archived"
-                    )
-                    continue
-                if not questionnaire["link"]:
-                    logger.warning(
-                        f"No link found for {client.fullName}'s {questionnaire['questionnaireType']}"
-                    )
-                    continue
+
+        for questionnaire in client.questionnaires:
+            if questionnaire["status"] == "COMPLETED":
                 logger.info(
-                    f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
+                    f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
                 )
+                continue
+            if questionnaire["status"] == "ARCHIVED":
+                logger.info(
+                    f"{client.fullName}'s {questionnaire['questionnaireType']} is archived"
+                )
+                continue
+            if not questionnaire["link"]:
+                logger.warning(
+                    f"No link found for {client.fullName}'s {questionnaire['questionnaireType']}"
+                )
+                continue
+            tasks.append((client, questionnaire))
+
+    if not tasks:
+        return [], []
+
+    updated_clients_set = set()
+    error_clients: list[str] = []
+
+    def _check_single_q(task):
+        client, questionnaire = task
+        logger.info(
+            f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
+        )
+        try:
+            q_driver, _ = initialize_selenium()
+            try:
                 if check_q_done(
-                    driver, questionnaire["link"], questionnaire["questionnaireType"]
+                    q_driver,
+                    questionnaire["link"],
+                    questionnaire["questionnaireType"],
                 ):
                     questionnaire["status"] = "COMPLETED"
                     logger.info(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is COMPLETED"
                     )
-                    client_updated = True
+                    return client.id, True
                 else:
                     logger.warning(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
-
-            if client_updated:
-                updated_clients.append(client)
-
-            if all_questionnaires_done(client):
-                completed_clients.append(client)
-
+                    return client.id, False
+            finally:
+                q_driver.quit()
         except Exception as e:
             logger.error(f"Error checking questionnaires for {client.fullName}: {e}")
-            error_clients.append(f"{client.fullName}: {e}")
+            return client.id, e
 
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        results = list(executor.map(_check_single_q, tasks))
+
+    for client_id, result in results:
+        if isinstance(result, bool):
+            if result:
+                updated_clients_set.add(client_id)
+        else:
+            error_clients.append(f"{clients[client_id].fullName}: {result}")
+
+    updated_clients = [clients[cid] for cid in updated_clients_set]
     if updated_clients:
         update_questionnaires_in_db(config, updated_clients)
+
+    # Return clients that became completed in this run
+    completed_clients = [
+        client for client in updated_clients if all_questionnaires_done(client)
+    ]
+
     return completed_clients, error_clients
 
 
