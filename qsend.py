@@ -702,6 +702,9 @@ def get_questionnaires(age: int, check: str, daeval: str) -> list[str] | str:
             elif age < 6:
                 qs = ["Conners EC", "DP-4", "BASC Preschool", "Vineland"]
                 return qs
+            elif age < 7:
+                qs = ["Conners 4", "DP-4", "BASC Child", "Vineland"]
+                return qs
             elif age < 12:
                 qs = ["Conners 4", "BASC Child", "Vineland"]
                 return qs
