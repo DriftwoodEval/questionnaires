@@ -307,15 +307,25 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
     """
 
     def _search_helper(driver: WebDriver, id: str) -> None:
-        logger.info(f"Attempting to search QGlobal for {id}")
-        try:
-            sleep(1)
-            find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(id)
-        except:  # noqa: E722
-            logger.warning("Failed to search, attempting to retry")
-            driver.get("https://qglobal.pearsonassessments.com")
-            click_element(driver, By.XPATH, "//a[text()='Search']")
-            _search_helper(driver, id)
+        for attempt in range(3):
+            logger.info(
+                f"Attempting to search QGlobal for {id} (attempt {attempt + 1})"
+            )
+            try:
+                sleep(1)
+                find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(id)
+                return
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(
+                        f"Failed to search QGlobal for {id} after 3 attempts: {e}"
+                    )
+                    raise e
+                logger.warning(
+                    f"Failed to search QGlobal for {id}, attempting to retry: {e}"
+                )
+                driver.get("https://qglobal.pearsonassessments.com")
+                click_element(driver, By.XPATH, "//a[text()='Search']")
 
     logger.info(f"Searching QGlobal for {client['Human Friendly ID']}")
     click_element(driver, By.XPATH, "//a[text()='Search']")
@@ -324,6 +334,44 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 
     logger.debug("Submitting search form")
     click_element(driver, By.ID, "editExamineeForm:search")
+
+
+def search_select_qglobal(
+    driver: WebDriver,
+    actions: ActionChains,
+    config: Config,
+    services: Services,
+    client: pd.Series,
+):
+    check_and_login_qglobal(driver, actions, services)
+    search_qglobal(driver, actions, client)
+    sleep(3)
+
+    try:
+        logger.debug("Selecting client")
+        click_element(
+            driver,
+            By.XPATH,
+            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.warning("Failed to select client, searching again")
+        driver.refresh()
+        search_qglobal(driver, actions, client)
+        sleep(3)
+        try:
+            logger.debug("Selecting client")
+            click_element(
+                driver,
+                By.XPATH,
+                f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
+            )
+        except (NoSuchElementException, TimeoutException):
+            logger.error(
+                f"Failed to automatically select client {client['Human Friendly ID']}. "
+                "Please navigate to the client's page manually in the browser."
+            )
+            input("Press Enter once you have navigated to the client's page...")
 
 
 def check_for_qglobal_account(
@@ -1477,28 +1525,7 @@ def gen_basc_preschool(
     logger.info(
         f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
     )
-    check_and_login_qglobal(driver, actions, services)
-    search_qglobal(driver, actions, client)
-    sleep(3)
-
-    try:
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
-    except (NoSuchElementException, TimeoutException):
-        logger.warning("Failed to select client, searching again")
-        driver.refresh()
-        search_qglobal(driver, actions, client)
-        sleep(3)
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
+    search_select_qglobal(driver, actions, config, services, client)
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -1540,28 +1567,7 @@ def gen_basc_child(
     logger.info(
         f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
     )
-    check_and_login_qglobal(driver, actions, services)
-    search_qglobal(driver, actions, client)
-    sleep(3)
-
-    try:
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
-    except (NoSuchElementException, TimeoutException):
-        logger.warning("Failed to select client, searching again")
-        driver.refresh()
-        search_qglobal(driver, actions, client)
-        sleep(3)
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
+    search_select_qglobal(driver, actions, config, services, client)
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -1603,28 +1609,7 @@ def gen_basc_adolescent(
     logger.info(
         f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
     )
-    check_and_login_qglobal(driver, actions, services)
-    search_qglobal(driver, actions, client)
-    sleep(3)
-
-    try:
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
-    except (NoSuchElementException, TimeoutException):
-        logger.warning("Failed to select client, searching again")
-        driver.refresh()
-        search_qglobal(driver, actions, client)
-        sleep(3)
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
+    search_select_qglobal(driver, actions, config, services, client)
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -1666,28 +1651,7 @@ def gen_vineland(
     logger.info(
         f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
     )
-    check_and_login_qglobal(driver, actions, services)
-    search_qglobal(driver, actions, client)
-    sleep(3)
-
-    try:
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
-    except (NoSuchElementException, TimeoutException):
-        logger.warning("Failed to select client, searching again")
-        driver.refresh()
-        search_qglobal(driver, actions, client)
-        sleep(3)
-        logger.debug("Selecting client")
-        click_element(
-            driver,
-            By.XPATH,
-            f"//td[contains(text(), '{client['Human Friendly ID']}') and @aria-describedby='list_examineeid']",
-        )
+    search_select_qglobal(driver, actions, config, services, client)
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
