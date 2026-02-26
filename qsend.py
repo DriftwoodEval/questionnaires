@@ -2195,6 +2195,7 @@ def main(
                     config=config,
                     client_id=client["Client ID"],
                     error="autism stop",
+                    add_to_sheet=False,
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
