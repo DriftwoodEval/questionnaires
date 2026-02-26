@@ -58,85 +58,118 @@ def extract_writer_initials(assigned_to: str) -> str:
 
 def get_report_clients(config: Config) -> pd.DataFrame | None:
     """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
-    punch_list = get_punch_list(config)
+    while True:
+        punch_list = get_punch_list(config)
 
-    if punch_list is None:
-        logger.critical("Punch list is empty")
-        return None
+        if punch_list is None:
+            logger.critical("Punch list is empty")
+            return None
 
-    report_done = punch_list[
-        (punch_list["Billed?"] == "TRUE")
-        & (punch_list["AJP Review Done/Hold for payroll"] != "TRUE")
-        & (
-            (punch_list["For"] != "ADHD")
-            | (
-                (punch_list["For"] == "ADHD")
-                & (punch_list["Evaluator"].str.lower() == "ap")
+        report_done = punch_list[
+            (punch_list["Billed?"] == "TRUE")
+            & (punch_list["AJP Review Done/Hold for payroll"] != "TRUE")
+            & (
+                (punch_list["For"] != "ADHD")
+                | (
+                    (punch_list["For"] == "ADHD")
+                    & (punch_list["Evaluator"].str.lower() == "ap")
+                )
             )
+        ].copy()
+
+        if report_done.empty:
+            logger.info("No clients found that have reports done")
+            return None
+
+        tracked_reports = load_tracked_reports()
+        today_str = date.today().strftime("%Y-%m-%d")
+
+        logger.info(f"Loaded report history: {len(tracked_reports)}")
+
+        new_reports = report_done[
+            report_done["Client ID"].apply(
+                lambda cid: (
+                    cid not in tracked_reports or tracked_reports.get(cid) == today_str
+                )
+            )
+        ].copy()
+
+        if new_reports.empty:
+            logger.info("No new reports found")
+            return None
+
+        for client_id in new_reports["Client ID"]:
+            if client_id not in tracked_reports:
+                tracked_reports[client_id] = today_str
+
+        save_tracked_reports(tracked_reports)
+
+        result = new_reports[
+            [
+                "Client Name",
+                "Client ID",
+                "Assigned to OR added to report writing folder",
+            ]
+        ].rename(
+            columns={"Assigned to OR added to report writing folder": "Assigned To"}
         )
-    ].copy()
 
-    if report_done.empty:
-        logger.info("No clients found that have reports done")
-        return None
+        rows_to_drop = []
+        unassigned_clients = []
+        for idx, row in result.iterrows():
+            assigned_to = row["Assigned To"]
+            initials = extract_writer_initials(assigned_to)
+            if not initials:
+                client_info = (
+                    f"{row['Client Name'].strip()} ({row['Client ID'].strip()})"
+                )
+                logger.error(
+                    f"'{client_info}' has no valid report writer initials in 'Assigned To' field: '{assigned_to}'"
+                )
+                rows_to_drop.append(idx)
+                unassigned_clients.append(client_info)
 
-    tracked_reports = load_tracked_reports()
-    today_str = date.today().strftime("%Y-%m-%d")
+        if rows_to_drop:
+            clients_str = ", ".join(unassigned_clients)
+            questions = [
+                inquirer.List(
+                    "action",
+                    message=f"Found {len(rows_to_drop)} clients with no valid report writer: {clients_str}. What would you like to do?",
+                    choices=[
+                        ("I've made changes, refetch the sheet", "refetch"),
+                        ("Continue, ignore these clients", "continue"),
+                    ],
+                ),
+            ]
+            answers = inquirer.prompt(questions)
+            if not answers:
+                logger.info("Aborting.")
+                exit()
+            if answers["action"] == "refetch":
+                logger.info("Refetching punch list...")
+                continue
 
-    logger.info(f"Loaded report history: {len(tracked_reports)}")
+            result = result.drop(rows_to_drop)
+            logger.error(f"Dropped {len(rows_to_drop)} client(s) with no report writer")
 
-    new_reports = report_done[
-        report_done["Client ID"].apply(
-            lambda cid: cid not in tracked_reports
-            or tracked_reports.get(cid) == today_str
-        )
-    ].copy()
-
-    if new_reports.empty:
-        logger.info("No new reports found")
-        return None
-
-    for client_id in new_reports["Client ID"]:
-        if client_id not in tracked_reports:
-            tracked_reports[client_id] = today_str
-
-    save_tracked_reports(tracked_reports)
-
-    result = new_reports[
-        [
-            "Client Name",
-            "Client ID",
-            "Assigned to OR added to report writing folder",
-        ]
-    ].rename(columns={"Assigned to OR added to report writing folder": "Assigned To"})
-
-    rows_to_drop = []
-    for idx, row in result.iterrows():
-        assigned_to = row["Assigned To"]
-        if pd.isna(assigned_to) or not str(assigned_to).strip():
+        if result.empty:
             logger.error(
-                f"'{row['Client Name'].strip()}' (ID: {row['Client ID'].strip()}) has empty 'Assigned To' field"
+                "No valid reports found after filtering out unassigned clients"
             )
-            rows_to_drop.append(idx)
+            return None
 
-    if rows_to_drop:
-        result = result.drop(rows_to_drop)
-        logger.error(f"Dropped {len(rows_to_drop)} client(s) with no report writer")
+        result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
+        result["Writer Name"] = result["Initials"].apply(
+            lambda initials: (
+                config.piecework.get_full_name(initials) if initials else ""
+            )
+        )
 
-    if result.empty:
-        logger.error("No valid reports found after filtering out unassigned clients")
-        return None
+        result = result.drop(columns=["Initials", "Assigned To"])
 
-    result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
-    result["Writer Name"] = result["Initials"].apply(
-        lambda initials: config.piecework.get_full_name(initials) if initials else ""
-    )
+        logger.info(f"Found {len(result)} new reports")
 
-    result = result.drop(columns=["Initials", "Assigned To"])
-
-    logger.info(f"Found {len(result)} new reports")
-
-    return result
+        return result
 
 
 def get_date_range() -> tuple[date, date] | None:
