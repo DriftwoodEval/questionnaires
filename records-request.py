@@ -428,17 +428,23 @@ def main():
                     logger.error(
                         f"An error occurred while processing {client_name}: {e}"
                     )
+                    add_to_sheet = True
+
+                    if str(e) not in ["portal not opened", "docs not signed"]:
+                        add_to_sheet = False
+
                     add_failure(
                         config=config,
                         client_id=client.id,
                         error=str(e),
                         failed_date=today,
-                        add_to_sheet=True,
+                        add_to_sheet=add_to_sheet,
                         full_name=client_name,
                         asd_adhd=asdAdhd,
                         daeval="Records",
                     )
                     new_failure_count += 1
+
             else:
                 add_failure(
                     config=config,
