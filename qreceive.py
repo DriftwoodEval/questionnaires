@@ -110,7 +110,7 @@ def build_q_message(
     messages_en = {
         0: (
             f"Hello, this is {config.name} from Driftwood Evaluation Center. "
-            f"{'We are ready to schedule your appointment! In order for us to schedule your appointment, ' if not is_posteval else 'In order to provide you with a comprehensive report, '}"
+            f"{'We are moving towards scheduling an appointment. The next step is ' if not is_posteval else 'In order to provide you with a comprehensive report, '}"
             f"we need you to complete your {q_s_en}. You can find {it_them_en} in the messages tab "
             f"in our patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
@@ -383,9 +383,14 @@ def main():
                                         (client, "Failed to send text request")
                                     )
                             except InvalidPhoneNumberError as e:
-                                logger.error(f"Invalid phone number for {client.fullName}: {e}")
+                                logger.error(
+                                    f"Invalid phone number for {client.fullName}: {e}"
+                                )
                                 email_info["failed"].append(
-                                    (client, f"Invalid phone number: {client.phoneNumber}")
+                                    (
+                                        client,
+                                        f"Invalid phone number: {client.phoneNumber}",
+                                    )
                                 )
                             except NotEnoughCreditsError:
                                 logger.critical(
@@ -484,9 +489,14 @@ def main():
                                         (client, "Failed to send text request")
                                     )
                             except InvalidPhoneNumberError as e:
-                                logger.error(f"Invalid phone number for {client.fullName}: {e}")
+                                logger.error(
+                                    f"Invalid phone number for {client.fullName}: {e}"
+                                )
                                 email_info["failed"].append(
-                                    (client, f"Invalid phone number: {client.phoneNumber}")
+                                    (
+                                        client,
+                                        f"Invalid phone number: {client.phoneNumber}",
+                                    )
                                 )
                             except NotEnoughCreditsError:
                                 logger.critical(
