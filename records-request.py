@@ -430,7 +430,7 @@ def main():
                     )
                     add_to_sheet = True
 
-                    if str(e) not in ["portal not opened", "docs not signed"]:
+                    if str(e) in ["portal not opened", "docs not signed"]:
                         add_to_sheet = False
 
                     add_failure(
