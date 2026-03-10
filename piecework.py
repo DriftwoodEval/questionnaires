@@ -281,7 +281,7 @@ def prepare_summary_data(
     """
     summary_rows = []
 
-    for worker_name, app_counts in work_counts.items():
+    for worker_name, app_counts in sorted(work_counts.items()):
         # Add name row with no type/count
         summary_rows.append(
             {
