@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -72,11 +73,19 @@ def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
     )
 
 
-def get_id_from_path(path: str, max_length: int = 50) -> str:
-    """Extracts a sanitized identifier from a URL path."""
-    clean_path = path.split("?")[0].strip("/")
+def get_id_from_url(url: str, max_length: int = 64) -> str:
+    """Extracts a sanitized identifier from a URL, including a hash for uniqueness."""
+    parsed = urlparse(url)
+    clean_path = parsed.path.strip("/")
     sanitized = re.sub(r"[^\w\-]+", "_", clean_path)
-    return sanitized[:max_length].strip("_")
+
+    # Deterministic hash of the full URL (including query string)
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
+
+    # Shorten the sanitized path to leave room for the hash and separator
+    truncated = sanitized[: max_length - 12].strip("_")
+
+    return f"{truncated}_{url_hash}"
 
 
 def generate_screenshot_filename(
@@ -127,7 +136,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
     final_url = ""
     parsed_url = urlparse(q_link)
     link_host = parsed_url.netloc
-    unique_id = get_id_from_path(parsed_url.path)
+    unique_id = get_id_from_url(q_link)
 
     def capture_outcome(status: str):
         filename = generate_screenshot_filename(status, q_type, link_host, unique_id)
