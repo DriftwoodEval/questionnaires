@@ -2155,16 +2155,6 @@ def main(
 
             if client_from_db.autismStop:
                 logger.error(f"{client['Client Name']} has autism stop")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="autism stop",
-                    add_to_sheet=False,
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
                 continue
 
             client_url = ""
