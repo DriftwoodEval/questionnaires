@@ -1162,7 +1162,14 @@ def gen_conners_ec(
     click_element(driver, By.ID, "_btnnext")
 
     logger.debug("Selecting generate link")
-    click_element(driver, By.ID, "btnGenerateLinks")
+    try:
+        click_element(driver, By.ID, "btnGenerateLinks")
+    except (NoSuchElementException, TimeoutException):
+        logger.error(
+            "Failed to automatically click 'Generate Links'. "
+            "Please click it manually in the browser."
+        )
+        input("Press Enter once you have clicked 'Generate Links' and the link is visible...")
     sleep(3)
 
     logger.debug("Getting link")
@@ -1236,7 +1243,14 @@ def gen_conners_4(
     click_element(driver, By.ID, "_btnnext")
 
     logger.debug("Selecting generate link")
-    click_element(driver, By.ID, "btnGenerateLinks")
+    try:
+        click_element(driver, By.ID, "btnGenerateLinks")
+    except (NoSuchElementException, TimeoutException):
+        logger.error(
+            "Failed to automatically click 'Generate Links'. "
+            "Please click it manually in the browser."
+        )
+        input("Press Enter once you have clicked 'Generate Links' and the link is visible...")
     sleep(3)
     link = find_element(driver, By.ID, "txtLink").get_attribute("value")
     if link is None:
@@ -1312,7 +1326,14 @@ def gen_conners_4_self(
     click_element(driver, By.ID, "_btnnext")
 
     logger.debug("Selecting generate link")
-    click_element(driver, By.ID, "btnGenerateLinks")
+    try:
+        click_element(driver, By.ID, "btnGenerateLinks")
+    except (NoSuchElementException, TimeoutException):
+        logger.error(
+            "Failed to automatically click 'Generate Links'. "
+            "Please click it manually in the browser."
+        )
+        input("Press Enter once you have clicked 'Generate Links' and the link is visible...")
     sleep(3)
     link = find_element(driver, By.ID, "txtLink").get_attribute("value")
     if link is None:
@@ -1385,11 +1406,18 @@ def gen_asrs_2_5(
     )
 
     logger.debug("Generating link")
-    click_element(
-        driver,
-        By.ID,
-        "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
-    )
+    try:
+        click_element(
+            driver,
+            By.ID,
+            "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.error(
+            "Failed to automatically click 'Generate Links'. "
+            "Please click it manually in the browser."
+        )
+        input("Press Enter once you have clicked 'Generate Links' and the link is visible...")
     sleep(3)
     link = find_element(
         driver,
@@ -1466,11 +1494,18 @@ def gen_asrs_6_18(
     )
 
     logger.debug("Generating link")
-    click_element(
-        driver,
-        By.ID,
-        "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
-    )
+    try:
+        click_element(
+            driver,
+            By.ID,
+            "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_btnGenerateLinks",
+        )
+    except (NoSuchElementException, TimeoutException):
+        logger.error(
+            "Failed to automatically click 'Generate Links'. "
+            "Please click it manually in the browser."
+        )
+        input("Press Enter once you have clicked 'Generate Links' and the link is visible...")
     sleep(3)
     link = find_element(
         driver,
@@ -1752,7 +1787,14 @@ def gen_caars_2(
     click_element(driver, By.ID, "_btnnext")
 
     logger.debug("Generating link")
-    click_element(driver, By.ID, "btnGenerateLinks")
+    try:
+        click_element(driver, By.ID, "btnGenerateLinks")
+    except (NoSuchElementException, TimeoutException):
+        logger.error(
+            "Failed to automatically click 'Generate Links'. "
+            "Please click it manually in the browser."
+        )
+        input("Press Enter once you have clicked 'Generate Links' and the link is visible...")
     sleep(5)
     link = find_element(
         driver,
