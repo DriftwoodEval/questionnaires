@@ -26,6 +26,12 @@ from utils.database import (
 from utils.google import build_admin_email, send_gmail, update_punch_list
 from utils.misc import check_distance, load_config
 from utils.openphone import InvalidPhoneNumberError, NotEnoughCreditsError, OpenPhone
+from utils.platforms.therapyappointment import (
+    check_if_docs_signed,
+    check_if_opened_portal,
+    go_to_client,
+    resend_portal_invite,
+)
 from utils.questionnaires import (
     all_questionnaires_done,
     check_if_ignoring,
@@ -34,12 +40,7 @@ from utils.questionnaires import (
     get_most_recent_not_done,
 )
 from utils.selenium import (
-    check_and_login_ta,
-    check_if_docs_signed,
-    check_if_opened_portal,
-    go_to_client,
     initialize_selenium,
-    resend_portal_invite,
 )
 
 logger.remove()

@@ -26,11 +26,13 @@ from utils.google import (
     send_gmail,
 )
 from utils.misc import NetworkSink, add_failure, load_config, load_local_settings
-from utils.selenium import (
+from utils.platforms.therapyappointment import (
     check_and_login_ta,
     check_if_docs_signed,
     check_if_opened_portal,
     go_to_client,
+)
+from utils.selenium import (
     initialize_selenium,
 )
 
