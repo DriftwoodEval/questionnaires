@@ -92,6 +92,11 @@ def get_clients_to_send(
 
     record_statuses = get_record_ready_client_ids(config)
 
+    # Remove extra whitespace from the "Client Name" column
+    punch_list["Client Name"] = (
+        punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
+    )
+
     if "Client ID" in punch_list.columns:
         punch_list = punch_list.dropna(subset=["Client ID"])
 
@@ -132,11 +137,6 @@ def get_clients_to_send(
                     )
                     keep_clients.append(should_continue)
             punch_list = punch_list[keep_clients]
-
-    # Remove extra whitespace from the "Client Name" column
-    punch_list["Client Name"] = (
-        punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
-    )
 
     # Add the "daeval" column to the DataFrame
     punch_list["daeval"] = punch_list.apply(
