@@ -16,6 +16,7 @@ from utils.custom_types import Config, Services
 from utils.selenium import (
     click_element,
     find_element,
+    find_element_exists,
     set_local_storage_item,
 )
 
@@ -59,6 +60,10 @@ def check_and_login_wps(
     try:
         logger.debug("Checking if logged in to WPS")
         driver.get(wps_url)
+        maybe_later_xpath = "//button[h4[contains(text(), 'Maybe Later')]]"
+        if find_element_exists(driver, By.XPATH, maybe_later_xpath, timeout=2):
+            logger.info("Found 'Maybe Later' tour button, clicking it.")
+            click_element(driver, By.XPATH, maybe_later_xpath)
         find_element(
             driver,
             By.CSS_SELECTOR,
@@ -121,6 +126,12 @@ def gen_dp4(
 
     logger.debug("Navigating to client list")
     driver.get("https://hub.wpspublish.com/clients")
+
+    maybe_later_xpath = "//button[h4[contains(text(), 'Maybe Later')]]"
+    if find_element_exists(driver, By.XPATH, maybe_later_xpath, timeout=2):
+        logger.info("Found 'Maybe Later' tour button, clicking it.")
+        click_element(driver, By.XPATH, maybe_later_xpath)
+
     click_element(driver, By.CSS_SELECTOR, '[data-testid="clients-search-button"]')
     search = find_element(driver, By.CSS_SELECTOR, '[name="clients-search-input"]')
 
@@ -131,6 +142,11 @@ def gen_dp4(
 
     logger.debug("Selecting client")
     click_element(driver, By.XPATH, "//table/tbody/tr/td/div")
+
+    skip_xpath = "//button[h4[contains(text(), 'Skip')]]"
+    if find_element_exists(driver, By.XPATH, skip_xpath, timeout=2):
+        logger.info("Found 'Skip' tour button, clicking it.")
+        click_element(driver, By.XPATH, skip_xpath)
 
     logger.debug("Creating new administration")
     try:
