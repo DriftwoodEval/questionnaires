@@ -3,6 +3,7 @@ from time import sleep
 import pandas as pd
 from loguru import logger
 from selenium.common.exceptions import (
+    ElementClickInterceptedException,
     NoSuchElementException,
     TimeoutException,
 )
@@ -10,25 +11,31 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import Select
 
 from utils.custom_types import Config, Services
 from utils.selenium import (
     click_element,
     find_element,
+    set_local_storage_item,
 )
 
 
 def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> None:
     """Log in to WPS."""
-    logger.debug("Going to login page")
-    click_element(driver, By.ID, "loginID")
-
+    set_local_storage_item(
+        driver,
+        "savedTours",
+        '{"getStarted":{"visits":4,"status":"completed"},"noCase":{"visits":4,"status":"completed"},"singleCase":{"visits":4,"status":"inactive"},"multipleCase":{"visits":4,"status":"inactive"}}',
+    )
     logger.debug("Entering username")
-    find_element(driver, By.ID, "Username").send_keys(services.wps.username)
+    find_element(driver, By.CSS_SELECTOR, '[name="username"]').send_keys(
+        services.wps.username
+    )
 
     logger.debug("Entering password")
-    find_element(driver, By.ID, "Password").send_keys(services.wps.password)
+    find_element(driver, By.CSS_SELECTOR, '[name="password"]').send_keys(
+        services.wps.password
+    )
 
     logger.debug("Submitting login form")
     actions.send_keys(Keys.ENTER)
@@ -42,16 +49,22 @@ def check_and_login_wps(
     first_time: bool = False,
 ) -> None:
     """Check if logged in to WPS and log in if not."""
-    wps_url = "https://platform.wpspublish.com"
+    wps_url = "https://hub.wpspublish.com/clients"
     if first_time:
         logger.debug("First time login to WPS, logging in now.")
         driver.get(wps_url)
+
         login_wps(driver, actions, services)
         return
     try:
         logger.debug("Checking if logged in to WPS")
         driver.get(wps_url)
-        find_element(driver, By.ID, "newCase", timeout=2)
+        find_element(
+            driver,
+            By.CSS_SELECTOR,
+            '[data-testid="clients-create-client-button"]',
+            timeout=2,
+        )
         logger.debug("Already logged in to WPS")
     except (NoSuchElementException, TimeoutException):
         logger.debug("Not logged in to WPS, logging in now.")
@@ -70,155 +83,126 @@ def gen_dp4(
     id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
-    click_element(driver, By.ID, "newCase")
+    # driver.get("https://hub.wpspublish.com/clients/add-client")
 
-    first = find_element(driver, By.XPATH, "//td[@id='FirstName']/input")
-    last = find_element(driver, By.XPATH, "//td[@id='LastName']/input")
-    account = find_element(driver, By.XPATH, "//td[@id='CaseAltId']/input")
+    # first = find_element(driver, By.ID, "firstName")
+    # last = find_element(driver, By.ID, "lastName")
+    # account = find_element(driver, By.ID, "clientId")
+    # birthday = find_element(driver, By.CSS_SELECTOR, '[name="birthDay"]')
 
-    logger.debug("Entering first name")
-    first.send_keys(firstname)
-    logger.debug("Entering last name")
-    last.send_keys(lastname)
-    logger.debug("Entering account number")
-    account.send_keys(id)
+    # logger.debug("Entering first name")
+    # first.send_keys(firstname)
+    # logger.debug("Entering last name")
+    # last.send_keys(lastname)
+    # logger.debug("Entering account number")
+    # account.send_keys(id)
+    # logger.debug("Entering birthday")
+    # year = dob[0:4]
+    # month = dob[5:7]
+    # day = dob[8:10]
+    # birthday.send_keys(f"{month}{day}{year}")
 
-    logger.debug("Selecting gender")
-    gender_element = find_element(driver, By.ID, "genderOpt")
-    gender_select = Select(gender_element)
-    sleep(1)
-    if gender == "Male":
-        gender_select.select_by_visible_text("Male")
-    else:
-        gender_select.select_by_visible_text("Female")
+    # logger.debug("Selecting gender")
+    # click_element(
+    #     driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-dropdown"]'
+    # )
+    # sleep(1)
+    # if gender == "Male":
+    #     click_element(
+    #         driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-0-button"]'
+    #     )
+    # else:
+    #     click_element(
+    #         driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-1-button"]'
+    #     )
 
-    year = dob[:4]
-    month = dob[5:7]
-    if int(dob[8:]) < 10:
-        day = dob[9:]
-    else:
-        day = dob[8:]
-
-    if month == "01":
-        month = "January"
-    elif month == "02":
-        month = "February"
-    elif month == "03":
-        month = "March"
-    elif month == "04":
-        month = "April"
-    elif month == "05":
-        month = "May"
-    elif month == "06":
-        month = "June"
-    elif month == "07":
-        month = "July"
-    elif month == "08":
-        month = "August"
-    elif month == "09":
-        month = "September"
-    elif month == "10":
-        month = "October"
-    elif month == "11":
-        month = "November"
-    elif month == "12":
-        month = "December"
-
-    logger.debug("Selecting birthdate")
-    birthdate_month_element = find_element(driver, By.ID, "dobMonth")
-    birthdate_month_select = Select(birthdate_month_element)
-    sleep(1)
-    birthdate_month_select.select_by_visible_text(month)
-
-    birthdate_day_element = find_element(driver, By.ID, "dobDay")
-    birthdate_day_select = Select(birthdate_day_element)
-    sleep(1)
-    birthdate_day_select.select_by_visible_text(day)
-
-    birthdate_year_element = find_element(driver, By.ID, "dobYear")
-    birthdate_year_select = Select(birthdate_year_element)
-    sleep(1)
-    birthdate_year_select.select_by_visible_text(year)
-
-    logger.debug("Saving new client")
-    click_element(driver, By.ID, "clientSave")
-
-    logger.debug("Confirming new client")
-    click_element(driver, By.XPATH, "//input[@id='successClientCreate']")
+    # logger.debug("Saving new client")
+    # click_element(driver, By.CSS_SELECTOR, '[data-testid="clientform-submit-button"]')
 
     logger.debug("Navigating to client list")
-    driver.get("https://platform.wpspublish.com")
-    search = find_element(driver, By.XPATH, "//input[@type='search']")
+    driver.get("https://hub.wpspublish.com/clients")
+    click_element(driver, By.CSS_SELECTOR, '[data-testid="clients-search-button"]')
+    search = find_element(driver, By.CSS_SELECTOR, '[name="clients-search-input"]')
 
     logger.debug("Searching for client")
     search.send_keys(firstname, " ", lastname)
 
+    sleep(2)
+
     logger.debug("Selecting client")
-    click_element(driver, By.XPATH, "//table[@id='case']/tbody/tr/td/div")
+    click_element(driver, By.XPATH, "//table/tbody/tr/td/div")
 
     logger.debug("Creating new administration")
-    click_element(driver, By.XPATH, "//input[@id='newAdministration']")
+    try:
+        click_element(
+            driver, By.CSS_SELECTOR, '[data-testid="casedetails-buildbattery-button"]'
+        )
+    except (NoSuchElementException, TimeoutException, ElementClickInterceptedException):
+        logger.error(f"Failed to create new administration. ")
+        input("Please click New Administration and press enter...")
 
     logger.debug("Selecting test")
     click_element(
         driver,
-        By.XPATH,
-        "//img[contains(@src,'https://oes-cdn01.wpspublish.com/content/img/DP-4.png')]",
+        By.CSS_SELECTOR,
+        '[data-testid="batterybuilder-assessments-3-expand-button"]',
     )
-
-    logger.debug("Adding form")
-    click_element(driver, By.ID, "addForm")
-    form_element = find_element(driver, By.ID, "TestFormId")
-    form = Select(form_element)
-    sleep(1)
 
     logger.debug("Selecting form")
     if client["Language"] != "Spanish":
-        form.select_by_visible_text("Parent/Caregiver Checklist")
+        click_element(
+            driver,
+            By.CSS_SELECTOR,
+            '[data-testid="batterybuilder-assessments-3-forms-1-add-button"]',
+        )
     else:
-        form.select_by_visible_text("Spanish Parent/Caregiver Checklist")
+        click_element(
+            driver,
+            By.CSS_SELECTOR,
+            '[data-testid="batterybuilder-assessments-3-forms-5-add-button"]',
+        )
 
-    logger.debug("Setting delivery method")
-    click_element(driver, By.ID, "DeliveryMethod")
+    click_element(
+        driver, By.CSS_SELECTOR, '[data-testid="batterybuilder-submit-button"]'
+    )
+
+    logger.debug("Adding respondent")
+    click_element(
+        driver,
+        By.CSS_SELECTOR,
+        '[data-testid="cases-table-form-add-respondent-button"]',
+    )
 
     logger.debug("Entering rater name")
     if client["Language"] != "Spanish":
-        find_element(driver, By.ID, "RaterName").send_keys("Parent/Caregiver")
+        find_element(driver, By.CSS_SELECTOR, '[name="firstName"]').send_keys("Parent")
+        find_element(driver, By.CSS_SELECTOR, '[name="lastName"]').send_keys(
+            "Caregiver"
+        )
     else:
-        find_element(driver, By.ID, "RaterName").send_keys("Madre/Padre/Cuidador")
+        find_element(driver, By.CSS_SELECTOR, '[name="firstName"]').send_keys(
+            "Madre/Padre"
+        )
+        find_element(driver, By.CSS_SELECTOR, '[name="lastName"]').send_keys("Cuidador")
 
     logger.debug("Entering email")
-    find_element(driver, By.ID, "RemoteAdminEmail_ToEmail").send_keys(config.email)
+    find_element(driver, By.CSS_SELECTOR, '[name="email"]').send_keys(config.email)
 
-    logger.debug("Selecting copy me")
-    click_element(driver, By.ID, "RemoteAdminEmail_CopyMe")
+    logger.debug("Saving form")
+    click_element(
+        driver, By.CSS_SELECTOR, '[data-testid="respondentModal-save-button"]'
+    )
 
     logger.debug("Pretending to send form")
-    click_element(driver, By.XPATH, "//input[@value='Send Form']")
-
-    logger.debug("Selecting form link")
-    if client["Language"] != "Spanish":
-        click_element(
-            driver, By.XPATH, "//td[contains(.,'Parent/Caregiver Checklist')]"
-        )
-    else:
-        click_element(
-            driver, By.XPATH, "//td[contains(.,'Spanish Parent/Caregiver Checklist')]"
-        )
-
-    logger.debug("Selecting delivery method")
-    click_element(driver, By.ID, "DeliveryMethod")
-    sleep(3)
-
-    logger.debug("Getting form link")
-    body = find_element(driver, By.ID, "RemoteAdminEmail_Content").get_attribute(
-        "value"
+    click_element(
+        driver, By.CSS_SELECTOR, '[data-testid="cases-table-form-action-button"]'
     )
-    if body is None:
-        raise ValueError("Email body is None")
-    body = body.split()
-    body = body[3]
-    link = body[6:-1]
+
+    sleep(2)
+
+    logger.debug("Grabbing form link")
+    link_span = find_element(driver, By.XPATH, "//span[contains(text(), 'https://')]")
+    link = link_span.text.split()[-1]
 
     logger.success(f"Returning link {link}")
     return link

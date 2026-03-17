@@ -165,3 +165,9 @@ def save_screenshot_to_path(driver: WebDriver, filepath: str) -> None:
         logger.info(f"Screenshot saved to {filepath}")
     except Exception as e:
         logger.error(f"Failed to save screenshot: {e}")
+
+
+def set_local_storage_item(driver: WebDriver, key: str, value: str) -> None:
+    """Set an item in localStorage using JavaScript."""
+    driver.execute_script("window.localStorage.setItem(arguments[0], arguments[1]);", key, value)
+    logger.debug(f"Set localStorage item: {key}")
