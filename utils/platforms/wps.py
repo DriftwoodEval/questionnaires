@@ -83,41 +83,41 @@ def gen_dp4(
     id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
-    # driver.get("https://hub.wpspublish.com/clients/add-client")
+    driver.get("https://hub.wpspublish.com/clients/add-client")
 
-    # first = find_element(driver, By.ID, "firstName")
-    # last = find_element(driver, By.ID, "lastName")
-    # account = find_element(driver, By.ID, "clientId")
-    # birthday = find_element(driver, By.CSS_SELECTOR, '[name="birthDay"]')
+    first = find_element(driver, By.ID, "firstName")
+    last = find_element(driver, By.ID, "lastName")
+    account = find_element(driver, By.ID, "clientId")
+    birthday = find_element(driver, By.CSS_SELECTOR, '[name="birthDay"]')
 
-    # logger.debug("Entering first name")
-    # first.send_keys(firstname)
-    # logger.debug("Entering last name")
-    # last.send_keys(lastname)
-    # logger.debug("Entering account number")
-    # account.send_keys(id)
-    # logger.debug("Entering birthday")
-    # year = dob[0:4]
-    # month = dob[5:7]
-    # day = dob[8:10]
-    # birthday.send_keys(f"{month}{day}{year}")
+    logger.debug("Entering first name")
+    first.send_keys(firstname)
+    logger.debug("Entering last name")
+    last.send_keys(lastname)
+    logger.debug("Entering account number")
+    account.send_keys(id)
+    logger.debug("Entering birthday")
+    year = dob[0:4]
+    month = dob[5:7]
+    day = dob[8:10]
+    birthday.send_keys(f"{month}{day}{year}")
 
-    # logger.debug("Selecting gender")
-    # click_element(
-    #     driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-dropdown"]'
-    # )
-    # sleep(1)
-    # if gender == "Male":
-    #     click_element(
-    #         driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-0-button"]'
-    #     )
-    # else:
-    #     click_element(
-    #         driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-1-button"]'
-    #     )
+    logger.debug("Selecting gender")
+    click_element(
+        driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-dropdown"]'
+    )
+    sleep(1)
+    if gender == "Male":
+        click_element(
+            driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-0-button"]'
+        )
+    else:
+        click_element(
+            driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-1-button"]'
+        )
 
-    # logger.debug("Saving new client")
-    # click_element(driver, By.CSS_SELECTOR, '[data-testid="clientform-submit-button"]')
+    logger.debug("Saving new client")
+    click_element(driver, By.CSS_SELECTOR, '[data-testid="clientform-submit-button"]')
 
     logger.debug("Navigating to client list")
     driver.get("https://hub.wpspublish.com/clients")
