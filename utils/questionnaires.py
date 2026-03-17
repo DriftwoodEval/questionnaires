@@ -105,7 +105,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         "ASRS (6-18 Years)": "/asrs_web/",
         "Conners EC": "/CEC/",
         "Conners 4": "/conners4/",
-        "DP-4": "respondent.wpspublish.com",
+        "DP-4": ["respondent.wpspublish.com", "hub-respondent.wpspublish.com"],
     }
 
     raw_completion_texts = {
@@ -150,10 +150,11 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
             return False
 
         if q_type in url_patterns:
-            expected_pattern = url_patterns[q_type]
+            expected = url_patterns[q_type]
+            patterns = [expected] if isinstance(expected, str) else expected
 
-            if expected_pattern not in final_url:
-                error_msg = f"URL mismatch: Expected '{expected_pattern}' in URL for type '{q_type}', but got '{final_url}'"
+            if not any(pattern in final_url for pattern in patterns):
+                error_msg = f"URL mismatch: Expected one of {patterns} in URL for type '{q_type}', but got '{final_url}'"
                 raise Exception(error_msg)
 
         for host_key, xpath in completion_xpaths.items():
