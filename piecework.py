@@ -1,3 +1,4 @@
+import argparse
 import json
 import re
 from collections import defaultdict
@@ -406,6 +407,7 @@ def generate_main_report(
     start_date: date,
     end_date: date,
     config: Config,
+    dev_mode: bool = False,
 ):
     """Generates a single Excel file with two sheets: Summary and Detail."""
     piecework_output_folder = Path("piecework_output")
@@ -500,7 +502,7 @@ def generate_main_report(
     except Exception:
         logger.exception(f"An error occurred while writing the Excel file {filename}.")
 
-    if file_generated:
+    if file_generated and not dev_mode:
         upload_file_to_drive(filename, config.payroll_folder_id)
 
 
@@ -510,6 +512,7 @@ def generate_individual_detail_reports(
     end_date: date,
     config: Config,
     evaluators: dict[int, dict],
+    dev_mode: bool = False,
 ):
     """Generates a separate Excel file for each worker's detail data."""
     base_output_folder = Path("piecework_output")
@@ -544,39 +547,40 @@ def generate_individual_detail_reports(
                     ].width = adjusted_width
 
             logger.info(f"Wrote individual detail file locally for: {worker_name}")
-            file_link, folder_link = upload_file_to_drive(
-                filename, config.payroll_folder_id, safe_worker_name
-            )
-
-            if not file_link:
-                logger.error(f"Failed to upload {filename} to Google Drive.")
-                continue
-
-            worker_email = None
-
-            for _, evaluator_info in evaluators.items():
-                if evaluator_info.get("providerName") == worker_name:
-                    worker_email = evaluator_info.get("email")
-                    break
-
-            worker_email = config.piecework.payroll_emails.get(
-                worker_name, worker_email
-            )
-
-            if not worker_email:
-                logger.warning(
-                    f"Could not find email for {worker_name}. Skipping Gmail draft."
+            if not dev_mode:
+                file_link, folder_link = upload_file_to_drive(
+                    filename, config.payroll_folder_id, safe_worker_name
                 )
-                continue
 
-            link = folder_link or file_link
-            subject = f"Pay Spreadsheet for {start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}"
-            message_text = f"Please refer to the following folder to reconcile work completed and pay. Please reach out if you find any discrepancies.\n\n{link}"
-            create_gmail_draft(
-                subject=subject,
-                to_addr=worker_email,
-                message_text=message_text,
-            )
+                if not file_link:
+                    logger.error(f"Failed to upload {filename} to Google Drive.")
+                    continue
+
+                worker_email = None
+
+                for _, evaluator_info in evaluators.items():
+                    if evaluator_info.get("providerName") == worker_name:
+                        worker_email = evaluator_info.get("email")
+                        break
+
+                worker_email = config.piecework.payroll_emails.get(
+                    worker_name, worker_email
+                )
+
+                if not worker_email:
+                    logger.warning(
+                        f"Could not find email for {worker_name}. Skipping Gmail draft."
+                    )
+                    continue
+
+                link = folder_link or file_link
+                subject = f"Pay Spreadsheet for {start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}"
+                message_text = f"Please refer to the following folder to reconcile work completed and pay. Please reach out if you find any discrepancies.\n\n{link}"
+                create_gmail_draft(
+                    subject=subject,
+                    to_addr=worker_email,
+                    message_text=message_text,
+                )
 
         except Exception:
             logger.exception(
@@ -587,7 +591,14 @@ def generate_individual_detail_reports(
 def main():
     """Main function to run piecework."""
     logger.info("Starting...")
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Run in dev mode (do not upload to Google Drive)",
+    )
+    args = parser.parse_args()
+    dev_mode = args.dev
     _, config = load_config()
     date_range = get_date_range()
 
@@ -629,10 +640,10 @@ def main():
         return
 
     generate_main_report(
-        summary_data, combined_detail_data, start_date, end_date, config
+        summary_data, combined_detail_data, start_date, end_date, config, dev_mode
     )
     generate_individual_detail_reports(
-        worker_details, start_date, end_date, config, evaluators
+        worker_details, start_date, end_date, config, evaluators, dev_mode
     )
 
 
