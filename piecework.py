@@ -166,6 +166,29 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             )
         )
 
+        # Warn if any writer names could not be resolved
+        unresolved = result[result["Writer Name"] == ""]
+        if not unresolved.empty:
+            logger.warning(
+                f"Could not resolve worker names for {len(unresolved)} report(s). Initials: {', '.join(unresolved['Initials'].unique())}. To fix this error, update the configuration."
+            )
+            questions = [
+                inquirer.List(
+                    "action",
+                    message=f"Continue?",
+                    choices=[
+                        ("Continue and ignore these reports", "continue"),
+                        ("Abort", "abort"),
+                    ],
+                )
+            ]
+            answers = inquirer.prompt(questions)
+            if not answers or answers["action"] == "abort":
+                logger.info("Aborting.")
+                exit()
+            else:
+                result = result.drop(unresolved.index)
+
         result = result.drop(columns=["Initials", "Assigned To"])
 
         logger.info(f"Found {len(result)} new reports")

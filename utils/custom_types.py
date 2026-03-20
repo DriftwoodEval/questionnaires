@@ -117,7 +117,7 @@ class PieceworkConfig(BaseModel):
         for k, v in self.name_map.items():
             if k.lower() == initials_lower:
                 return v
-        return initials
+        return ""
 
 
 class RecordsContact(BaseModel):
