@@ -1,6 +1,7 @@
 import argparse
 import json
 import re
+import sys
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -14,9 +15,28 @@ from openpyxl.styles import Alignment, Font
 from utils.custom_types import Appointment, Config
 from utils.database import get_all_evaluators_info, get_appointments
 from utils.google import create_gmail_draft, get_punch_list, upload_file_to_drive
-from utils.misc import load_config
+from utils.misc import NetworkSink, load_config, load_local_settings
 
 TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
+
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
+    # level="INFO",
+)
+
+logger.add("logs/piecework.log", rotation="500 MB")
+
+log_host = load_local_settings().log_host
+
+network_sink = NetworkSink(log_host, 9999, app_name="piecework")
+
+logger.add(
+    network_sink.write,
+    format="{time} | {level: <8} | {message}",
+    enqueue=True,
+)
 
 
 def load_tracked_reports() -> dict[str, str]:
@@ -30,12 +50,14 @@ def load_tracked_reports() -> dict[str, str]:
             client_ids = data.get("client_ids", {})
             if not isinstance(client_ids, dict):
                 logger.warning(
-                    "Tracked data file structure is invalid (not a dict). Resetting."
+                    "Previously paid reports file structure is invalid (not a dict). Resetting."
                 )
                 return {}
             return client_ids
     except (FileNotFoundError, json.JSONDecodeError):
-        logger.exception("Failed to load previously tracked client IDs, resetting.")
+        logger.exception(
+            "Failed to load client IDs for previously paid reports, resetting."
+        )
         return {}
 
 
@@ -45,9 +67,11 @@ def save_tracked_reports(client_ids: dict[str, str]):
     try:
         with open(TRACKING_FILE, "w") as f:
             json.dump({"client_ids": client_ids}, f, indent=2)
-        logger.info(f"Saved {len(client_ids)} entries to {TRACKING_FILE}")
+        logger.info(
+            f"Saved {len(client_ids)} entries for report writing to {TRACKING_FILE}"
+        )
     except Exception:
-        logger.exception(f"Failed to save tracking file to {TRACKING_FILE}")
+        logger.exception(f"Failed to save report writing info to {TRACKING_FILE}")
 
 
 def extract_writer_initials(assigned_to: str) -> str:
@@ -81,6 +105,8 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
         if report_done.empty:
             logger.info("No clients found that have reports done")
             return None
+
+        logger.debug(report_done)
 
         tracked_reports = load_tracked_reports()
         today_str = date.today().strftime("%Y-%m-%d")
@@ -191,6 +217,8 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
         result = result.drop(columns=["Initials", "Assigned To"])
 
+        logger.debug(result)
+
         logger.info(f"Found {len(result)} new reports")
 
         return result
@@ -229,7 +257,7 @@ def get_date_range() -> tuple[date, date] | None:
         logger.info(f"Selected range: {date_range[0]} to {date_range[1]}")
         return date_range
     else:
-        logger.info("No date range selected. Exiting.")
+        logger.warning("No date range selected. Exiting.")
         return None
 
 
@@ -613,7 +641,6 @@ def generate_individual_detail_reports(
 
 def main():
     """Main function to run piecework."""
-    logger.info("Starting...")
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dev",
