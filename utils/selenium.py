@@ -5,6 +5,7 @@ from time import sleep
 from loguru import logger
 from selenium import webdriver
 from selenium.common.exceptions import (
+    ElementClickInterceptedException,
     NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
@@ -88,6 +89,7 @@ def click_element(
     max_attempts: int = 3,
     timeout: int = 5,
     refresh: bool = False,
+    scroll: bool = False,
 ) -> None:
     """Click on a web element located by the specified method within the given attempts."""
     for attempt in range(max_attempts):
@@ -95,19 +97,32 @@ def click_element(
             element = find_element(
                 driver, by, locator, timeout, condition=EC.element_to_be_clickable
             )
+            if scroll:
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({block: 'center'});", element
+                )
+                sleep(0.5)
             element.click()
             return
         except StaleElementReferenceException:
-            f"Attempt {attempt + 1}/{max_attempts} failed: Stale element. Retrying..."
+            logger.warning(
+                f"Attempt {attempt + 1}/{max_attempts} failed: Stale element. Retrying..."
+            )
             if refresh:
                 logger.info("Refreshing page")
                 driver.refresh()
                 sleep(1)
-        except (NoSuchElementException, TimeoutException) as e:
+        except (
+            NoSuchElementException,
+            TimeoutException,
+            ElementClickInterceptedException,
+        ) as e:
             if attempt == max_attempts - 1:
                 raise e
             else:
-                logger.warning("Click element failed: trying again after 1s.")
+                logger.warning(
+                    f"Click element failed ({type(e).__name__}): trying again after 1s."
+                )
                 sleep(1)
 
 

@@ -107,19 +107,27 @@ def gen_dp4(
     day = dob[8:10]
     birthday.send_keys(f"{month}{day}{year}")
 
-    driver.execute_script("window.scrollTo(0, 1000);")
     logger.debug("Selecting gender")
     click_element(
-        driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-dropdown"]'
+        driver,
+        By.CSS_SELECTOR,
+        '[data-testid="clientform-pi-gender-dropdown"]',
+        scroll=True,
     )
     sleep(1)
     if gender == "Male":
         click_element(
-            driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-0-button"]'
+            driver,
+            By.CSS_SELECTOR,
+            '[data-testid="clientform-pi-gender-0-button"]',
+            scroll=True,
         )
     else:
         click_element(
-            driver, By.CSS_SELECTOR, '[data-testid="clientform-pi-gender-1-button"]'
+            driver,
+            By.CSS_SELECTOR,
+            '[data-testid="clientform-pi-gender-1-button"]',
+            scroll=True,
         )
 
     logger.debug("Saving new client")
