@@ -727,6 +727,10 @@ def main(
                 logger.error(f"{client['Client Name']} has autism stop")
                 continue
 
+            if client_from_db.pause:
+                logger.error(f"{client['Client Name']} has been paused")
+                continue
+
             client_url = ""
             if client["Language"] != "Spanish":
                 # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in

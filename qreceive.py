@@ -301,6 +301,10 @@ def main():
                         logger.warning(f"{client.fullName} has autism stop, skipping")
                         continue
 
+                    if client.pause:
+                        logger.warning(f"{client.fullName} has been paused, skipping")
+                        continue
+
                     reason = most_recent_failure["reason"]
                     reminded_count = most_recent_failure["reminded"]
                     last_reminded = most_recent_failure["lastReminded"]
@@ -418,6 +422,10 @@ def main():
 
                 if client.autismStop:
                     logger.warning(f"{client.fullName} has autism stop, skipping")
+                    continue
+
+                if client.pause:
+                    logger.warning(f"{client.fullName} has been paused, skipping")
                     continue
 
                 if not done:

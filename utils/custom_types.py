@@ -234,6 +234,7 @@ class _SharedClientFromDB(_ClientBase):
     """Common fields for clients from the database. Not intended to be used direcly."""
 
     autismStop: bool
+    pause: bool
     babyNetERNeeded: bool
     babyNetERDownloaded: bool
     latitude: float | None = None
