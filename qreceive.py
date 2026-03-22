@@ -96,7 +96,7 @@ def build_q_message(
         distance_phrase_es = f"el {date_str} (hace {days_ago} días)"
 
     q_s_en = "questionnaire" if link_count == 1 else "questionnaires"
-    it_they_en = "it" if link_count == 1 else "they"
+    it_them_en = "it" if link_count == 1 else "them"
     is_are_en = "is" if link_count == 1 else "are"
     its_their_en = "its" if link_count == 1 else "their"
 
@@ -112,15 +112,15 @@ def build_q_message(
         0: (
             f"Hello, this is {config.name} from Driftwood Evaluation Center. "
             f"{'We are moving towards scheduling an appointment. The next step is ' if not is_posteval else 'In order to provide you with a comprehensive report, '}"
-            f"we need you to complete your {q_s_en}. You can find {it_they_en} in the messages tab "
+            f"we need you to complete your {q_s_en}. You can find {it_them_en} in the messages tab "
             f"in our patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
         ),
         1: (
             f"Hello, this is {config.name} with Driftwood Evaluation Center. "
             f"We are waiting for you to complete the {q_s_en} sent to you {distance_phrase_en}. "
-            f"{'We are unable to schedule your appointment' if not is_posteval else 'We are unable to provide you with a comprehensive report'} until {it_they_en} {is_are_en} completed "
-            f"in {its_their_en} entirety. You can find {it_they_en} in the messages tab in our "
+            f"{'We are unable to schedule your appointment' if not is_posteval else 'We are unable to provide you with a comprehensive report'} until {it_them_en} {is_are_en} completed "
+            f"in {its_their_en} entirety. You can find {it_them_en} in the messages tab in our "
             f"patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
         ),
