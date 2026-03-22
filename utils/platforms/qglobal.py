@@ -53,12 +53,13 @@ def check_and_login_qglobal(
         return
     try:
         logger.debug("Checking if logged in to QGlobal")
-        if "qglobal.pearsonassessments.com" not in driver.current_url:
-            driver.get(qglobal_url)
+        driver.get(qglobal_url)
         find_element(driver, By.XPATH, "//a[text()='Search']", timeout=5)
         logger.debug("Already logged in to QGlobal")
     except (NoSuchElementException, TimeoutException):
-        logger.debug("Not logged in to QGlobal or Search link not visible, waiting for manual login.")
+        logger.debug(
+            "Not logged in to QGlobal or Search link not visible, waiting for manual login."
+        )
         login_qglobal(driver, actions, services)
 
 
