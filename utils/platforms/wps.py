@@ -145,12 +145,14 @@ def gen_dp4(
     search = find_element(driver, By.CSS_SELECTOR, '[name="clients-search-input"]')
 
     logger.debug("Searching for client")
-    search.send_keys(firstname, " ", lastname)
+    search.send_keys(f"{firstname} {lastname}")
 
     sleep(2)
 
     logger.debug("Selecting client")
-    click_element(driver, By.XPATH, "//table/tbody/tr/td/div")
+    click_element(
+        driver, By.XPATH, f"//a[.//h4[contains(text(), '{firstname} {lastname}')]]"
+    )
 
     skip_xpath = "//button[h4[contains(text(), 'Skip')]]"
     if find_element_exists(driver, By.XPATH, skip_xpath, timeout=2):
