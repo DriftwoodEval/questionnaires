@@ -328,7 +328,7 @@ def save_document_as_pdf(
 
     except Exception:
         logger.error(f"Could not find or load document: {link_text}")
-        raise
+        raise Exception("docs not signed")
     finally:
         # Go back to the Docs & Forms list
         driver.back()
