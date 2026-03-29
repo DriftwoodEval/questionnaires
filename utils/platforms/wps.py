@@ -133,6 +133,9 @@ def gen_dp4(
     logger.debug("Saving new client")
     click_element(driver, By.CSS_SELECTOR, '[data-testid="clientform-submit-button"]')
 
+    # Give time to save client
+    sleep(5)
+
     logger.debug("Navigating to client list")
     driver.get("https://hub.wpspublish.com/clients")
 
