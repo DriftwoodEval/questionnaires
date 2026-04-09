@@ -73,29 +73,25 @@ def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
     )
 
 
-def get_id_from_url(url: str, max_length: int = 64) -> str:
-    """Extracts a sanitized identifier from a URL, including a hash for uniqueness."""
-    parsed = urlparse(url)
-    clean_path = parsed.path.strip("/")
-    sanitized = re.sub(r"[^\w\-]+", "_", clean_path)
-
-    # Deterministic hash of the full URL (including query string)
-    url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
-
-    # Shorten the sanitized path to leave room for the hash and separator
-    truncated = sanitized[: max_length - 12].strip("_")
-
-    return f"{truncated}_{url_hash}"
-
-
-def generate_screenshot_filename(
-    status: str, q_type: str, host: str, unique_id: str
-) -> str:
+def generate_screenshot_filename(status: str, q_type: str, url: str) -> str:
     """Creates a filename for a screenshot based on information about the questionnaire."""
-    safe_type = "".join(c for c in q_type if c.isalnum() or c in ("_", "-"))
-    safe_host = host.replace(".", "_").replace(":", "_")
+    parsed = urlparse(url)
+
+    # Clean the host (e.g., 'qosa.pearsonassessments.com' -> 'pearsonassessments')
+    host_parts = parsed.netloc.split(".")
+    domain = host_parts[-2] if len(host_parts) > 1 else host_parts[0]
+
+    path_clean = re.sub(r"[^\w\-]+", "_", parsed.path.strip("/"))
+    query_clean = re.sub(r"[^\w\-]+", "_", parsed.query.strip())
+
+    url_identity = "_".join(filter(None, [path_clean, query_clean]))
+    if not url_identity:
+        url_identity = "unknown"
+
+    safe_type = re.sub(r"[^\w\-]+", "_", q_type)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{status.upper()}_{safe_type}_{safe_host}_{unique_id}_{timestamp}.png"
+
+    return f"{status.upper()}_{safe_type}_{domain}_{url_identity}_{timestamp}.png"
 
 
 def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
@@ -136,10 +132,9 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
     final_url = ""
     parsed_url = urlparse(q_link)
     link_host = parsed_url.netloc
-    unique_id = get_id_from_url(q_link)
 
     def capture_outcome(status: str):
-        filename = generate_screenshot_filename(status, q_type, link_host, unique_id)
+        filename = generate_screenshot_filename(status, q_type, q_link)
         save_screenshot_to_path(driver, os.path.join("logs/screenshots", filename))
 
     try:
