@@ -607,32 +607,6 @@ def generate_individual_detail_reports(
                     logger.error(f"Failed to upload {filename} to Google Drive.")
                     continue
 
-                worker_email = None
-
-                for _, evaluator_info in evaluators.items():
-                    if evaluator_info.get("providerName") == worker_name:
-                        worker_email = evaluator_info.get("email")
-                        break
-
-                worker_email = config.piecework.payroll_emails.get(
-                    worker_name, worker_email
-                )
-
-                if not worker_email:
-                    logger.warning(
-                        f"Could not find email for {worker_name}. Skipping Gmail draft."
-                    )
-                    continue
-
-                link = folder_link or file_link
-                subject = f"Pay Spreadsheet for {start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}"
-                message_text = f"Please refer to the following folder to reconcile work completed and pay. Please reach out if you find any discrepancies.\n\n{link}"
-                create_gmail_draft(
-                    subject=subject,
-                    to_addr=worker_email,
-                    message_text=message_text,
-                )
-
         except Exception:
             logger.exception(
                 f"An error occurred while writing the individual Excel file for {worker_name}."
