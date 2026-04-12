@@ -18,7 +18,6 @@ from selenium.webdriver.remote.webdriver import WebDriver
 
 from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
-    get_clients_needing_records,
     get_previous_clients,
     get_record_ready_client_ids,
     insert_basic_client,

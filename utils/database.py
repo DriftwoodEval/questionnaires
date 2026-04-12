@@ -174,7 +174,7 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
         with db_connection.cursor() as cursor:
             # Join client with external_record to check content presence
             sql = """
-                SELECT c.id, c.recordsNeeded, er.requested, er.secondRequestDate, er.content
+                SELECT c.id, c.recordsNeeded, c.asdAdhd, er.requested, er.secondRequestDate, er.content
                 FROM emr_client c
                 LEFT JOIN emr_external_record er ON c.id = er.clientId
             """
@@ -184,11 +184,14 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             for row in results:
                 client_id = str(row["id"])
                 records_needed = row["recordsNeeded"]
+                asd_adhd = row["asdAdhd"]
                 requested = row["requested"]
                 second_requested = row["secondRequestDate"]
                 content = row["content"]
 
                 if records_needed == "Not Needed":
+                    statuses[client_id] = "Ready"
+                elif asd_adhd == "ADHD":
                     statuses[client_id] = "Ready"
                 elif content is not None:
                     statuses[client_id] = "Ready"
