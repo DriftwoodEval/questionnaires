@@ -68,6 +68,7 @@ class PieceworkCosts(BaseModel):
     """Cost configuration for different work types."""
 
     DA: float | None = None
+    ADHDDA: float | None = None
     EVAL: float | None = None
     DAEVAL: float | None = None
     REPORT: float | None = None

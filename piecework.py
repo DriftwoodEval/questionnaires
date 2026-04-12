@@ -294,7 +294,12 @@ def get_work_counts(
         )
 
         worker_names[npi] = str(evaluator_name)
-        counts[npi][str(da_eval)] += 1
+
+        asd_adhd = appointment.get("asdAdhd")
+        if da_eval == "DA" and asd_adhd == "ADHD":
+            counts[npi]["ADHDDA"] += 1
+        else:
+            counts[npi][str(da_eval)] += 1
 
     if report_clients is not None and not report_clients.empty:
         for _, row in report_clients.iterrows():
@@ -415,13 +420,18 @@ def prepare_detail_data(
                 else f"Unknown Evaluator (NPI: {npi})"
             )
 
+            asd_adhd = appointment.get("asdAdhd")
+            app_type = str(da_eval)
+            if da_eval == "DA" and asd_adhd == "ADHD":
+                app_type = "ADHDDA"
+
             row = {
                 "WORKER": evaluator_name,
                 "CLIENT": appointment.get("clientName", "N/A"),
                 "START TIME": appointment.get("startTime").strftime(
                     "%Y-%m-%d %I:%M %p"
                 ),
-                "TYPE": str(da_eval),
+                "TYPE": app_type,
             }
             worker_details[evaluator_name].append(row)
 
