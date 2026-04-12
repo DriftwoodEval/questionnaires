@@ -1,0 +1,13 @@
+pre-commit:
+  commands:
+    ruff-check:
+      glob: "*.py"
+      stage_fixed: true
+      run: uvx ruff check {staged_files} --fix --exit-non-zero-on-fix
+    ruff-fmt:
+      glob: "*.py"
+      stage_fixed: true
+      run: uvx ruff format {staged_files}
+    deptry:
+      root: "python/"
+      run: uv run deptry .

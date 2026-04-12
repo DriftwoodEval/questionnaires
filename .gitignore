@@ -24,5 +24,6 @@ School Records Requests/*
 piecework_output/*
 *.yaml
 *.yml
+!.lefthook.yml
 *.csv
 *.txt

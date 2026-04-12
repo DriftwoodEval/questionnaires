@@ -232,7 +232,7 @@ class _ClientBase(BaseModel):
 
 
 class _SharedClientFromDB(_ClientBase):
-    """Common fields for clients from the database. Not intended to be used direcly."""
+    """Common fields for clients from the database. Not intended to be used directly."""
 
     autismStop: bool
     pause: bool
