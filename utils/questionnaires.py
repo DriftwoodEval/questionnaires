@@ -53,6 +53,7 @@ def filter_inactive_and_not_pending(
             in [
                 "PENDING",
                 # "SPANISH",
+                "POSTDA_PENDING",
                 "POSTEVAL_PENDING",
                 "IGNORING",
                 "RESCHEDULED",
@@ -284,12 +285,14 @@ def check_questionnaires(
 def get_most_recent_not_done(
     client: ClientWithQuestionnaires,
 ) -> Questionnaire | None:
-    """Get the most recent questionnaire that is still PENDING or POSTEVAL_PENDING from the given client by taking max of q["sent"]."""
+    """Get the most recent questionnaire that is still PENDING, POSTDA_PENDING, or POSTEVAL_PENDING from the given client by taking max of q["sent"]."""
     pending_and_sent = (
         q
         for q in client.questionnaires
         if (
-            q["status"] == "PENDING" or q["status"] == "POSTEVAL_PENDING"
+            q["status"] == "PENDING"
+            or q["status"] == "POSTDA_PENDING"
+            or q["status"] == "POSTEVAL_PENDING"
             # or q["status"] == "SPANISH"
         )
         and q["sent"] is not None
@@ -303,7 +306,9 @@ def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
     return any(
         q["reminded"] != 0
         and (
-            q["status"] == "PENDING" or q["status"] == "POSTEVAL_PENDING"
+            q["status"] == "PENDING"
+            or q["status"] == "POSTDA_PENDING"
+            or q["status"] == "POSTEVAL_PENDING"
             # or q["status"] == "SPANISH"
         )
         for q in client.questionnaires

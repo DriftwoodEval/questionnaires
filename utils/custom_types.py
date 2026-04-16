@@ -171,6 +171,21 @@ class FullConfig(BaseModel):
     config: Config
 
 
+QuestionnaireStatus = Literal[
+    "PENDING",
+    "COMPLETED",
+    "IGNORING",
+    "POSTDA_PENDING",
+    "POSTEVAL_PENDING",
+    "SPANISH",
+    "LANGUAGE",
+    "TEACHER",
+    "EXTERNAL",
+    "ARCHIVED",
+    "JUST_ADDED",
+]
+
+
 class Questionnaire(TypedDict):
     """A TypedDict containing information about a questionnaire."""
 
@@ -178,18 +193,7 @@ class Questionnaire(TypedDict):
     questionnaireType: str
     link: str | None
     sent: date | None
-    status: Literal[
-        "PENDING",
-        "COMPLETED",
-        "IGNORING",
-        "POSTEVAL_PENDING",
-        "SPANISH",
-        "LANGUAGE",
-        "TEACHER",
-        "EXTERNAL",
-        "ARCHIVED",
-        "JUST_ADDED",
-    ]
+    status: QuestionnaireStatus
     reminded: int
     lastReminded: date | None
 

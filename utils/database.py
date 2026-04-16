@@ -13,6 +13,7 @@ from utils.custom_types import (
     Config,
     FailedClientFromDB,
     Failure,
+    QuestionnaireStatus,
 )
 
 
@@ -366,18 +367,7 @@ def put_questionnaire_in_db(
     link: str,
     qtype: str,
     sent_date: str,
-    status: Literal[
-        "PENDING",
-        "COMPLETED",
-        "IGNORING",
-        "POSTEVAL_PENDING",
-        "SPANISH",
-        "LANGUAGE",
-        "TEACHER",
-        "EXTERNAL",
-        "ARCHIVED",
-        "JUST_ADDED",
-    ],
+    status: QuestionnaireStatus,
 ):
     """Insert a questionnaire into the database."""
     db_connection = get_db(config)
@@ -401,18 +391,7 @@ def update_questionnaire_in_db(
     client_id: str,
     qtype: str,
     sent_date: str,
-    status: Literal[
-        "PENDING",
-        "COMPLETED",
-        "IGNORING",
-        "POSTEVAL_PENDING",
-        "SPANISH",
-        "LANGUAGE",
-        "TEACHER",
-        "EXTERNAL",
-        "ARCHIVED",
-        "JUST_ADDED",
-    ],
+    status: QuestionnaireStatus,
 ):
     """Update a questionnaire in the database."""
     db_connection = get_db(config)
