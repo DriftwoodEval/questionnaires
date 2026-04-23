@@ -1,12 +1,11 @@
 import base64
-import io
 import mimetypes
 import os
 import re
 from datetime import date
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any
 
 import pandas as pd
 from google.auth.transport.requests import Request
@@ -133,35 +132,6 @@ def send_gmail(
         logger.exception("Failed to send email")
         send_message = None
     return send_message
-
-
-def create_gmail_draft(
-    subject: str,
-    to_addr: str,
-    message_text: str,
-    html: str | None = None,
-):
-    """Create a draft email using the Gmail API."""
-    creds = google_authenticate()
-    try:
-        service = build("gmail", "v1", credentials=creds)
-        message = EmailMessage()
-        message.set_content(message_text)
-        if html:
-            message.add_alternative(html, subtype="html")
-        message["To"] = to_addr
-        message["Subject"] = subject
-
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        create_message = {"message": {"raw": encoded_message}}
-        draft = (
-            service.users().drafts().create(userId="me", body=create_message).execute()
-        )
-        logger.info(f"Draft created for {to_addr}: {subject}")
-        return draft
-    except HttpError:
-        logger.exception("Failed to create draft")
-        return None
 
 
 def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:

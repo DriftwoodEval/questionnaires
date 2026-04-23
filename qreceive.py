@@ -1,6 +1,5 @@
 import sys
 from datetime import date, datetime, timedelta
-from typing import Optional, Union, cast
 
 from dateutil.relativedelta import relativedelta
 from loguru import logger
@@ -12,7 +11,6 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     FailedClientFromDB,
-    Failure,
     Questionnaire,
     Services,
     validate_questionnaires,
@@ -238,9 +236,6 @@ def check_failures(
             else:
                 # This updates the checked date
                 update_failure_in_db(config, client_id, reason)
-
-
-ClientType = FailedClientFromDB | ClientWithQuestionnaires
 
 
 def main():

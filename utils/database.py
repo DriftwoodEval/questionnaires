@@ -238,25 +238,6 @@ def update_external_record_in_db(
         db_connection.commit()
 
 
-def get_evaluator_npi(config: Config, evaluator_email) -> str | None:
-    """Get the NPI of an evaluator from the database.
-
-    Args:
-        config: The configuration.
-        evaluator_email: The email address of the evaluator.
-
-    Returns:
-        The NPI of the evaluator, or None if not found.
-    """
-    db_connection = get_db(config)
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = "SELECT npi FROM emr_evaluator WHERE email = %s"
-            cursor.execute(sql, (evaluator_email))
-            npi = cursor.fetchone()
-            return npi["npi"] if npi else None
-
-
 def get_all_evaluators_info(config: Config) -> dict[int, dict]:
     """Gets a map of NPI (int) to a dictionary containing all evaluator info."""
     evaluators_info = {}

@@ -3,7 +3,6 @@ import re
 import sys
 from base64 import b64decode
 from datetime import date
-from pathlib import Path
 
 import pymupdf
 from googleapiclient.discovery import build
@@ -66,17 +65,6 @@ def normalize_district(name: str | None) -> str:
     clean = re.sub(rf"(?i){pattern}", "", name)
 
     return " ".join(clean.split()).lower()
-
-
-def append_to_csv_file(filepath: Path, data: str):
-    """Appends data to a comma-separated file, handling separators correctly."""
-    prefix = ""
-    # Add a separator only if the file already exists and is not empty
-    if filepath.exists() and filepath.stat().st_size > 0:
-        prefix = ", "
-
-    with open(filepath, "a") as f:
-        f.write(f"{prefix}{data}")
 
 
 def resolve_school_contact(

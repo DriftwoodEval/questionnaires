@@ -12,7 +12,6 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
@@ -184,5 +183,7 @@ def save_screenshot_to_path(driver: WebDriver, filepath: str) -> None:
 
 def set_local_storage_item(driver: WebDriver, key: str, value: str) -> None:
     """Set an item in localStorage using JavaScript."""
-    driver.execute_script("window.localStorage.setItem(arguments[0], arguments[1]);", key, value)
+    driver.execute_script(
+        "window.localStorage.setItem(arguments[0], arguments[1]);", key, value
+    )
     logger.debug(f"Set localStorage item: {key}")

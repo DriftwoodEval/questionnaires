@@ -4,8 +4,7 @@ import socket
 import sys
 from datetime import date
 from functools import cache
-from typing import Literal, Optional
-from urllib.parse import urlparse
+from typing import Literal
 
 import requests
 import yaml
@@ -161,20 +160,6 @@ def add_failure(
 
     if add_to_db:
         add_failure_to_db(config, client_id, error, failed_date, daeval)
-
-
-### FORMATTING ###
-def format_phone_number(phone_number: str) -> str:
-    """Format a phone number string into (XXX) XXX-XXXX format.
-
-    Args:
-        phone_number (str): The phone number string to format.
-
-    Returns:
-        str: The formatted phone number string.
-    """
-    phone_number = re.sub(r"\D", "", phone_number)
-    return f"({phone_number[:3]}) {phone_number[3:6]}-{phone_number[6:]}"
 
 
 def check_distance(x: date) -> int:

@@ -14,7 +14,7 @@ from openpyxl.styles import Alignment, Font
 
 from utils.custom_types import Appointment, Config
 from utils.database import get_all_evaluators_info, get_appointments
-from utils.google import create_gmail_draft, get_punch_list, upload_file_to_drive
+from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import NetworkSink, load_config, load_local_settings
 
 TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"

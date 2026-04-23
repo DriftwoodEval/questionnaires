@@ -1,40 +1,19 @@
-import re
-import sys
-from datetime import date, datetime
-from time import sleep, strftime, strptime
+from time import sleep
 
-import pandas as pd
-import typer
-from dateutil.relativedelta import relativedelta
 from loguru import logger
-from rich import print
 from selenium.common.exceptions import (
     NoSuchElementException,
-    StaleElementReferenceException,
     TimeoutException,
 )
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import Select
 
-from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
-from utils.database import (
-    get_clients_needing_records,
-    get_previous_clients,
-    get_record_ready_client_ids,
-    insert_basic_client,
-    put_questionnaire_in_db,
-    update_failure_in_db,
-    update_questionnaire_in_db,
-)
-from utils.google import get_punch_list, update_punch_list
-from utils.misc import NetworkSink, add_failure, load_config, load_local_settings
+from utils.custom_types import Services
 from utils.selenium import (
     click_element,
     find_element,
-    initialize_selenium,
 )
 
 

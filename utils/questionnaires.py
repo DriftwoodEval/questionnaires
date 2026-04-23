@@ -1,4 +1,3 @@
-import hashlib
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -299,18 +298,3 @@ def get_most_recent_not_done(
     )
 
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
-
-
-def get_reminded_ever(client: ClientWithQuestionnaires) -> bool:
-    """Check if the client has ever been reminded of a still pending questionnaire."""
-    return any(
-        q["reminded"] != 0
-        and (
-            q["status"] == "PENDING"
-            or q["status"] == "POSTDA_PENDING"
-            or q["status"] == "POSTEVAL_PENDING"
-            # or q["status"] == "SPANISH"
-        )
-        for q in client.questionnaires
-        if isinstance(q, dict)
-    )
