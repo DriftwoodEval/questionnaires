@@ -287,6 +287,11 @@ def main():
                     failure["reason"] in ["portal not opened", "docs not signed"]
                     for failure in client.failure
                 ):
+                    if client.language != "English":
+                        logger.info(
+                            f"{client.fullName} doesn't speak English, skipping"
+                        )
+                        continue
                     if client.note and "app.pandadoc.com" in str(client.note):
                         logger.info(
                             f"{client.fullName} likely doesn't speak English, skipping"

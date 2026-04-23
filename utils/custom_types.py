@@ -242,6 +242,7 @@ class _SharedClientFromDB(_ClientBase):
     pause: bool
     babyNetERNeeded: bool
     babyNetERDownloaded: bool
+    language: str
     latitude: float | None = None
     longitude: float | None = None
     address: str | None = None
