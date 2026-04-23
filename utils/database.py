@@ -142,7 +142,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
                 WHERE c.recordsNeeded = "Needed"
                 AND ((er.requested IS NULL) OR (er.needsSecondRequest IS TRUE AND er.secondRequestDate IS NULL))
                 AND c.status IS NOT FALSE
-                AND (c.asdAdhd != 'ADHD' OR c.asdAdhd IS NULL)
+                AND c.language = "English"
             """
             cursor.execute(sql)
             results = cursor.fetchall()

@@ -9,5 +9,4 @@ pre-commit:
       stage_fixed: true
       run: uvx ruff format {staged_files}
     deptry:
-      root: "python/"
       run: uv run deptry .
