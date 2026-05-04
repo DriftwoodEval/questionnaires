@@ -26,7 +26,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "deptry>=0.25.1",
-    "icecream>=2.1.8",
+    "icecream>=2.2.0",
     "lefthook>=2.1.4",
     "ruff>=0.15.11",
 ]
