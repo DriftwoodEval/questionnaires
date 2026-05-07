@@ -19,6 +19,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
     get_previous_clients,
+    get_questionnaire_rules,
     get_record_ready_client_ids,
     insert_basic_client,
     put_questionnaire_in_db,
@@ -176,135 +177,60 @@ def get_clients_to_send(
     return punch_list
 
 
-def get_questionnaires(age: int, check: str, daeval: str) -> list[str] | str:
+def get_questionnaires(
+    age: int, check: str, daeval: str, rules: list[dict]
+) -> list[str] | str:
     """Get the list of questionnaires to send to a client based on age, appointment type, and prospective diagnosis.
 
-    Returns a list of questionnaire names as strings or a string indicating the client is too young.
+    Uses rules loaded from the database. Returns a list of questionnaire names or a
+    string indicating the client is too young or an unknown case.
     """
-
-    def _get_da_questionnaires(age: int, check: str) -> list[str] | str:
-        if check == "ASD+ADHD":
-            asd_da = _get_da_questionnaires(age, "ASD")
-            if asd_da == "Too young":
-                return "Too young"
-            adhd_da = _get_da_questionnaires(age, "ADHD")
-            return list(asd_da) + list(adhd_da)
-        if check == "ASD":
-            if age < 2:  # 1.5
-                return "Too young"
-            elif age < 6:
-                return ["ASRS (2-5 Years)"]
-            elif age < 19:
-                return ["ASRS (6-18 Years)"]
-            elif age < 22:
-                return ["SRS Self"]
-            else:
-                return ["SRS Self"]
-        elif check == "ADHD":
-            if age < 4:
-                return "Too young"
-            elif age < 6:
-                return ["Conners EC"]
-            elif age < 12:
-                return ["Conners 4"]
-            elif age < 18:
-                return ["Conners 4", "Conners 4 Self"]
-            else:
-                return ["CAARS 2"]
-
-        return "Unknown"
-
-    def _get_eval_questionnaires(age: int, check: str) -> list[str] | str:
-        if check == "ASD+ADHD":
-            asd_adhd_da = _get_eval_questionnaires(age, "ASD+ADHD")
-            if asd_adhd_da == "Too young":
-                return "Too young"
-
-            asd_eval = _get_eval_questionnaires(age, "ASD")
-            adhd_eval = _get_eval_questionnaires(age, "ADHD")
-            combined_eval = list(asd_eval) + list(adhd_eval)
-            combined_eval = [q for q in combined_eval if q not in asd_adhd_da]
-            return combined_eval
-
-        elif check == "ASD":
-            if age < 2:  # 1.5
-                return "Too young"
-            elif age < 6:
-                qs = ["Conners EC", "DP-4", "BASC Preschool", "Vineland"]
-                return qs
-            elif age < 7:
-                qs = ["Conners 4", "DP-4", "BASC Child", "Vineland"]
-                return qs
-            elif age < 12:
-                qs = ["Conners 4", "BASC Child", "Vineland"]
-                return qs
-            elif age < 18:
-                qs = ["Conners 4 Self", "Conners 4", "BASC Adolescent", "Vineland"]
-                return qs
-            elif age < 19:
-                qs = ["ABAS 3", "BASC Adolescent", "PAI", "CAARS 2", "Vineland"]
-            elif age < 22:
-                return ["ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
-            else:
-                return ["ABAS 3", "SRS-2", "CAARS 2", "PAI"]
-
-        return "Unknown"
-
-    def _get_daeval_questionnaires(age: int) -> list[str] | str:
-        if age < 2:  # 1.5
-            return "Too young"
-        elif age < 6:
-            return [
-                "Conners EC",
-                "ASRS (2-5 Years)",
-                "DP-4",
-                "BASC Preschool",
-                "Vineland",
-            ]
-        elif age < 7:
-            return ["Conners 4", "ASRS (6-18 Years)", "DP-4", "BASC Child", "Vineland"]
-        elif age < 12:
-            return [
-                "Conners 4",
-                "ASRS (6-18 Years)",
-                "BASC Child",
-                "Vineland",
-            ]
-        elif age < 18:
-            return [
-                "Conners 4 Self",
-                "Conners 4",
-                "ASRS (6-18 Years)",
-                "BASC Adolescent",
-                "Vineland",
-            ]
-        elif age < 19:
-            return [
-                "ASRS (6-18 Years)",
-                "ABAS 3",
-                "BASC Adolescent",
-                "Vineland",
-                "PAI",
-                "CAARS 2",
-            ]
-        elif age < 22:
-            return ["SRS Self", "ABAS 3", "BASC Adolescent", "SRS-2", "CAARS 2", "PAI"]
-        else:
-            return ["SRS Self", "ABAS 3", "SRS-2", "CAARS 2", "PAI"]
-
     if check == "ADHD+LD":
         check = "ADHD"
     if check == "ASD+LD":
         check = "ASD"
 
+    def _lookup(daeval_key: str, diagnosis_key: str | None) -> list[str] | str:
+        matches = [
+            r for r in rules
+            if r["daeval"] == daeval_key
+            and r["diagnosis"] == diagnosis_key
+            and r["minAge"] <= age <= r["maxAge"]
+        ]
+        if not matches:
+            return "Too young"
+        # If multiple rules overlap (shouldn't happen but be safe), union them
+        result: list[str] = []
+        for m in matches:
+            for q in m["questionnaires"]:
+                if q not in result:
+                    result.append(q)
+        return result
+
+    if daeval == "DAEVAL":
+        return _lookup("DAEVAL", None)
+
+    if daeval == "DA":
+        if check == "ASD+ADHD":
+            asd = _lookup("DA", "ASD")
+            if asd == "Too young":
+                return "Too young"
+            adhd = _lookup("DA", "ADHD")
+            if isinstance(adhd, str):
+                return asd
+            return list(asd) + [q for q in adhd if q not in asd]
+        return _lookup("DA", check if check in ("ASD", "ADHD") else None)
+
     if daeval == "EVAL":
-        return _get_eval_questionnaires(age, check)
-
-    elif daeval == "DA":
-        return _get_da_questionnaires(age, check)
-
-    elif daeval == "DAEVAL":
-        return _get_daeval_questionnaires(age)
+        if check == "ASD+ADHD":
+            asd = _lookup("EVAL", "ASD")
+            if asd == "Too young":
+                return "Too young"
+            adhd = _lookup("EVAL", "ADHD")
+            if isinstance(adhd, str):
+                return asd
+            return list(asd) + [q for q in adhd if q not in asd]
+        return _lookup("EVAL", check if check in ("ASD", "ADHD") else None)
 
     return "Unknown"
 
@@ -624,6 +550,7 @@ def main(
         config, interactive=interactive, client_filter=client_filter
     )
     prev_clients, prev_failed_clients = get_previous_clients(config, failed=True)
+    questionnaire_rules = get_questionnaire_rules(config)
 
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
@@ -812,6 +739,7 @@ def main(
                 client["Age"],
                 client["For"],
                 client["daeval"],
+                questionnaire_rules,
             )
 
             if str(questionnaires_needed) == "Too young":
@@ -866,6 +794,7 @@ def main(
                         client["Age"],
                         client["For"],
                         "DA",
+                        questionnaire_rules,
                     )
 
                     if isinstance(theoretical_da_qs, list):

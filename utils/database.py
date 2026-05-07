@@ -492,6 +492,33 @@ def update_failure_in_db(
             db_connection.commit()
 
 
+def get_questionnaire_rules(config: Config) -> list[dict]:
+    """Load questionnaire assignment rules from the database.
+
+    Returns a list of dicts with keys: daeval, diagnosis, minAge, maxAge, questionnaires (list[str]).
+    """
+    db_connection = get_db(config)
+    with db_connection:
+        with db_connection.cursor() as cursor:
+            cursor.execute("SELECT daeval, diagnosis, minAge, maxAge, questionnaires FROM emr_questionnaire_rule")
+            rows = cursor.fetchall()
+
+    import json
+    rules = []
+    for row in rows:
+        qs = row["questionnaires"]
+        if isinstance(qs, str):
+            qs = json.loads(qs)
+        rules.append({
+            "daeval": row["daeval"],
+            "diagnosis": row["diagnosis"],
+            "minAge": row["minAge"],
+            "maxAge": row["maxAge"],
+            "questionnaires": qs,
+        })
+    return rules
+
+
 def get_most_recent_failure(
     client: FailedClientFromDB,
 ) -> Failure | None:
