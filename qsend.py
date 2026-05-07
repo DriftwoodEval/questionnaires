@@ -98,12 +98,16 @@ def get_clients_to_send(
         logger.critical("Punch list is empty")
         return None
 
-    # Filter the punch list to only include clients who need to receive the DA and/or EVAL questionnaires
-    punch_list = punch_list[
-        (punch_list["DA Qs Needed"] == "TRUE") & (punch_list["DA Qs Sent"] != "TRUE")
-        | (punch_list["EVAL Qs Needed"] == "TRUE")
-        & (punch_list["EVAL Qs Sent"] != "TRUE")
-    ]
+    # Filter the punch list to only include clients who need to receive the DA and/or EVAL questionnaires.
+    # ADHD clients ignore EVAL qs entirely, only DA qs determine whether they're included.
+    is_adhd = punch_list["For"] == "ADHD"
+    da_needed = (punch_list["DA Qs Needed"] == "TRUE") & (
+        punch_list["DA Qs Sent"] != "TRUE"
+    )
+    eval_needed = (punch_list["EVAL Qs Needed"] == "TRUE") & (
+        punch_list["EVAL Qs Sent"] != "TRUE"
+    )
+    punch_list = punch_list[da_needed | (~is_adhd & eval_needed)]
 
     if punch_list.empty:
         return None
@@ -160,7 +164,9 @@ def get_clients_to_send(
     punch_list["daeval"] = punch_list.apply(
         # Use a lambda function to determine the value of the "daeval" column
         lambda client: (
-            "DAEVAL"
+            "DA"
+            if client["For"] == "ADHD"
+            else "DAEVAL"
             if (
                 client["DA Qs Needed"] == "TRUE"
                 and client["DA Qs Sent"] != "TRUE"
@@ -192,7 +198,8 @@ def get_questionnaires(
 
     def _lookup(daeval_key: str, diagnosis_key: str | None) -> list[str] | str:
         matches = [
-            r for r in rules
+            r
+            for r in rules
             if r["daeval"] == daeval_key
             and r["diagnosis"] == diagnosis_key
             and r["minAge"] <= age <= r["maxAge"]
