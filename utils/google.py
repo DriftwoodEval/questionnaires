@@ -4,6 +4,7 @@ import os
 import re
 from datetime import date
 from email.message import EmailMessage
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ SCOPES = [
 ]
 
 
+@cache
 def google_authenticate():
     """Authenticate with Google using the credentials in ./config/credentials.json (obtained from Google Cloud Console) and ./config/token.json (user-specific).
 
@@ -40,18 +42,11 @@ def google_authenticate():
     Returns the authenticated credentials.
     """
     creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if os.path.exists("./config/token.json"):
         creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
-        # Check if the scopes in the token match the current scopes
         if creds and set(creds.scopes or []) != set(SCOPES):
             logger.info("Scopes have changed, re-authenticating...")
             creds = None
-    # If there are no valid credentials, start the authorization flow
-    else:
-        creds = None
 
     # If the credentials are invalid or have expired, refresh the credentials
     if not creds or not creds.valid:
