@@ -176,11 +176,7 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
     try:
         xpath = "//div[contains(normalize-space(.), 'has completed registration') or contains(normalize-space(.), 'has not completed registration')]"
         element = find_element(driver, By.XPATH, xpath, 3)
-        element_text = element.text
-        if "has completed registration" in element_text:
-            return True
-        else:
-            return False
+        return "has completed registration" in element.text
     except TimeoutException:
         return False
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 from time import sleep
 
 import pandas as pd
@@ -19,11 +20,8 @@ from utils.selenium import (
 
 
 def rearrange_dob(dob: str) -> str:
-    """Rearrange a date of birth string from "YYYY-MM-DD" to "MM/DD/YYYY" format."""
-    year = dob[0:4]
-    month = dob[5:7]
-    day = dob[8:10]
-    return f"{month}/{day}/{year}"
+    """Rearrange a date of birth string from "YYYY/MM/DD" to "MM/DD/YYYY" format."""
+    return datetime.strptime(dob, "%Y/%m/%d").strftime("%m/%d/%Y")
 
 
 def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) -> None:
@@ -206,8 +204,8 @@ def add_client_to_qglobal(
         gender_select.select_by_visible_text("Unspecified")
 
     logger.debug("Entering birthdate")
-    dob = rearrange_dob(dob)
-    for character in dob:
+    formatted_dob = rearrange_dob(dob)
+    for character in formatted_dob:
         birth.send_keys(character)
         sleep(0.3)
 
@@ -249,6 +247,42 @@ def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
     return link
 
 
+_BASC_RADIO_IDS = {
+    "Preschool": "2600_radio",
+    "Child": "2598_radio",
+    "Adolescent": "2596_radio",
+}
+
+
+def _gen_basc(
+    driver: WebDriver,
+    actions: ActionChains,
+    config: Config,
+    services: Services,
+    client: pd.Series,
+    variant: str,
+) -> str:
+    logger.info(
+        f"Generating BASC {variant} for {client['TA First Name']} {client['TA Last Name']}"
+    )
+    search_select_qglobal(driver, actions, config, services, client)
+    click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
+    click_element(driver, By.ID, _BASC_RADIO_IDS[variant])
+    click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
+    click_element(
+        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
+    )
+    find_element(driver, By.ID, "respondentFirstName").send_keys(config.initials[0])
+    find_element(driver, By.ID, "respondentLastName").send_keys(config.initials[-1])
+
+    link = get_qglobal_link(driver, actions)
+    if link is None:
+        raise ValueError("Link is None")
+
+    logger.success(f"Returning link {link}")
+    return link
+
+
 def gen_basc_preschool(
     driver: WebDriver,
     actions: ActionChains,
@@ -257,38 +291,7 @@ def gen_basc_preschool(
     client: pd.Series,
 ) -> str:
     """Generates a BASC Preschool assessment for the given client and returns the link."""
-    logger.info(
-        f"Generating BASC Preschool for {client['TA First Name']} {client['TA Last Name']}"
-    )
-    search_select_qglobal(driver, actions, config, services, client)
-
-    logger.debug("Clicking add assessment")
-    click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
-
-    logger.debug("Selecting BASC Preschool")
-    click_element(driver, By.ID, "2600_radio")
-
-    logger.debug("Assigning assessment")
-    click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
-
-    logger.debug("Selecting send via email")
-    click_element(
-        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    )
-
-    logger.debug("Entering respondent first name")
-    find_element(driver, By.ID, "respondentFirstName").send_keys(config.initials[0])
-
-    logger.debug("Entering respondent last name")
-    find_element(driver, By.ID, "respondentLastName").send_keys(config.initials[-1])
-
-    link = get_qglobal_link(driver, actions)
-
-    if link is None:
-        raise ValueError("Link is None")
-
-    logger.success(f"Returning link {link}")
-    return link
+    return _gen_basc(driver, actions, config, services, client, "Preschool")
 
 
 def gen_basc_child(
@@ -299,38 +302,7 @@ def gen_basc_child(
     client: pd.Series,
 ) -> str:
     """Generates a BASC Child assessment for the given client and returns the link."""
-    logger.info(
-        f"Generating BASC Child for {client['TA First Name']} {client['TA Last Name']}"
-    )
-    search_select_qglobal(driver, actions, config, services, client)
-
-    logger.debug("Clicking add assessment")
-    click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
-
-    logger.debug("Selecting BASC Child")
-    click_element(driver, By.ID, "2598_radio")
-
-    logger.debug("Assigning assessment")
-    click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
-
-    logger.debug("Selecting send via email")
-    click_element(
-        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    )
-
-    logger.debug("Entering respondent first name")
-    find_element(driver, By.ID, "respondentFirstName").send_keys(config.initials[0])
-
-    logger.debug("Entering respondent last name")
-    find_element(driver, By.ID, "respondentLastName").send_keys(config.initials[-1])
-
-    link = get_qglobal_link(driver, actions)
-
-    if link is None:
-        raise ValueError("Link is None")
-
-    logger.success(f"Returning link {link}")
-    return link
+    return _gen_basc(driver, actions, config, services, client, "Child")
 
 
 def gen_basc_adolescent(
@@ -341,38 +313,7 @@ def gen_basc_adolescent(
     client: pd.Series,
 ) -> str:
     """Generates a BASC Adolescent assessment for the given client and returns the link."""
-    logger.info(
-        f"Generating BASC Adolescent for {client['TA First Name']} {client['TA Last Name']}"
-    )
-    search_select_qglobal(driver, actions, config, services, client)
-
-    logger.debug("Clicking add assessment")
-    click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
-
-    logger.debug("Selecting BASC Adolescent")
-    click_element(driver, By.ID, "2596_radio")
-
-    logger.debug("Assigning assessment")
-    click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
-
-    logger.debug("Selecting send via email")
-    click_element(
-        driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
-    )
-
-    logger.debug("Entering respondent first name")
-    find_element(driver, By.ID, "respondentFirstName").send_keys(config.initials[0])
-
-    logger.debug("Entering respondent last name")
-    find_element(driver, By.ID, "respondentLastName").send_keys(config.initials[-1])
-
-    link = get_qglobal_link(driver, actions)
-
-    if link is None:
-        raise ValueError("Link is None")
-
-    logger.success(f"Returning link {link}")
-    return link
+    return _gen_basc(driver, actions, config, services, client, "Adolescent")
 
 
 def gen_vineland(

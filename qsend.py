@@ -34,7 +34,6 @@ from utils.platforms.mhs import (
     gen_asrs_6_18,
     gen_caars_2,
     gen_conners_4,
-    gen_conners_4_self,
     gen_conners_ec,
 )
 from utils.platforms.qglobal import (
@@ -162,7 +161,6 @@ def get_clients_to_send(
 
     # Add the "daeval" column to the DataFrame
     punch_list["daeval"] = punch_list.apply(
-        # Use a lambda function to determine the value of the "daeval" column
         lambda client: (
             "DA"
             if client["For"] == "ADHD"
@@ -281,7 +279,7 @@ def assign_questionnaire(
         return gen_conners_4(driver, actions, services, client, accounts_created)
     elif questionnaire == "Conners 4 Self":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_conners_4_self(driver, actions, services, client, accounts_created)
+        return gen_conners_4(driver, actions, services, client, accounts_created, self_report=True)
     elif questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):
@@ -515,10 +513,7 @@ def check_client_previous(
 
 
 def normalize_q_name(name: str) -> str:
-    if "Self" in name:
-        return name
-    else:
-        return name[0]
+    return name.removesuffix(" Self")
 
 
 @app.command()
@@ -579,11 +574,12 @@ def main(
                 sleep(1)
 
     today = date.today()
+    today_str = today.strftime("%Y-%m-%d")
 
     for _, client in clients.iterrows():
         logger.info(f"Starting loop for {client['Client Name']}")
 
-        if prev_failed_clients != {}:
+        if prev_failed_clients:
             previously_failed, error = check_client_failed(prev_failed_clients, client)
             if previously_failed and error is not None:
                 client["Previous Error"] = error
@@ -777,7 +773,7 @@ def main(
 
             just_added_questionnaires = []
 
-            if prev_clients != {}:
+            if prev_clients:
                 previous_questionnaires = check_client_previous(prev_clients, client)
                 previous_questionnaire_info = {}
 
@@ -921,7 +917,7 @@ def main(
                             asd_adhd=client["For"],
                             daeval=client["daeval"],
                             questionnaires_needed=questionnaires_needed
-                            if type(questionnaires_needed) is list
+                            if isinstance(questionnaires_needed, list)
                             else [],
                             questionnaires_generated=questionnaires,
                         )
@@ -934,7 +930,7 @@ def main(
                         client["Client ID"],
                         link,
                         questionnaire,
-                        datetime.today().strftime("%Y-%m-%d"),
+                        today_str,
                         "JUST_ADDED",
                     )
 
@@ -950,7 +946,7 @@ def main(
                         asd_adhd=client["For"],
                         daeval=client["daeval"],
                         questionnaires_needed=questionnaires_needed
-                        if type(questionnaires_needed) is list
+                        if isinstance(questionnaires_needed, list)
                         else [],
                         questionnaires_generated=questionnaires,
                     )
@@ -984,7 +980,7 @@ def main(
                             config,
                             client["Client ID"],
                             questionnaire["type"],
-                            datetime.today().strftime("%Y-%m-%d"),
+                            today_str,
                             "PENDING",
                         )
 
@@ -1004,7 +1000,7 @@ def main(
                         daeval=client["daeval"],
                         questionnaires_generated=questionnaires,
                         questionnaires_needed=questionnaires_needed
-                        if type(questionnaires_needed) is list
+                        if isinstance(questionnaires_needed, list)
                         else [],
                         add_to_db=False,
                         add_to_sheet=True,

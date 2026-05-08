@@ -85,7 +85,7 @@ def gen_dp4(
     )
     firstname = client["TA First Name"]
     lastname = client["TA Last Name"]
-    id = client["Human Friendly ID"]
+    hf_id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
     driver.get("https://hub.wpspublish.com/clients/add-client")
@@ -100,7 +100,7 @@ def gen_dp4(
     logger.debug("Entering last name")
     last.send_keys(lastname)
     logger.debug("Entering account number")
-    account.send_keys(id)
+    account.send_keys(hf_id)
     logger.debug("Entering birthday")
     year = dob[0:4]
     month = dob[5:7]

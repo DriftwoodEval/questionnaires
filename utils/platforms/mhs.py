@@ -223,7 +223,7 @@ def add_client_to_mhs(
     )
     firstname = client["TA First Name"]
     lastname = client["TA Last Name"]
-    id = client["Human Friendly ID"]
+    hf_id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
     click_element(driver, By.XPATH, "//div[@class='pull-right']//input[@type='submit']")
@@ -246,7 +246,7 @@ def add_client_to_mhs(
 
     logger.debug("Entering ID")
     id_field = id_label.find_element(By.XPATH, "./following-sibling::input")
-    id_field.send_keys(id)
+    id_field.send_keys(hf_id)
 
     logger.debug("Entering birthdate")
     date_of_birth_field = find_element(
@@ -393,11 +393,12 @@ def gen_conners_4(
     services: Services,
     client: pd.Series,
     accounts_created: dict,
+    self_report: bool = False,
 ) -> tuple[str, dict[str, bool]]:
-    """Generates a Conners 4 assessment for the given client and returns the link."""
+    """Generates a Conners 4 (or Conners 4 Self-Report) assessment for the given client and returns the link."""
     check_and_login_mhs(driver, actions, services)
     logger.info(
-        f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
+        f"Generating Conners 4{'Self' if self_report else ''} for {client['TA First Name']} {client['TA Last Name']}"
     )
     click_element(
         driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
@@ -427,98 +428,11 @@ def gen_conners_4(
     rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
     rater_type_select = Select(rater_type_element)
     sleep(1)
-    rater_type_select.select_by_visible_text("Parent")
+    rater_type_select.select_by_visible_text("Self-Report" if self_report else "Parent")
 
-    logger.debug("Selecting language")
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
     sleep(1)
-
-    if client["Language"] != "Spanish":
-        language_select.select_by_visible_text("English")
-    else:
-        language_select.select_by_visible_text("Spanish")
-
-    logger.debug("Entering rater name")
-    if client["Language"] != "Spanish":
-        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
-    else:
-        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
-
-    logger.debug("Selecting next")
-    click_element(driver, By.ID, "_btnnext")
-
-    logger.debug("Selecting generate link")
-    try:
-        click_element(driver, By.ID, "btnGenerateLinks")
-    except (NoSuchElementException, TimeoutException):
-        logger.error(
-            "Failed to automatically click 'Generate Links'. "
-            "Please click it manually in the browser."
-        )
-        input(
-            "Press Enter once you have clicked 'Generate Links' and the link is visible..."
-        )
-    sleep(3)
-    link = find_element(driver, By.ID, "txtLink").get_attribute("value")
-    if link is None:
-        raise ValueError("Link is None")
-
-    logger.success(f"Returning link {link} and accounts_created {accounts_created}")
-    return link, accounts_created
-
-
-def gen_conners_4_self(
-    driver: WebDriver,
-    actions: ActionChains,
-    services: Services,
-    client: pd.Series,
-    accounts_created: dict[str, bool],
-) -> tuple[str, dict[str, bool]]:
-    """Generates a Conners 4 Self assessment for the given client and returns the link."""
-    check_and_login_mhs(driver, actions, services)
-    logger.info(
-        f"Generating Conners 4 for {client['TA First Name']} {client['TA Last Name']}"
-    )
-    click_element(
-        driver, By.XPATH, "//span[contains(normalize-space(text()), 'My Assessments')]"
-    )
-
-    logger.debug("Selecting Conners 4")
-    click_element(
-        driver, By.XPATH, "//span[contains(normalize-space(text()), 'Conners 4')]"
-    )
-
-    logger.debug("Selecting Email Invitation")
-    click_element(
-        driver, By.XPATH, "//div[contains(normalize-space(text()), 'Email Invitation')]"
-    )
-
-    accounts_created["mhs"] = add_client_to_mhs(
-        driver, actions, client, "Conners 4", accounts_created
-    )
-
-    logger.debug("Selecting assessment description")
-    purpose_element = find_element(driver, By.ID, "ddl_Description")
-    purpose = Select(purpose_element)
-    sleep(1)
-
-    logger.debug("Selecting Conners 4")
-    purpose.select_by_visible_text("Conners 4")
-
-    logger.debug("Selecting rater type")
-    rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
-    rater_type_select = Select(rater_type_element)
-    sleep(1)
-
-    logger.debug("Selecting Self-Report")
-    rater_type_select.select_by_visible_text("Self-Report")
-
-    logger.debug("Selecting language")
-    language_element = find_element(driver, By.ID, "ddl_Language")
-    language_select = Select(language_element)
-    sleep(1)
-
     if client["Language"] != "Spanish":
         language_select.select_by_visible_text("English")
     else:
