@@ -1,4 +1,5 @@
 import hashlib
+import json
 from datetime import date
 from typing import Literal, cast
 from urllib.parse import urlparse
@@ -420,7 +421,7 @@ def update_questionnaires_in_db(
                     )
 
                     cursor.execute(sql, values)
-                    db_connection.commit()
+        db_connection.commit()
 
 
 def add_failure_to_db(
@@ -503,7 +504,6 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
             cursor.execute("SELECT daeval, diagnosis, minAge, maxAge, questionnaires FROM emr_questionnaire_rule")
             rows = cursor.fetchall()
 
-    import json
     rules = []
     for row in rows:
         qs = row["questionnaires"]

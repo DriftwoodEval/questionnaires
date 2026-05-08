@@ -462,6 +462,15 @@ def prepare_detail_data(
     return worker_details
 
 
+def _autofit_columns(sheet) -> None:
+    for column in sheet.columns:
+        max_length = max(
+            (len(str(cell.value)) for cell in column if cell.value),
+            default=0,
+        )
+        sheet.column_dimensions[column[0].column_letter].width = min(max_length + 5, 50)
+
+
 def generate_main_report(
     summary_data: list[dict],
     detail_data: list[dict],
@@ -528,34 +537,10 @@ def generate_main_report(
             label_cell = summary_sheet.cell(row=last_row + 2, column=1)
             label_cell.font = Font(bold=True)
 
-            # Auto-fit columns for Summary Counts sheet
-            for column in summary_sheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
+            _autofit_columns(summary_sheet)
 
-                for cell in column:
-                    if cell.value:
-                        cell_length = len(str(cell.value))
-                        if cell_length > max_length:
-                            max_length = cell_length
-
-                adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
-                summary_sheet.column_dimensions[column_letter].width = adjusted_width
-
-            # Auto-fit columns for Details sheet
             detail_sheet = writer.sheets["Details"]
-            for column in detail_sheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-
-                for cell in column:
-                    if cell.value:
-                        cell_length = len(str(cell.value))
-                        if cell_length > max_length:
-                            max_length = cell_length
-
-                adjusted_width = min(max_length + 5, 50)  # Add padding, cap at 50
-                detail_sheet.column_dimensions[column_letter].width = adjusted_width
+            _autofit_columns(detail_sheet)
 
         logger.success(f"Wrote Excel file: {filename}")
         file_generated = True
@@ -596,16 +581,7 @@ def generate_individual_detail_reports(
             with pd.ExcelWriter(filename, engine="openpyxl") as writer:
                 df_detail.to_excel(writer, sheet_name="Details", index=False)
 
-                detail_sheet = writer.sheets["Details"]
-                for column in detail_sheet.columns:
-                    max_length = max(
-                        (len(str(cell.value)) for cell in column if cell.value),
-                        default=0,
-                    )
-                    adjusted_width = min(max_length + 5, 50)
-                    detail_sheet.column_dimensions[
-                        column[0].column_letter
-                    ].width = adjusted_width
+                _autofit_columns(writer.sheets["Details"])
 
             logger.info(f"Wrote individual detail file locally for: {worker_name}")
             if not dev_mode:
