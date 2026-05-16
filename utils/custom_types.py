@@ -248,9 +248,6 @@ class _SharedClientFromDB(_ClientBase):
     address: str | None = None
     schoolDistrict: str | None = None
     recordsNeeded: str | None = None
-    requested: date | None = None
-    needsSecondRequest: bool | None = None
-    secondRequestDate: date | None = None
 
 
 class ClientFromDB(_SharedClientFromDB):

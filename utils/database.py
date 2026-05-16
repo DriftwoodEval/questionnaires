@@ -137,11 +137,11 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     with db_connection:
         with db_connection.cursor() as cursor:
             sql = """
-                SELECT c.*, er.requested, er.needsSecondRequest, er.secondRequestDate
+                SELECT c.*
                 FROM emr_client c
-                LEFT JOIN emr_external_record er ON c.id = er.clientId
+                INNER JOIN emr_external_record_request err ON c.id = err.clientId
                 WHERE c.recordsNeeded = "Needed"
-                AND ((er.requested IS NULL) OR (er.needsSecondRequest IS TRUE AND er.secondRequestDate IS NULL))
+                AND err.requestedDate IS NULL
                 AND c.status IS NOT FALSE
                 AND c.language = "English"
             """
@@ -150,7 +150,6 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
 
             for client_data in results:
                 try:
-                    # We don't need questionnaires for this process, so we can leave it as None
                     client_data["questionnaires"] = None
                     pydantic_client = ClientFromDB(**client_data)
                     clients_needing_records.append(pydantic_client)
@@ -174,11 +173,18 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
 
     with db_connection:
         with db_connection.cursor() as cursor:
-            # Join client with external_record to check content presence
             sql = """
-                SELECT c.id, c.recordsNeeded, c.asdAdhd, er.requested, er.secondRequestDate, er.content
+                SELECT
+                    c.id,
+                    c.recordsNeeded,
+                    c.asdAdhd,
+                    er.content,
+                    COUNT(CASE WHEN err.requestedDate IS NOT NULL THEN 1 END) AS sentCount,
+                    MAX(err.requestedDate) AS lastSentDate
                 FROM emr_client c
                 LEFT JOIN emr_external_record er ON c.id = er.clientId
+                LEFT JOIN emr_external_record_request err ON c.id = err.clientId
+                GROUP BY c.id, c.recordsNeeded, c.asdAdhd, er.content
             """
             cursor.execute(sql)
             results = cursor.fetchall()
@@ -187,9 +193,9 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 client_id = str(row["id"])
                 records_needed = row["recordsNeeded"]
                 asd_adhd = row["asdAdhd"]
-                requested = row["requested"]
-                second_requested = row["secondRequestDate"]
                 content = row["content"]
+                sent_count = row["sentCount"]
+                last_sent_date = row["lastSentDate"]
 
                 if records_needed == "Not Needed":
                     statuses[client_id] = "Ready"
@@ -197,15 +203,14 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                     statuses[client_id] = "Ready"
                 elif content is not None:
                     statuses[client_id] = "Ready"
-                elif requested is not None:
-                    if second_requested is not None:
-                        statuses[client_id] = (
-                            f"Records needed, second request sent on {second_requested}, but not yet received"
-                        )
-                    else:
-                        statuses[client_id] = (
-                            f"Records needed, requested on {requested}, but not yet received"
-                        )
+                elif sent_count >= 2:
+                    statuses[client_id] = (
+                        f"Records needed, requested again on {last_sent_date}, but not yet received"
+                    )
+                elif sent_count == 1:
+                    statuses[client_id] = (
+                        f"Records needed, requested on {last_sent_date}, but not yet received"
+                    )
                 else:
                     statuses[client_id] = "Records needed but not yet requested"
 
@@ -216,26 +221,19 @@ def update_external_record_in_db(
     config: Config,
     client_id: int,
     requested_date: date,
-    is_second_request: bool = False,
 ):
-    """Update the external record in the database."""
+    """Set the requestedDate on the oldest pending request row for this client."""
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
-            if is_second_request:
-                sql = """
-                    UPDATE emr_external_record
-                    SET secondRequestDate=%s, updated_at = NOW()
-                    WHERE clientId=%s
-                """
-                cursor.execute(sql, (requested_date, client_id))
-            else:
-                sql = """
-                    INSERT INTO emr_external_record (clientId, requested)
-                    VALUES (%s, %s)
-                    ON DUPLICATE KEY UPDATE requested=VALUES(requested), updated_at = NOW()
-                """
-                cursor.execute(sql, (client_id, requested_date))
+            sql = """
+                UPDATE emr_external_record_request
+                SET requestedDate=%s
+                WHERE clientId=%s AND requestedDate IS NULL
+                ORDER BY id ASC
+                LIMIT 1
+            """
+            cursor.execute(sql, (requested_date, client_id))
         db_connection.commit()
 
 

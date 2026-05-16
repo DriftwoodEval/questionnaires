@@ -195,12 +195,7 @@ def download_consent_forms(
         logger.exception("Error moving files to sent folder")
         return False
 
-    update_external_record_in_db(
-        config,
-        client.id,
-        date.today(),
-        is_second_request=bool(client.requested),
-    )
+    update_external_record_in_db(config, client.id, date.today())
 
     return False
 
