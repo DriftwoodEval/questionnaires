@@ -167,7 +167,7 @@ def download_consent_forms(
 
     if school_contact.fax:
         logger.info("Fax number found, creating and prepending cover sheet...")
-        fax_cover_stream, fax_cover_filename = create_fax_cover_sheet(client)
+        fax_cover_stream, fax_cover_filename = create_fax_cover_sheet(client, request_line)
         if fax_cover_stream and fax_cover_filename:
             attachments.insert(
                 0,
@@ -338,6 +338,7 @@ def file_exists(service, filename, folder_id):
 
 def create_fax_cover_sheet(
     client: ClientFromDB,
+    request_line: str,
 ) -> tuple[io.BytesIO, str] | tuple[None, None]:
     """Create a fax cover sheet from a template, appending text to labels."""
     try:
@@ -357,6 +358,14 @@ def create_fax_cover_sheet(
         append_text("Student-", client.fullName)
 
         append_text("Date of Birth-", client.dob.strftime("%m/%d/%Y"))
+
+        # Replace the baked-in request text with the dynamic request_line
+        redact_rect = pymupdf.Rect(61.0, 252.0, 532.0, 321.0)
+        page.add_redact_annot(redact_rect)
+        page.apply_redactions()
+
+        text_rect = pymupdf.Rect(61.0, 252.0, 532.0, 359.0)
+        page.insert_textbox(text_rect, request_line, fontsize=11, fontname="helv")
 
         pdf_stream = io.BytesIO(doc.tobytes())
         doc.close()
