@@ -279,7 +279,9 @@ def assign_questionnaire(
         return gen_conners_4(driver, actions, services, client, accounts_created)
     elif questionnaire == "Conners 4 Self":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_conners_4(driver, actions, services, client, accounts_created, self_report=True)
+        return gen_conners_4(
+            driver, actions, services, client, accounts_created, self_report=True
+        )
     elif questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):

@@ -137,7 +137,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     with db_connection:
         with db_connection.cursor() as cursor:
             sql = """
-                SELECT c.*
+                SELECT c.*, err.custom_message AS pendingRequestMessage
                 FROM emr_client c
                 INNER JOIN emr_external_record_request err ON c.id = err.clientId
                 WHERE c.recordsNeeded = "Needed"
@@ -499,7 +499,9 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
-            cursor.execute("SELECT daeval, diagnosis, minAge, maxAge, questionnaires FROM emr_questionnaire_rule")
+            cursor.execute(
+                "SELECT daeval, diagnosis, minAge, maxAge, questionnaires FROM emr_questionnaire_rule"
+            )
             rows = cursor.fetchall()
 
     rules = []
@@ -507,13 +509,15 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
         qs = row["questionnaires"]
         if isinstance(qs, str):
             qs = json.loads(qs)
-        rules.append({
-            "daeval": row["daeval"],
-            "diagnosis": row["diagnosis"],
-            "minAge": row["minAge"],
-            "maxAge": row["maxAge"],
-            "questionnaires": qs,
-        })
+        rules.append(
+            {
+                "daeval": row["daeval"],
+                "diagnosis": row["diagnosis"],
+                "minAge": row["minAge"],
+                "maxAge": row["maxAge"],
+                "questionnaires": qs,
+            }
+        )
     return rules
 
 

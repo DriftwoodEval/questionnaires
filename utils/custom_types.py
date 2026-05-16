@@ -248,6 +248,7 @@ class _SharedClientFromDB(_ClientBase):
     address: str | None = None
     schoolDistrict: str | None = None
     recordsNeeded: str | None = None
+    pendingRequestMessage: str | None = None
 
 
 class ClientFromDB(_SharedClientFromDB):
