@@ -144,6 +144,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
                 AND err.requestedDate IS NULL
                 AND c.status IS NOT FALSE
                 AND c.language = "English"
+                AND LENGTH(c.id) != 5
             """
             cursor.execute(sql)
             results = cursor.fetchall()

@@ -167,7 +167,9 @@ def download_consent_forms(
 
     if school_contact.fax:
         logger.info("Fax number found, creating and prepending cover sheet...")
-        fax_cover_stream, fax_cover_filename = create_fax_cover_sheet(client, request_line)
+        fax_cover_stream, fax_cover_filename = create_fax_cover_sheet(
+            client, request_line
+        )
         if fax_cover_stream and fax_cover_filename:
             attachments.insert(
                 0,
