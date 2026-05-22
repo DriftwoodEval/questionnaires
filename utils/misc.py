@@ -1,9 +1,8 @@
-import os
-import re
 import socket
 import sys
 from datetime import date
 from functools import cache
+from pathlib import Path
 from typing import Literal
 
 import requests
@@ -23,15 +22,15 @@ from utils.google import add_to_failure_sheet
 @cache
 def load_local_settings() -> LocalSettings:
     """Load local settings from local_config.yml."""
-    local_config_path = "./config/local_config.yml"
+    local_config_path = Path("config/local_config.yml")
 
-    if not os.path.exists(local_config_path):
+    if not Path.exists(local_config_path):
         logger.error(
             f"Local config file not found at {local_config_path}. Cannot determine API URL."
         )
         sys.exit(1)
 
-    with open(local_config_path) as f:
+    with Path.open(local_config_path) as f:
         local_data = yaml.safe_load(f)
 
     try:
@@ -114,7 +113,7 @@ class NetworkSink:
         except (OSError, ConnectionRefusedError, TimeoutError) as e:
             logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
             self.sock = None
-            exit(1)
+            sys.exit(1)
 
     def write(self, message: str):
         """Write a message to the network socket."""

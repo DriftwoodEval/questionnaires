@@ -3,36 +3,73 @@ name = "questionnaires"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "python-dateutil>=2.9.0.post0",
-    "pyyaml>=6.0.2",
-    "selenium>=4.28.1",
-    "requests>=2.33.1",
-    "google-api-python-client>=2.194.0",
-    "google-auth-oauthlib>=1.2.1",
-    "pymysql>=1.1.1",
-    "pandas>=2.3.0",
-    "loguru>=0.7.3",
-    "ratelimit>=2.2.1",
-    "pydantic[email]>=2.12.2",
-    "inquirer>=3.4.1",
-    "openpyxl>=3.1.5",
-    "rich>=15.0.0",
-    "pymupdf>=1.27.2.3",
-    "tenacity>=9.1.2",
-    "typer>=0.21.1",
-    "google>=3.0.0",
+  "google>=3.0.0",
+  "google-api-python-client>=2.194.0",
+  "google-auth-oauthlib>=1.2.1",
+  "inquirer>=3.4.1",
+  "loguru>=0.7.3",
+  "openpyxl>=3.1.5",
+  "pandas>=2.3.0",
+  "pydantic[email]>=2.12.2",
+  "pymupdf>=1.27.2.3",
+  "pymysql>=1.1.1",
+  "python-dateutil>=2.9.0.post0",
+  "pyyaml>=6.0.2",
+  "ratelimit>=2.2.1",
+  "requests>=2.33.1",
+  "rich>=15.0.0",
+  "selenium>=4.28.1",
+  "tenacity>=9.1.2",
+  "typer>=0.21.1",
 ]
 
 [dependency-groups]
 dev = [
-    "deptry>=0.25.1",
-    "icecream>=2.1.8",
-    "lefthook>=2.1.4",
-    "ruff>=0.15.11",
+  "deptry>=0.25.1",
+  "icecream>=2.1.8",
+  "lefthook>=2.1.4",
+  "ruff>=0.15.11",
 ]
 
 [tool.ruff.lint]
-select = ["UP", "FURB"]
+select = [
+  "ERA",
+  "B",
+  "A",
+  "C4",
+  "FA",
+  "ICN",
+  "PIE",
+  "T20",
+  "Q",
+  "RSE",
+  "RET",
+  "SLF",
+  "SIM",
+  "ARG",
+  "PTH",
+  "FLY",
+  "I",
+  "PD",
+  "N",
+  "PERF",
+  "E",
+  "W",
+  "F",
+  "PL",
+  "UP",
+  "FURB",
+  "RUF",
+]
+
+ignore = [
+  "E501",  # line too long
+  "PLR0911",  # too many return statements ({returns} > {max_returns})
+  "PLR0912",  # too many branches ({branches} > {max_branches})
+  "PLR0913",  # too many arguments to function call ({c_args} > {max_args})
+  "PLR0915",  # too many statements ({statements} > {max_statements})
+  "PLR2004",  # magic value used in comparison, consider replacing {value} with a constant variable
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

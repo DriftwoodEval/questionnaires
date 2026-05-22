@@ -11,7 +11,7 @@ from loguru import logger
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.custom_types import ClientFromDB, Config, RecordsContact
@@ -270,8 +270,7 @@ def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
 
     if match:
         return normalize_district(match)
-    else:
-        return "Not Found"
+    return "Not Found"
 
 
 def save_document_as_pdf(
@@ -289,22 +288,22 @@ def save_document_as_pdf(
 
     try:
         docs_button = wait.until(
-            EC.element_to_be_clickable((By.LINK_TEXT, "Docs & Forms"))
+            ec.element_to_be_clickable((By.LINK_TEXT, "Docs & Forms"))
         )
         docs_button.click()
 
         document_link = wait.until(
-            EC.element_to_be_clickable((By.LINK_TEXT, link_text))
+            ec.element_to_be_clickable((By.LINK_TEXT, link_text))
         )
         document_link.click()
 
         wait.until(
-            EC.visibility_of_element_located(
+            ec.visibility_of_element_located(
                 (By.XPATH, "//*[contains(text(), 'I authorize')]")
             )
         )
 
-        doc_type = link_text.split(" ")[0]
+        doc_type = link_text.split(" ", maxsplit=1)[0]
 
         filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} {doc_type}.pdf"
 
@@ -313,9 +312,9 @@ def save_document_as_pdf(
             driver, filename, config.records_folder_id
         )
 
-    except Exception:
+    except Exception as e:
         logger.error(f"Could not find or load document: {link_text}")
-        raise Exception("docs not signed")
+        raise Exception("docs not signed") from e
     finally:
         # Go back to the Docs & Forms list
         driver.back()
@@ -406,7 +405,7 @@ def main():
     try:
         check_and_login_ta(driver, actions, services, first_time=True)
         for client in clients_to_process:
-            asdAdhd = client.asdAdhd or "Unknown"
+            asd_adhd = client.asdAdhd or "Unknown"
             client_name = client.fullName
 
             if go_to_client(driver, actions, services, str(client.id)):
@@ -438,7 +437,7 @@ def main():
                         failed_date=today,
                         add_to_sheet=add_to_sheet,
                         full_name=client_name,
-                        asd_adhd=asdAdhd,
+                        asd_adhd=asd_adhd,
                         daeval="Records",
                     )
                     new_failure_count += 1
@@ -450,7 +449,7 @@ def main():
                     error="unable to find client",
                     failed_date=today,
                     full_name=client_name,
-                    asd_adhd=asdAdhd,
+                    asd_adhd=asd_adhd,
                     daeval="Records",
                 )
                 new_failure_count += 1

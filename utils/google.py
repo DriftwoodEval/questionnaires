@@ -1,6 +1,5 @@
 import base64
 import mimetypes
-import os
 import re
 from datetime import date
 from email.message import EmailMessage
@@ -42,7 +41,8 @@ def google_authenticate():
     Returns the authenticated credentials.
     """
     creds = None
-    if os.path.exists("./config/token.json"):
+    token_path = Path("config/token.json")
+    if Path.exists(token_path):
         creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
         if creds and set(creds.scopes or []) != set(SCOPES):
             logger.info("Scopes have changed, re-authenticating...")
@@ -60,7 +60,7 @@ def google_authenticate():
             creds = flow.run_local_server(port=0)
 
     # Save the credentials for the next run
-    with open("./config/token.json", "w") as token:
+    with Path.open(token_path, "w") as token:
         token.write(creds.to_json())
 
     return creds
@@ -205,7 +205,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             "Call:\n"
             + "\n".join(
                 [
-                    f"- {client.fullName} (sent on {most_recent['sent'] and most_recent['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
+                    f"- {client.fullName} (sent on {(most_recent['sent'] and most_recent['sent'].strftime('%m/%d')) or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
                     if isinstance(client, ClientWithQuestionnaires)
                     else f"- {client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
                     for client, most_recent in call_clients_data
@@ -216,7 +216,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_html += (
             "<h2>Call</h2><ul><li>"
             + "</li><li>".join(
-                f"{client.fullName} (sent on {most_recent['sent'] and most_recent['sent'].strftime('%m/%d') or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
+                f"{client.fullName} (sent on {(most_recent['sent'] and most_recent['sent'].strftime('%m/%d')) or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
                 if isinstance(client, ClientWithQuestionnaires)
                 else f"{client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
                 for client, most_recent in call_clients_data

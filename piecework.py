@@ -23,7 +23,7 @@ logger.remove()
 logger.add(
     sys.stdout,
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
-    # level="INFO",
+    level="INFO",
 )
 
 logger.add("logs/piecework.log", rotation="500 MB")
@@ -45,7 +45,7 @@ def load_tracked_reports() -> dict[str, str]:
         return {}
 
     try:
-        with open(TRACKING_FILE) as f:
+        with Path.open(TRACKING_FILE) as f:
             data = json.load(f)
             client_ids = data.get("client_ids", {})
             if not isinstance(client_ids, dict):
@@ -65,7 +65,7 @@ def save_tracked_reports(client_ids: dict[str, str]):
     """Save the set of tracked client IDs to disk."""
     TRACKING_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(TRACKING_FILE, "w") as f:
+        with Path.open(TRACKING_FILE, "w") as f:
             json.dump({"client_ids": client_ids}, f, indent=2)
         logger.info(
             f"Saved {len(client_ids)} entries for report writing to {TRACKING_FILE}"
@@ -113,13 +113,10 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
         logger.info(f"Loaded report history: {len(tracked_reports)}")
 
-        new_reports = report_done[
-            report_done["Client ID"].apply(
-                lambda cid: (
-                    cid not in tracked_reports or tracked_reports.get(cid) == today_str
-                )
-            )
-        ].copy()
+        is_tracked_today = report_done["Client ID"].isin(tracked_reports)
+        matches_today = report_done["Client ID"].map(tracked_reports) == today_str
+
+        new_reports = report_done[~is_tracked_today | matches_today].copy()
 
         if new_reports.empty:
             logger.info("No new reports found")
@@ -141,27 +138,24 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             columns={"Assigned to OR added to report writing folder": "Assigned To"}
         )
 
-        rows_to_drop = []
-        unassigned_clients = []
-        for idx, row in result.iterrows():
-            assigned_to = row["Assigned To"]
-            initials = extract_writer_initials(assigned_to)
-            if not initials:
-                client_info = (
-                    f"{row['Client Name'].strip()} ({row['Client ID'].strip()})"
-                )
-                logger.error(
-                    f"'{client_info}' has no valid report writer initials in 'Assigned To' field: '{assigned_to}'"
-                )
-                rows_to_drop.append(idx)
-                unassigned_clients.append(client_info)
+        result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
 
-        if rows_to_drop:
-            clients_str = ", ".join(unassigned_clients)
+        unassigned_mask = result["Initials"].isna() | (result["Initials"] == "")
+        if unassigned_mask.any():
+            unassigned_rows = result[unassigned_mask]
+            unassigned_clients = [
+                f"{row['Client Name'].strip()} ({row['Client ID'].strip()})"
+                for _, row in unassigned_rows.iterrows()
+            ]
+
+            logger.error(
+                f"Found {len(unassigned_clients)} clients with no valid report writer initials."
+            )
+
             questions = [
                 inquirer.List(
                     "action",
-                    message=f"Found {len(rows_to_drop)} clients with no valid report writer: {clients_str}. What would you like to do?",
+                    message=f"Missing writers for: {', '.join(unassigned_clients)}. What would you like to do?",
                     choices=[
                         ("I've made changes, refetch the sheet", "refetch"),
                         ("Continue, ignore these clients", "continue"),
@@ -171,13 +165,14 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             answers = inquirer.prompt(questions)
             if not answers:
                 logger.info("Aborting.")
-                exit()
+                sys.exit()
+
             if answers["action"] == "refetch":
                 logger.info("Refetching punch list...")
                 continue
 
-            result = result.drop(rows_to_drop)
-            logger.error(f"Dropped {len(rows_to_drop)} client(s) with no report writer")
+            # Drop missing writers if continuing
+            result = result[~unassigned_mask]
 
         if result.empty:
             logger.error(
@@ -185,7 +180,6 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             )
             return None
 
-        result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
         result["Writer Name"] = result["Initials"].apply(
             lambda initials: (
                 config.piecework.get_full_name(initials) if initials else ""
@@ -201,7 +195,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             questions = [
                 inquirer.List(
                     "action",
-                    message=f"Continue?",
+                    message="Continue?",
                     choices=[
                         ("Continue and ignore these reports", "continue"),
                         ("Abort", "abort"),
@@ -211,14 +205,24 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             answers = inquirer.prompt(questions)
             if not answers or answers["action"] == "abort":
                 logger.info("Aborting.")
-                exit()
-            else:
-                result = result.drop(unresolved.index)
+                sys.exit()
+
+            result = result[result["Writer Name"] != ""]
+
+        if result.empty:
+            logger.error(
+                "No valid reports found after filtering out unassigned clients"
+            )
+            return None
+
+        for client_id in result["Client ID"]:
+            if client_id not in tracked_reports:
+                tracked_reports[client_id] = today_str
+
+        save_tracked_reports(tracked_reports)
 
         result = result.drop(columns=["Initials", "Assigned To"])
-
         logger.debug(result)
-
         logger.info(f"Found {len(result)} new reports")
 
         return result
@@ -256,9 +260,8 @@ def get_date_range() -> tuple[date, date] | None:
         date_range = answers["date_range"]
         logger.info(f"Selected range: {date_range[0]} to {date_range[1]}")
         return date_range
-    else:
-        logger.warning("No date range selected. Exiting.")
-        return None
+    logger.warning("No date range selected. Exiting.")
+    return None
 
 
 def get_work_counts(
@@ -399,7 +402,6 @@ def prepare_summary_data(
 def prepare_detail_data(
     appointments: list[Appointment],
     evaluators: dict[int, dict],
-    config: Config,
     report_clients: pd.DataFrame | None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Prepares detail data, returning a dictionary mapping worker names to their detail rows."""
@@ -440,13 +442,13 @@ def prepare_detail_data(
             writer_name = row.get("Writer Name", "")
             client_name = row.get("Client Name", "")
             if writer_name:
-                row = {
+                new_row = {
                     "WORKER": writer_name,
                     "CLIENT": client_name,
                     "START TIME": "N/A",
                     "TYPE": "REPORT",
                 }
-                worker_details[writer_name].append(row)
+                worker_details[writer_name].append(new_row)
 
     combined_detail_rows = []
 
@@ -498,7 +500,7 @@ def generate_main_report(
             df_summary.to_excel(writer, sheet_name="Summary Counts", index=False)
             df_detail.to_excel(writer, sheet_name="Details", index=False)
 
-            workbook = writer.book
+            workbook = writer.book  # noqa: F841 just how excel works
             summary_sheet = writer.sheets["Summary Counts"]
 
             currency_format = '"$"#,##0.00'
@@ -557,7 +559,6 @@ def generate_individual_detail_reports(
     start_date: date,
     end_date: date,
     config: Config,
-    evaluators: dict[int, dict],
     dev_mode: bool = False,
 ):
     """Generates a separate Excel file for each worker's detail data."""
@@ -585,7 +586,7 @@ def generate_individual_detail_reports(
 
             logger.info(f"Wrote individual detail file locally for: {worker_name}")
             if not dev_mode:
-                file_link, folder_link = upload_file_to_drive(
+                file_link, _folder_link = upload_file_to_drive(
                     filename, config.payroll_folder_id, safe_worker_name
                 )
 
@@ -639,9 +640,7 @@ def main():
 
     appointment_counts = get_work_counts(appointments, evaluators, report_clients)
     summary_data = prepare_summary_data(appointment_counts, config)
-    worker_details = prepare_detail_data(
-        appointments, evaluators, config, report_clients
-    )
+    worker_details = prepare_detail_data(appointments, evaluators, report_clients)
 
     combined_detail_data = worker_details.get("__COMBINED_DETAIL_DATA__", [])
 
@@ -653,7 +652,7 @@ def main():
         summary_data, combined_detail_data, start_date, end_date, config, dev_mode
     )
     generate_individual_detail_reports(
-        worker_details, start_date, end_date, config, evaluators, dev_mode
+        worker_details, start_date, end_date, config, dev_mode
     )
 
 

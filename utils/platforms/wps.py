@@ -76,9 +76,7 @@ def check_and_login_wps(
         login_wps(driver, actions, services)
 
 
-def gen_dp4(
-    driver: WebDriver, actions: ActionChains, config: Config, client: pd.Series
-) -> str:
+def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
     """Generates a DP-4 assessment for the given client and returns the link."""
     logger.info(
         f"Generating DP-4 for {client['TA First Name']} {client['TA Last Name']}"
@@ -168,7 +166,7 @@ def gen_dp4(
             driver, By.CSS_SELECTOR, '[data-testid="casedetails-buildbattery-button"]'
         )
     except (NoSuchElementException, TimeoutException, ElementClickInterceptedException):
-        logger.error(f"Failed to create new administration. ")
+        logger.error("Failed to create new administration. ")
         input("Please click New Administration and press enter...")
 
     logger.debug("Selecting test")

@@ -254,7 +254,7 @@ def add_client_to_mhs(
     )
     date_of_birth_field.send_keys(dob)
 
-    if questionnaire == "Conners EC" or questionnaire == "ASRS":
+    if questionnaire in {"Conners EC", "ASRS"}:
         logger.debug("Selecting gender")
         male_label = find_element(driver, By.XPATH, "//label[text()='Male']")
         female_label = find_element(driver, By.XPATH, "//label[text()='Female']")

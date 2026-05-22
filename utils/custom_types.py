@@ -92,9 +92,8 @@ class PieceworkConfig(BaseModel):
             evaluator_costs = self.costs[evaluator_name]
             if hasattr(evaluator_costs, appointment_type):
                 cost = getattr(evaluator_costs, appointment_type)
-                if cost is None:
-                    if hasattr(default_costs, appointment_type):
-                        return getattr(default_costs, appointment_type)
+                if cost is None and hasattr(default_costs, appointment_type):
+                    return getattr(default_costs, appointment_type)
                 return cost
 
         if hasattr(default_costs, appointment_type):
@@ -225,30 +224,30 @@ class FailedClient(TypedDict):
 class _ClientBase(BaseModel):
     id: int
     dob: date
-    firstName: str
-    lastName: str
-    preferredName: str | None = None
-    fullName: str
-    phoneNumber: str | None = None
+    firstName: str  # noqa: N815
+    lastName: str  # noqa: N815
+    preferredName: str | None = None  # noqa: N815
+    fullName: str  # noqa: N815
+    phoneNumber: str | None = None  # noqa: N815
     gender: str | None = None
-    asdAdhd: str | None = None
+    asdAdhd: str | None = None  # noqa: N815
     status: bool
 
 
 class _SharedClientFromDB(_ClientBase):
     """Common fields for clients from the database. Not intended to be used directly."""
 
-    autismStop: bool
+    autismStop: bool  # noqa: N815
     pause: bool
-    babyNetERNeeded: bool
-    babyNetERDownloaded: bool
+    babyNetERNeeded: bool  # noqa: N815
+    babyNetERDownloaded: bool  # noqa: N815
     language: str
     latitude: float | None = None
     longitude: float | None = None
     address: str | None = None
-    schoolDistrict: str | None = None
-    recordsNeeded: str | None = None
-    pendingRequestMessage: str | None = None
+    schoolDistrict: str | None = None  # noqa: N815
+    recordsNeeded: str | None = None  # noqa: N815
+    pendingRequestMessage: str | None = None  # noqa: N815
 
 
 class ClientFromDB(_SharedClientFromDB):
@@ -263,7 +262,7 @@ class ClientWithQuestionnaires(_SharedClientFromDB):
     questionnaires: list[Questionnaire]
 
     @field_validator("questionnaires")
-    def validate_questionnaires(cls, v: list[Questionnaire]) -> list[Questionnaire]:
+    def validate_questionnaires(self, v: list[Questionnaire]) -> list[Questionnaire]:
         """Validate that the client has questionnaires."""
         if not v:
             raise ValueError("Client has no questionnaires")
@@ -277,7 +276,7 @@ class FailedClientFromDB(ClientFromDB):
     note: dict | None = None
 
     @field_validator("failure")
-    def validate_failure(cls, v: list[Failure]) -> list[Failure]:
+    def validate_failure(self, v: list[Failure]) -> list[Failure]:
         """Validate that the client has at least one failure."""
         if not v:
             raise ValueError("Client has no failures")

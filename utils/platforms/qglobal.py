@@ -7,12 +7,11 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
 )
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
 
-from utils.custom_types import Config, Services
+from utils.custom_types import Config
 from utils.selenium import (
     click_element,
     find_element,
@@ -24,7 +23,7 @@ def rearrange_dob(dob: str) -> str:
     return datetime.strptime(dob, "%Y/%m/%d").strftime("%m/%d/%Y")
 
 
-def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) -> None:
+def login_qglobal(driver: WebDriver) -> None:
     """Wait for manual login to QGlobal."""
     logger.info("Please log in to QGlobal manually in the browser.")
     try:
@@ -37,8 +36,6 @@ def login_qglobal(driver: WebDriver, actions: ActionChains, services: Services) 
 
 def check_and_login_qglobal(
     driver: WebDriver,
-    actions: ActionChains,
-    services: Services,
     first_time: bool = False,
 ) -> None:
     """Check if logged in to QGlobal and log in if not."""
@@ -46,7 +43,7 @@ def check_and_login_qglobal(
     if first_time:
         logger.debug("First time login to QGlobal, opening URL.")
         driver.get(qglobal_url)
-        login_qglobal(driver, actions, services)
+        login_qglobal(driver)
         return
     try:
         logger.debug("Checking if logged in to QGlobal")
@@ -57,33 +54,35 @@ def check_and_login_qglobal(
         logger.debug(
             "Not logged in to QGlobal or Search link not visible, waiting for manual login."
         )
-        login_qglobal(driver, actions, services)
+        login_qglobal(driver)
 
 
-def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) -> None:
+def search_qglobal(driver: WebDriver, client: pd.Series) -> None:
     """Search for a client in QGlobal.
 
     Searches for a client using their human-friendly ID, which is the ID
     shown on TherapyAppointment, "C" + 9-digit number.
     """
 
-    def _search_helper(driver: WebDriver, id: str) -> None:
+    def _search_helper(driver: WebDriver, client_id: str) -> None:
         for attempt in range(3):
             logger.info(
-                f"Attempting to search QGlobal for {id} (attempt {attempt + 1})"
+                f"Attempting to search QGlobal for {client_id} (attempt {attempt + 1})"
             )
             try:
                 sleep(1)
-                find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(id)
+                find_element(driver, By.ID, "editExamineeForm:examineeId").send_keys(
+                    client_id
+                )
                 return
             except Exception as e:
                 if attempt == 2:
                     logger.error(
-                        f"Failed to search QGlobal for {id} after 3 attempts: {e}"
+                        f"Failed to search QGlobal for {client_id} after 3 attempts: {e}"
                     )
                     raise e
                 logger.warning(
-                    f"Failed to search QGlobal for {id}, attempting to retry: {e}"
+                    f"Failed to search QGlobal for {client_id}, attempting to retry: {e}"
                 )
                 driver.get("https://qglobal.pearsonassessments.com")
                 click_element(driver, By.XPATH, "//a[text()='Search']")
@@ -99,13 +98,10 @@ def search_qglobal(driver: WebDriver, actions: ActionChains, client: pd.Series) 
 
 def search_select_qglobal(
     driver: WebDriver,
-    actions: ActionChains,
-    config: Config,
-    services: Services,
     client: pd.Series,
 ):
-    check_and_login_qglobal(driver, actions, services)
-    search_qglobal(driver, actions, client)
+    check_and_login_qglobal(driver)
+    search_qglobal(driver, client)
     sleep(3)
 
     try:
@@ -118,7 +114,7 @@ def search_select_qglobal(
     except (NoSuchElementException, TimeoutException):
         logger.warning("Failed to select client, searching again")
         driver.refresh()
-        search_qglobal(driver, actions, client)
+        search_qglobal(driver, client)
         sleep(3)
         try:
             logger.debug("Selecting client")
@@ -135,16 +131,14 @@ def search_select_qglobal(
             input("Press Enter once you have navigated to the client's page...")
 
 
-def check_for_qglobal_account(
-    driver: WebDriver, actions: ActionChains, services: Services, client: pd.Series
-) -> bool:
+def check_for_qglobal_account(driver: WebDriver, client: pd.Series) -> bool:
     """Check if a client has an account on QGlobal.
 
     Returns:
         bool: True if the client has an account on QGlobal, False otherwise.
     """
-    check_and_login_qglobal(driver, actions, services)
-    search_qglobal(driver, actions, client)
+    check_and_login_qglobal(driver)
+    search_qglobal(driver, client)
 
     logger.info("Checking for QGlobal account")
     try:
@@ -158,9 +152,7 @@ def check_for_qglobal_account(
         return False
 
 
-def add_client_to_qglobal(
-    driver: WebDriver, actions: ActionChains, client: pd.Series
-) -> bool:
+def add_client_to_qglobal(driver: WebDriver, client: pd.Series) -> bool:
     """Add a client to QGlobal if they don't already have an account.
 
     Returns:
@@ -171,7 +163,7 @@ def add_client_to_qglobal(
     )
     firstname = client["TA First Name"]
     lastname = client["TA Last Name"]
-    id = client["Human Friendly ID"]
+    client_id = client["Human Friendly ID"]
     dob = client["Date of Birth"]
     gender = client["Gender"]
 
@@ -180,7 +172,7 @@ def add_client_to_qglobal(
 
     first = find_element(driver, By.ID, "firstName")
     last = find_element(driver, By.ID, "lastName")
-    examineeID = find_element(driver, By.ID, "examineeId")
+    examinee_id = find_element(driver, By.ID, "examineeId")
     birth = find_element(driver, By.ID, "calendarInputDate")
 
     logger.debug("Entering first name")
@@ -190,7 +182,7 @@ def add_client_to_qglobal(
     last.send_keys(lastname)
 
     logger.debug("Entering examinee id")
-    examineeID.send_keys(id)
+    examinee_id.send_keys(client_id)
 
     logger.debug("Selecting gender")
     gender_element = find_element(driver, By.ID, "genderMenu")
@@ -217,7 +209,7 @@ def add_client_to_qglobal(
     return True
 
 
-def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
+def get_qglobal_link(driver: WebDriver) -> str | None:
     """Clicks through the QGlobal UI to get the link for an assessment.
 
     Returns:
@@ -242,9 +234,7 @@ def get_qglobal_link(driver: WebDriver, actions: ActionChains) -> str | None:
     sleep(2)
 
     link_element = find_element(driver, By.CSS_SELECTOR, "div.email-message a")
-    link = link_element.get_attribute("href")
-
-    return link
+    return link_element.get_attribute("href")
 
 
 _BASC_RADIO_IDS = {
@@ -256,16 +246,14 @@ _BASC_RADIO_IDS = {
 
 def _gen_basc(
     driver: WebDriver,
-    actions: ActionChains,
     config: Config,
-    services: Services,
     client: pd.Series,
     variant: str,
 ) -> str:
     logger.info(
         f"Generating BASC {variant} for {client['TA First Name']} {client['TA Last Name']}"
     )
-    search_select_qglobal(driver, actions, config, services, client)
+    search_select_qglobal(driver, client)
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
     click_element(driver, By.ID, _BASC_RADIO_IDS[variant])
     click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
@@ -275,7 +263,7 @@ def _gen_basc(
     find_element(driver, By.ID, "respondentFirstName").send_keys(config.initials[0])
     find_element(driver, By.ID, "respondentLastName").send_keys(config.initials[-1])
 
-    link = get_qglobal_link(driver, actions)
+    link = get_qglobal_link(driver)
     if link is None:
         raise ValueError("Link is None")
 
@@ -285,49 +273,41 @@ def _gen_basc(
 
 def gen_basc_preschool(
     driver: WebDriver,
-    actions: ActionChains,
     config: Config,
-    services: Services,
     client: pd.Series,
 ) -> str:
     """Generates a BASC Preschool assessment for the given client and returns the link."""
-    return _gen_basc(driver, actions, config, services, client, "Preschool")
+    return _gen_basc(driver, config, client, "Preschool")
 
 
 def gen_basc_child(
     driver: WebDriver,
-    actions: ActionChains,
     config: Config,
-    services: Services,
     client: pd.Series,
 ) -> str:
     """Generates a BASC Child assessment for the given client and returns the link."""
-    return _gen_basc(driver, actions, config, services, client, "Child")
+    return _gen_basc(driver, config, client, "Child")
 
 
 def gen_basc_adolescent(
     driver: WebDriver,
-    actions: ActionChains,
     config: Config,
-    services: Services,
     client: pd.Series,
 ) -> str:
     """Generates a BASC Adolescent assessment for the given client and returns the link."""
-    return _gen_basc(driver, actions, config, services, client, "Adolescent")
+    return _gen_basc(driver, config, client, "Adolescent")
 
 
 def gen_vineland(
     driver: WebDriver,
-    actions: ActionChains,
     config: Config,
-    services: Services,
     client: pd.Series,
 ) -> str:
     """Generates a Vineland assessment for the given client and returns the link."""
     logger.info(
         f"Generating Vineland for {client['TA First Name']} {client['TA Last Name']}"
     )
-    search_select_qglobal(driver, actions, config, services, client)
+    search_select_qglobal(driver, client)
 
     logger.debug("Clicking add assessment")
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
@@ -364,7 +344,7 @@ def gen_vineland(
     )
     sleep(2)
 
-    link = get_qglobal_link(driver, actions)
+    link = get_qglobal_link(driver)
 
     if link is None:
         raise ValueError("Link is None")

@@ -7,7 +7,7 @@ import pandas as pd
 import typer
 from dateutil.relativedelta import relativedelta
 from loguru import logger
-from rich import print
+from rich import print as rich_print
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
@@ -150,7 +150,7 @@ def get_clients_to_send(
                 if status == "Ready":
                     keep_clients.append(True)
                 else:
-                    print(
+                    rich_print(
                         f"\n[yellow]{client['Client Name']} ({client_id}): {status}[/yellow]"
                     )
                     should_continue = typer.confirm(
@@ -274,76 +274,61 @@ def assign_questionnaire(
     if questionnaire == "Conners EC":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_conners_ec(driver, actions, services, client, accounts_created)
-    elif questionnaire == "Conners 4":
+    if questionnaire == "Conners 4":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_conners_4(driver, actions, services, client, accounts_created)
-    elif questionnaire == "Conners 4 Self":
+    if questionnaire == "Conners 4 Self":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_conners_4(
             driver, actions, services, client, accounts_created, self_report=True
         )
-    elif questionnaire == "BASC Preschool":
+    if questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, services, client):
+            if check_for_qglobal_account(driver, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(
-                    driver, actions, client
-                )
-        return gen_basc_preschool(
-            driver, actions, config, services, client
-        ), accounts_created
-    elif questionnaire == "BASC Child":
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
+        return gen_basc_preschool(driver, config, client), accounts_created
+    if questionnaire == "BASC Child":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, services, client):
+            if check_for_qglobal_account(driver, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(
-                    driver, actions, client
-                )
-        return gen_basc_child(
-            driver, actions, config, services, client
-        ), accounts_created
-    elif questionnaire == "BASC Adolescent":
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
+        return gen_basc_child(driver, config, client), accounts_created
+    if questionnaire == "BASC Adolescent":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, services, client):
+            if check_for_qglobal_account(driver, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(
-                    driver, actions, client
-                )
-        return gen_basc_adolescent(
-            driver, actions, config, services, client
-        ), accounts_created
-    elif questionnaire == "ASRS (2-5 Years)":
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
+        return gen_basc_adolescent(driver, config, client), accounts_created
+    if questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_asrs_2_5(driver, actions, services, client, accounts_created)
-    elif questionnaire == "ASRS (6-18 Years)":
+    if questionnaire == "ASRS (6-18 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_asrs_6_18(driver, actions, services, client, accounts_created)
-    elif questionnaire == "Vineland":
+    if questionnaire == "Vineland":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, actions, services, client):
+            if check_for_qglobal_account(driver, client):
                 accounts_created["qglobal"] = True
             else:
-                accounts_created["qglobal"] = add_client_to_qglobal(
-                    driver, actions, client
-                )
-        return gen_vineland(driver, actions, config, services, client), accounts_created
-    elif questionnaire == "CAARS 2":
+                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
+        return gen_vineland(driver, config, client), accounts_created
+    if questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_caars_2(driver, actions, services, client, accounts_created)
-    elif questionnaire == "DP-4":
+    if questionnaire == "DP-4":
         logger.debug(f"Navigating to WPS for {questionnaire}")
         check_and_login_wps(driver, actions, services)
-        return gen_dp4(driver, actions, config, client), accounts_created
-    else:
-        logger.critical("Unexpected questionnaire type encountered")
-        raise ValueError("Unsupported questionnaire type")
+        return gen_dp4(driver, config, client), accounts_created
+    logger.critical("Unexpected questionnaire type encountered")
+    raise ValueError("Unsupported questionnaire type")
 
 
 def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
@@ -425,11 +410,11 @@ def format_ta_message(questionnaires: list[dict]) -> str:
     """Formats the message to be sent in TA."""
     logger.debug("Formatting TA message")
     message = ""
-    for id, questionnaire in enumerate(questionnaires, start=1):
+    for q_id, questionnaire in enumerate(questionnaires, start=1):
         notes = ""
         if "Self" in questionnaire["type"]:
             notes = " - For client being tested"
-        message += f"{id}) {questionnaire['link']}{notes}\n"
+        message += f"{q_id}) {questionnaire['link']}{notes}\n"
     logger.success("Formatted TA message")
     return message
 
@@ -484,13 +469,12 @@ def check_client_failed(
         if current_daeval == "DA":
             return (True, error)
 
-        elif current_daeval == "EVAL":
+        if current_daeval == "EVAL":
             if prev_daeval == "DA":
                 continue
-            else:
-                return (True, error)
+            return (True, error)
 
-        elif current_daeval == "DAEVAL":
+        if current_daeval == "DAEVAL":
             return (True, error)
 
     return (False, None)
@@ -510,8 +494,9 @@ def check_client_previous(
     client_id = int(client_info["Client ID"])
 
     if client_id in prev_clients:
-        questionnaires = prev_clients[client_id].questionnaires
-        return questionnaires
+        return prev_clients[client_id].questionnaires
+
+    return None
 
 
 def normalize_q_name(name: str) -> str:
@@ -605,10 +590,9 @@ def main(
                     )
 
                     continue
-                else:
-                    logger.info(
-                        f"{client['Client Name']} has already failed to send because {error}, retrying"
-                    )
+                logger.info(
+                    f"{client['Client Name']} has already failed to send because {error}, retrying"
+                )
 
         if client["Language"] not in ["", "English", "Spanish"]:
             logger.error(f"{client['Client Name']} speaks {client['Language']}")
@@ -692,15 +676,14 @@ def main(
                         daeval=client["daeval"],
                     )
                     continue
-                else:
-                    if client.get("Previous Error") == "portal not opened":
-                        update_failure_in_db(
-                            config=config,
-                            client_id=client["Client ID"],
-                            reason=client["Previous Error"],
-                            da_eval=client["daeval"],
-                            resolved=True,
-                        )
+                if client.get("Previous Error") == "portal not opened":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason=client["Previous Error"],
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
 
                 if not check_if_docs_signed(driver):
                     add_failure(
@@ -714,15 +697,14 @@ def main(
                         daeval=client["daeval"],
                     )
                     continue
-                else:
-                    if client.get("Previous Error") == "docs not signed":
-                        update_failure_in_db(
-                            config=config,
-                            client_id=client["Client ID"],
-                            reason=client["Previous Error"],
-                            da_eval=client["daeval"],
-                            resolved=True,
-                        )
+                if client.get("Previous Error") == "docs not signed":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason=client["Previous Error"],
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
 
         except (NoSuchElementException, TimeoutException) as e:
             logger.error(f"Element not found: {e}")
@@ -813,7 +795,7 @@ def main(
                         ]
 
                         if missing_da_qs:
-                            print(
+                            rich_print(
                                 f"\n[red]{client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}[/red]"
                             )
                             should_add = typer.confirm(
@@ -884,7 +866,7 @@ def main(
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
-                    error=f"All questionnaires have already been sent, but sent box not checked",
+                    error="All questionnaires have already been sent, but sent box not checked",
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
@@ -936,7 +918,7 @@ def main(
                         "JUST_ADDED",
                     )
 
-                except Exception as e:  # noqa: E722
+                except Exception as e:
                     logger.error(f"Error assigning {questionnaire}: {e}")
 
                     add_failure(
@@ -989,7 +971,7 @@ def main(
                 message = format_ta_message(questionnaires)
 
                 if client["Language"] == "Spanish":
-                    print(
+                    rich_print(
                         f"{client['TA First Name']} {client['TA Last Name']} speaks Spanish, not sending a TA message, pretending they failed."
                     )
                     add_failure(
@@ -1029,7 +1011,7 @@ def main(
 
     logger.info(f"Finished loop for {len(clients)} clients")
     # Final newline for preventing overwriting last line on windows
-    print()
+    rich_print()
 
 
 if __name__ == "__main__":

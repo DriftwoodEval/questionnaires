@@ -31,10 +31,7 @@ def before_sleep_loguru(retry_state: RetryCallState) -> None:
         verb = "returned"
         value = retry_state.outcome.result()
 
-    if retry_state.next_action:
-        sleep_time = retry_state.next_action.sleep
-    else:
-        sleep_time = 0.0
+    sleep_time = retry_state.next_action.sleep if retry_state.next_action else 0.0
 
     logger.debug(
         f"Retrying {fn_name} "
@@ -70,10 +67,9 @@ class InvalidPhoneNumberError(ValueError):
 
 def is_transient_error(exception: Exception) -> bool:
     """Check if the exception is a transient error that should be retried."""
-    if isinstance(exception, requests.HTTPError):
-        if exception.response is not None:
-            # Do not retry on 400, 401, 403, 404, 422
-            return exception.response.status_code not in [400, 401, 403, 404, 422]
+    if isinstance(exception, requests.HTTPError) and exception.response is not None:
+        # Do not retry on 400, 401, 403, 404, 422
+        return exception.response.status_code not in [400, 401, 403, 404, 422]
     return isinstance(exception, (requests.ConnectionError, RateLimitException))
 
 
@@ -133,8 +129,7 @@ class OpenPhone:
         Stops immediately if 'delivered' or 'undelivered'.
         """
         info = self.get_text_info(message_id)
-        status = info.get("status", "unknown")
-        return status
+        return info.get("status", "unknown")
 
     def check_text_delivered(self, message_id: str) -> bool:
         """
@@ -205,7 +200,7 @@ class OpenPhone:
             response = self.session.post(url, json=payload)
 
             if response.status_code == 402:
-                raise NotEnoughCreditsError()
+                raise NotEnoughCreditsError
 
             if response.status_code == 400:
                 logger.error(f"Bad Request to OpenPhone: {response.text}")

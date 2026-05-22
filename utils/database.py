@@ -21,7 +21,7 @@ from utils.custom_types import (
 def get_db(config: Config):
     """Connect to the database and return a connection object."""
     db_url = urlparse(config.database_url)
-    connection = pymysql.connect(
+    return pymysql.connect(
         host=db_url.hostname,
         port=db_url.port or 3306,
         user=db_url.username,
@@ -29,7 +29,6 @@ def get_db(config: Config):
         database=db_url.path[1:],
         cursorclass=pymysql.cursors.DictCursor,
     )
-    return connection
 
 
 def get_previous_clients(
@@ -45,22 +44,21 @@ def get_previous_clients(
 
     # Load clients from the database
     db_connection = get_db(config)
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
-            cursor.execute(sql)
-            clients = cursor.fetchall()
+    with db_connection, db_connection.cursor() as cursor:
+        sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
+        cursor.execute(sql)
+        clients = cursor.fetchall()
 
-            sql = "SELECT * FROM emr_questionnaire"
-            cursor.execute(sql)
-            questionnaires = cursor.fetchall()
-            for client in clients:
-                # Add the questionnaires to each client
-                client["questionnaires"] = [
-                    questionnaire
-                    for questionnaire in questionnaires
-                    if questionnaire["clientId"] == client["id"]
-                ]
+        sql = "SELECT * FROM emr_questionnaire"
+        cursor.execute(sql)
+        questionnaires = cursor.fetchall()
+        for client in clients:
+            # Add the questionnaires to each client
+            client["questionnaires"] = [
+                questionnaire
+                for questionnaire in questionnaires
+                if questionnaire["clientId"] == client["id"]
+            ]
 
     # Create a dictionary of clients with their IDs as keys
     prev_clients = {}
@@ -84,24 +82,23 @@ def get_failures_from_db(config: Config) -> dict[int, FailedClientFromDB]:
     client_failures: dict[int, list[dict]] = {}
     client_notes: dict[int, dict] = {}
 
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = "SELECT * FROM emr_failure"
-            cursor.execute(sql)
-            for failure in cursor.fetchall():
-                client_id = failure["clientId"]
-                if client_id not in client_failures:
-                    client_failures[client_id] = []
-                client_failures[client_id].append(failure)
+    with db_connection, db_connection.cursor() as cursor:
+        sql = "SELECT * FROM emr_failure"
+        cursor.execute(sql)
+        for failure in cursor.fetchall():
+            client_id = failure["clientId"]
+            if client_id not in client_failures:
+                client_failures[client_id] = []
+            client_failures[client_id].append(failure)
 
-            sql = "SELECT * FROM emr_note"
-            cursor.execute(sql)
-            for note in cursor.fetchall():
-                client_notes[note["clientId"]] = note
+        sql = "SELECT * FROM emr_note"
+        cursor.execute(sql)
+        for note in cursor.fetchall():
+            client_notes[note["clientId"]] = note
 
-            sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
-            cursor.execute(sql)
-            clients_data = cursor.fetchall()
+        sql = "SELECT * FROM emr_client WHERE status IS NOT FALSE"
+        cursor.execute(sql)
+        clients_data = cursor.fetchall()
 
     failed_clients: dict[int, FailedClientFromDB] = {}
     for client_data in clients_data:
@@ -134,30 +131,29 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     logger.info("Fetching clients needing record requests from DB")
     db_connection = get_db(config)
     clients_needing_records = []
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = """
-                SELECT c.*, err.custom_message AS pendingRequestMessage
-                FROM emr_client c
-                INNER JOIN emr_external_record_request err ON c.id = err.clientId
-                WHERE c.recordsNeeded = "Needed"
-                AND err.requestedDate IS NULL
-                AND c.status IS NOT FALSE
-                AND c.language = "English"
-                AND LENGTH(c.id) != 5
-            """
-            cursor.execute(sql)
-            results = cursor.fetchall()
+    with db_connection, db_connection.cursor() as cursor:
+        sql = """
+            SELECT c.*, err.custom_message AS pendingRequestMessage
+            FROM emr_client c
+            INNER JOIN emr_external_record_request err ON c.id = err.clientId
+            WHERE c.recordsNeeded = "Needed"
+            AND err.requestedDate IS NULL
+            AND c.status IS NOT FALSE
+            AND c.language = "English"
+            AND LENGTH(c.id) != 5
+        """
+        cursor.execute(sql)
+        results = cursor.fetchall()
 
-            for client_data in results:
-                try:
-                    client_data["questionnaires"] = None
-                    pydantic_client = ClientFromDB(**client_data)
-                    clients_needing_records.append(pydantic_client)
-                except Exception:
-                    logger.exception(
-                        f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}"
-                    )
+        for client_data in results:
+            try:
+                client_data["questionnaires"] = None
+                pydantic_client = ClientFromDB(**client_data)
+                clients_needing_records.append(pydantic_client)
+            except Exception:
+                logger.exception(
+                    f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}"
+                )
 
     return clients_needing_records
 
@@ -172,48 +168,47 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
 
     statuses = {}
 
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = """
-                SELECT
-                    c.id,
-                    c.recordsNeeded,
-                    c.asdAdhd,
-                    er.content,
-                    COUNT(CASE WHEN err.requestedDate IS NOT NULL THEN 1 END) AS sentCount,
-                    MAX(err.requestedDate) AS lastSentDate
-                FROM emr_client c
-                LEFT JOIN emr_external_record er ON c.id = er.clientId
-                LEFT JOIN emr_external_record_request err ON c.id = err.clientId
-                GROUP BY c.id, c.recordsNeeded, c.asdAdhd, er.content
-            """
-            cursor.execute(sql)
-            results = cursor.fetchall()
+    with db_connection, db_connection.cursor() as cursor:
+        sql = """
+            SELECT
+                c.id,
+                c.recordsNeeded,
+                c.asdAdhd,
+                er.content,
+                COUNT(CASE WHEN err.requestedDate IS NOT NULL THEN 1 END) AS sentCount,
+                MAX(err.requestedDate) AS lastSentDate
+            FROM emr_client c
+            LEFT JOIN emr_external_record er ON c.id = er.clientId
+            LEFT JOIN emr_external_record_request err ON c.id = err.clientId
+            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, er.content
+        """
+        cursor.execute(sql)
+        results = cursor.fetchall()
 
-            for row in results:
-                client_id = str(row["id"])
-                records_needed = row["recordsNeeded"]
-                asd_adhd = row["asdAdhd"]
-                content = row["content"]
-                sent_count = row["sentCount"]
-                last_sent_date = row["lastSentDate"]
+        for row in results:
+            client_id = str(row["id"])
+            records_needed = row["recordsNeeded"]
+            asd_adhd = row["asdAdhd"]
+            content = row["content"]
+            sent_count = row["sentCount"]
+            last_sent_date = row["lastSentDate"]
 
-                if records_needed == "Not Needed":
-                    statuses[client_id] = "Ready"
-                elif asd_adhd == "ADHD":
-                    statuses[client_id] = "Ready"
-                elif content is not None:
-                    statuses[client_id] = "Ready"
-                elif sent_count >= 2:
-                    statuses[client_id] = (
-                        f"Records needed, requested again on {last_sent_date}, but not yet received"
-                    )
-                elif sent_count == 1:
-                    statuses[client_id] = (
-                        f"Records needed, requested on {last_sent_date}, but not yet received"
-                    )
-                else:
-                    statuses[client_id] = "Records needed but not yet requested"
+            if (
+                records_needed == "Not Needed"
+                or asd_adhd == "ADHD"
+                or content is not None
+            ):
+                statuses[client_id] = "Ready"
+            elif sent_count >= 2:
+                statuses[client_id] = (
+                    f"Records needed, requested again on {last_sent_date}, but not yet received"
+                )
+            elif sent_count == 1:
+                statuses[client_id] = (
+                    f"Records needed, requested on {last_sent_date}, but not yet received"
+                )
+            else:
+                statuses[client_id] = "Records needed but not yet requested"
 
     return statuses
 
@@ -254,7 +249,7 @@ def get_all_evaluators_info(config: Config) -> dict[int, dict]:
                     evaluators_info[npi] = row
 
     except Exception:
-        logger.exception(f"Failed to get all evaluators info")
+        logger.exception("Failed to get all evaluators info")
 
     return evaluators_info
 
@@ -265,9 +260,8 @@ def get_appointments(
     """Fetch appointments within the given date range and associated client names."""
     try:
         connection = get_db(config)
-        with connection:
-            with connection.cursor() as cursor:
-                sql = """
+        with connection, connection.cursor() as cursor:
+            sql = """
                     SELECT
                         a.*,
                         c.fullName as clientName
@@ -277,18 +271,18 @@ def get_appointments(
                     WHERE
                         a.startTime >= %s AND a.endTime <= %s + INTERVAL 1 DAY
                 """
-                cursor.execute(sql, (start_date, end_date))
-                results = cursor.fetchall()
+            cursor.execute(sql, (start_date, end_date))
+            results = cursor.fetchall()
 
-                appointments = []
-                for row in results:
-                    appointment = Appointment(**row)
-                    appointments.append(appointment)
+            appointments = []
+            for row in results:
+                appointment = Appointment(**row)
+                appointments.append(appointment)
 
-                return appointments
+            return appointments
     except Exception:
         logger.exception("Failed to fetch appointments and associated client names.")
-        return
+        return None
 
 
 def insert_basic_client(
@@ -432,17 +426,16 @@ def add_failure_to_db(
 ):
     """Adds the information given to the DB."""
     db_connection = get_db(config)
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = """INSERT INTO emr_failure (clientId, daEval, reason, failedDate)
+    with db_connection, db_connection.cursor() as cursor:
+        sql = """INSERT INTO emr_failure (clientId, daEval, reason, failedDate)
             VALUES (%s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
             daEval=VALUES(daEval),
             updated_at = NOW();
             """
-            values = (client_id, da_eval, error, failed_date)
-            cursor.execute(sql, values)
-            db_connection.commit()
+        values = (client_id, da_eval, error, failed_date)
+        cursor.execute(sql, values)
+        db_connection.commit()
 
 
 def update_failure_in_db(
@@ -457,39 +450,38 @@ def update_failure_in_db(
 ):
     """Updates the failure in the DB."""
     db_connection = get_db(config)
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            sql = "UPDATE emr_failure SET "
-            values = ()
+    with db_connection, db_connection.cursor() as cursor:
+        sql = "UPDATE emr_failure SET "
+        values = ()
 
-            updates = []
-            if da_eval is not None:
-                updates.append("daEval=%s")
-                values += (da_eval,)
+        updates = []
+        if da_eval is not None:
+            updates.append("daEval=%s")
+            values += (da_eval,)
 
-            if failed_date is not None:
-                updates.append("failedDate=%s")
-                values += (failed_date,)
+        if failed_date is not None:
+            updates.append("failedDate=%s")
+            values += (failed_date,)
 
-            if resolved is True:
-                updates.append("reminded=reminded + 100")
-            elif reminded is not None:
-                updates.append("reminded=%s")
-                values += (reminded,)
+        if resolved is True:
+            updates.append("reminded=reminded + 100")
+        elif reminded is not None:
+            updates.append("reminded=%s")
+            values += (reminded,)
 
-            if last_reminded is not None:
-                updates.append("lastReminded=%s")
-                values += (last_reminded,)
+        if last_reminded is not None:
+            updates.append("lastReminded=%s")
+            values += (last_reminded,)
 
-            if not updates:
-                updates.append("updated_at = NOW()")
+        if not updates:
+            updates.append("updated_at = NOW()")
 
-            sql += ", ".join(updates)
-            sql += " WHERE clientId=%s AND reason=%s"
-            values += (client_id, reason)
+        sql += ", ".join(updates)
+        sql += " WHERE clientId=%s AND reason=%s"
+        values += (client_id, reason)
 
-            cursor.execute(sql, values)
-            db_connection.commit()
+        cursor.execute(sql, values)
+        db_connection.commit()
 
 
 def get_questionnaire_rules(config: Config) -> list[dict]:
@@ -498,12 +490,11 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
     Returns a list of dicts with keys: daeval, diagnosis, minAge, maxAge, questionnaires (list[str]).
     """
     db_connection = get_db(config)
-    with db_connection:
-        with db_connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT daeval, diagnosis, minAge, maxAge, questionnaires FROM emr_questionnaire_rule"
-            )
-            rows = cursor.fetchall()
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT daeval, diagnosis, minAge, maxAge, questionnaires FROM emr_questionnaire_rule"
+        )
+        rows = cursor.fetchall()
 
     rules = []
     for row in rows:

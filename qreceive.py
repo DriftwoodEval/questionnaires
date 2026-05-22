@@ -76,7 +76,7 @@ def build_q_message(
             ]
         ]
     )
-    # is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)
+    # is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)  # noqa: ERA001 maybe someday
     is_spanish = False
     is_postda = any(q["status"] == "POSTDA_PENDING" for q in client.questionnaires)
     is_posteval = any(q["status"] == "POSTEVAL_PENDING" for q in client.questionnaires)
@@ -171,13 +171,10 @@ def build_failure_message(config: Config, client: FailedClientFromDB) -> str | N
     """Builds a message to be sent to the client based on their failure."""
     for failure_data in client.failure:
         reason = failure_data["reason"]
-        message = None
         if reason == "portal not opened":
-            message = f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
-            return message
-        elif reason == "docs not signed":
-            message = f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
-            return message
+            return f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
+        if reason == "docs not signed":
+            return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
 
     return None
 
@@ -196,8 +193,7 @@ def should_send_reminder(reminded_count: int, last_reminded_distance: int) -> bo
             f"Reminder should be sent because client has been reminded {reminded_count} times, and it has been {last_reminded_distance} days since the last reminder"
         )
         return True
-    else:
-        return False
+    return False
 
 
 def check_failures(
@@ -277,7 +273,7 @@ def main():
         numbers_sent = []
 
         if failed_clients:
-            for _, client in failed_clients.items():
+            for client in failed_clients.values():
                 if any(
                     failure["reason"] in ["portal not opened", "docs not signed"]
                     for failure in client.failure
@@ -411,7 +407,7 @@ def main():
 
         if clients:
             clients = validate_questionnaires(clients)
-            for _, client in clients.items():
+            for client in clients.values():
                 done = all_questionnaires_done(client)
 
                 if check_if_ignoring(client):
@@ -468,56 +464,54 @@ def main():
                         most_recent_q["reminded"] < 3
                         and not already_messaged_today
                         and client.phoneNumber
-                    ):
-                        if should_send_reminder(
+                        and should_send_reminder(
                             most_recent_q["reminded"], last_reminded_distance
-                        ):
-                            logger.info(f"Sending reminder TO {client.fullName}")
-                            message = build_q_message(
-                                config, client, most_recent_q, distance
+                        )
+                    ):
+                        logger.info(f"Sending reminder TO {client.fullName}")
+                        message = build_q_message(
+                            config, client, most_recent_q, distance
+                        )
+                        # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                        if not message:
+                            logger.error(
+                                f"Failed to build message for {client.fullName}"
                             )
-                            # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                            if not message:
-                                logger.error(
-                                    f"Failed to build message for {client.fullName}"
-                                )
-                                continue
+                            continue
 
-                            try:
-                                attempt_text = openphone.send_text(
-                                    message, client.phoneNumber, mark_done=True
-                                )
+                        try:
+                            attempt_text = openphone.send_text(
+                                message, client.phoneNumber, mark_done=True
+                            )
 
-                                if attempt_text and "id" in attempt_text:
-                                    numbers_sent.append(client.phoneNumber)
-                                    messages_sent.append(
-                                        (client, attempt_text["id"], None)
-                                    )
-                                else:
-                                    logger.error(
-                                        f"Failed to send message to {client.fullName}"
-                                    )
-                                    email_info["failed"].append(
-                                        (client, "Failed to send text request")
-                                    )
-                            except InvalidPhoneNumberError as e:
+                            if attempt_text and "id" in attempt_text:
+                                numbers_sent.append(client.phoneNumber)
+                                messages_sent.append((client, attempt_text["id"], None))
+                            else:
                                 logger.error(
-                                    f"Invalid phone number for {client.fullName}: {e}"
+                                    f"Failed to send message to {client.fullName}"
                                 )
                                 email_info["failed"].append(
-                                    (
-                                        client,
-                                        f"Invalid phone number: {client.phoneNumber}",
-                                    )
+                                    (client, "Failed to send text request")
                                 )
-                            except NotEnoughCreditsError:
-                                logger.critical(
-                                    "Aborting all further message sends due to insufficient credits."
+                        except InvalidPhoneNumberError as e:
+                            logger.error(
+                                f"Invalid phone number for {client.fullName}: {e}"
+                            )
+                            email_info["failed"].append(
+                                (
+                                    client,
+                                    f"Invalid phone number: {client.phoneNumber}",
                                 )
-                                email_info["errors"].append(
-                                    "OpenPhone API needs more credits to send messages."
-                                )
-                                break
+                            )
+                        except NotEnoughCreditsError:
+                            logger.critical(
+                                "Aborting all further message sends due to insufficient credits."
+                            )
+                            email_info["errors"].append(
+                                "OpenPhone API needs more credits to send messages."
+                            )
+                            break
                 elif client in email_info["completed"]:
                     if len(client.questionnaires) > 2:
                         update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")

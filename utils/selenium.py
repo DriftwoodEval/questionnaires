@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 from time import sleep
 
 from loguru import logger
@@ -14,7 +15,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 
@@ -35,7 +36,7 @@ def initialize_selenium() -> tuple[WebDriver, ActionChains]:
     chrome_options.add_experimental_option(
         "prefs",
         {
-            "download.default_directory": f"{os.getcwd()}/put/downloads",
+            "download.default_directory": str(Path.cwd() / "put" / "downloads"),
             "download.prompt_for_download": False,
             "download.directory_upgrade": True,
             "safebrowsing.enabled": True,
@@ -53,12 +54,11 @@ def find_element(
     by: str,
     locator: str,
     timeout: int = 5,
-    condition=EC.presence_of_element_located,
+    condition=ec.presence_of_element_located,
 ) -> WebElement:
     """Find a web element using an explicit wait."""
     try:
-        element = WebDriverWait(driver, timeout).until(condition((by, locator)))
-        return element
+        return WebDriverWait(driver, timeout).until(condition((by, locator)))
     except TimeoutException as e:
         logger.warning(
             f"Timeout ({timeout}s) waiting for element with {by}='{locator}'."
@@ -71,7 +71,7 @@ def find_element_exists(
     by: str,
     locator: str,
     timeout: int = 5,
-    condition=EC.presence_of_element_located,
+    condition=ec.presence_of_element_located,
 ) -> bool:
     """Check if a web element exists using an explicit wait."""
     try:
@@ -94,7 +94,7 @@ def click_element(
     for attempt in range(max_attempts):
         try:
             element = find_element(
-                driver, by, locator, timeout, condition=EC.element_to_be_clickable
+                driver, by, locator, timeout, condition=ec.element_to_be_clickable
             )
             if scroll:
                 driver.execute_script(
@@ -118,11 +118,10 @@ def click_element(
         ) as e:
             if attempt == max_attempts - 1:
                 raise e
-            else:
-                logger.warning(
-                    f"Click element failed ({type(e).__name__}): trying again after 1s."
-                )
-                sleep(1)
+            logger.warning(
+                f"Click element failed ({type(e).__name__}): trying again after 1s."
+            )
+            sleep(1)
 
 
 def wait_for_page_load(driver: WebDriver, timeout: int = 15) -> bool:
@@ -171,10 +170,10 @@ def wait_for_url_stability(
     return driver.current_url
 
 
-def save_screenshot_to_path(driver: WebDriver, filepath: str) -> None:
+def save_screenshot_to_path(driver: WebDriver, filepath: Path) -> None:
     """Save a screenshot of the current page to the specified path."""
     try:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        Path.mkdir(filepath.parent, exist_ok=True)
         driver.save_screenshot(filepath)
         logger.info(f"Screenshot saved to {filepath}")
     except Exception as e:

@@ -1,7 +1,7 @@
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
+from pathlib import Path
 from typing import cast
 from urllib.parse import urlparse
 
@@ -13,7 +13,7 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.custom_types import (
@@ -43,7 +43,7 @@ def filter_inactive_and_not_pending(
     clients: dict[int, ClientWithQuestionnaires],
 ) -> dict[int, ClientWithQuestionnaires]:
     """Filter out clients that are inactive and don't have pending, rescheduled, or ignoring questionnaires."""
-    filtered_clients = {
+    return {
         client.id: client
         for client in clients.values()
         if client.status is True
@@ -61,7 +61,6 @@ def filter_inactive_and_not_pending(
             if isinstance(q, dict)
         )
     }
-    return filtered_clients
 
 
 def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
@@ -135,7 +134,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
     def capture_outcome(status: str):
         filename = generate_screenshot_filename(status, q_type, q_link)
-        save_screenshot_to_path(driver, os.path.join("logs/screenshots", filename))
+        save_screenshot_to_path(driver, Path("logs/screenshots", filename))
 
     try:
         driver.get(q_link)
@@ -155,7 +154,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         for host_key, xpath in completion_xpaths.items():
             if host_key in link_host:
                 logger.info(f"Checking {host_key} completion for {q_link}")
-                wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                wait.until(ec.presence_of_element_located((By.XPATH, xpath)))
                 logger.info(f"Completion found for {q_link}: {xpath}")
                 capture_outcome("COMPLETED")
                 return True
@@ -248,11 +247,10 @@ def check_questionnaires(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is COMPLETED"
                     )
                     return client.id, True
-                else:
-                    logger.warning(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
-                    )
-                    return client.id, False
+                logger.warning(
+                    f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                )
+                return client.id, False
             finally:
                 q_driver.quit()
         except Exception as e:
