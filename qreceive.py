@@ -18,6 +18,7 @@ from utils.custom_types import (
 from utils.database import (
     get_most_recent_failure,
     get_previous_clients,
+    log_questionnaire_msg,
     update_failure_in_db,
     update_questionnaires_in_db,
 )
@@ -378,6 +379,18 @@ def main():
                                     messages_sent.append(
                                         (client, attempt_text["id"], reason)
                                     )
+                                    try:
+                                        log_questionnaire_msg(
+                                            config,
+                                            client.id,
+                                            attempt_text["id"],
+                                            is_failure_reminder=True,
+                                            failure_reason=reason,
+                                        )
+                                    except Exception as log_err:
+                                        logger.error(
+                                            f"Failed to log automated message: {log_err}"
+                                        )
 
                                 else:
                                     logger.error(
@@ -487,6 +500,17 @@ def main():
                             if attempt_text and "id" in attempt_text:
                                 numbers_sent.append(client.phoneNumber)
                                 messages_sent.append((client, attempt_text["id"], None))
+                                try:
+                                    log_questionnaire_msg(
+                                        config,
+                                        client.id,
+                                        attempt_text["id"],
+                                        is_failure_reminder=False,
+                                    )
+                                except Exception as log_err:
+                                    logger.error(
+                                        f"Failed to log automated message: {log_err}"
+                                    )
                             else:
                                 logger.error(
                                     f"Failed to send message to {client.fullName}"

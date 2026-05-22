@@ -484,6 +484,23 @@ def update_failure_in_db(
         db_connection.commit()
 
 
+def log_questionnaire_msg(
+    config: Config,
+    client_id: int,
+    openphone_message_id: str,
+    is_failure_reminder: bool = False,
+    failure_reason: str | None = None,
+) -> None:
+    """Logs an automated questionnaire or failure reminder message to the DB."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT IGNORE INTO emr_questionnaire_msg_logs (clientId, openphoneMessageId, isFailureReminder, failureReason, sentAt) VALUES (%s, %s, %s, %s, NOW())",
+            (client_id, openphone_message_id, int(is_failure_reminder), failure_reason),
+        )
+        db_connection.commit()
+
+
 def get_questionnaire_rules(config: Config) -> list[dict]:
     """Load questionnaire assignment rules from the database.
 
