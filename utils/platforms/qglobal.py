@@ -43,9 +43,10 @@ def check_and_login_qglobal(
 ) -> None:
     """Check if logged in to QGlobal and log in if not."""
     qglobal_url = "https://qglobal.pearsonassessments.com"
+    login_url = "http://qglobal.pearsonassessments.com/qg/welcome.seam"
     if first_time:
         logger.debug("First time login to QGlobal, opening URL.")
-        driver.get(qglobal_url)
+        driver.get(login_url)
         login_qglobal(driver)
         return
     try:
@@ -57,6 +58,7 @@ def check_and_login_qglobal(
         logger.debug(
             "Not logged in to QGlobal or Search link not visible, waiting for manual login."
         )
+        driver.get(login_url)
         login_qglobal(driver)
 
 
