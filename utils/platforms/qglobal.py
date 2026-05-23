@@ -7,11 +7,12 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
 )
+from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
 
-from utils.custom_types import Config
+from utils.custom_types import Config, Services
 from utils.selenium import (
     click_element,
     find_element,
@@ -36,6 +37,8 @@ def login_qglobal(driver: WebDriver) -> None:
 
 def check_and_login_qglobal(
     driver: WebDriver,
+    actions: ActionChains | None = None,  # noqa: ARG001 Needs to match function signature of other logins
+    services: Services | None = None,  # noqa: ARG001
     first_time: bool = False,
 ) -> None:
     """Check if logged in to QGlobal and log in if not."""
