@@ -262,8 +262,8 @@ class ClientWithQuestionnaires(_SharedClientFromDB):
     questionnaires: list[Questionnaire]
 
     @field_validator("questionnaires")
-    def validate_questionnaires(self, v: list[Questionnaire]) -> list[Questionnaire]:
-        """Validate that the client has questionnaires."""
+    @classmethod
+    def validate_questionnaires(cls, v: list[Questionnaire]) -> list[Questionnaire]:
         if not v:
             raise ValueError("Client has no questionnaires")
         return v
@@ -276,8 +276,8 @@ class FailedClientFromDB(ClientFromDB):
     note: dict | None = None
 
     @field_validator("failure")
-    def validate_failure(self, v: list[Failure]) -> list[Failure]:
-        """Validate that the client has at least one failure."""
+    @classmethod
+    def validate_failure(cls, v: list[Failure]) -> list[Failure]:
         if not v:
             raise ValueError("Client has no failures")
         return v
