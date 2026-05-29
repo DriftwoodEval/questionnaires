@@ -12,7 +12,6 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
 )
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 
@@ -242,45 +241,27 @@ def get_questionnaires(
 
 def assign_questionnaire(
     driver: WebDriver,
-    actions: ActionChains,
     config: Config,
     services: Services,
     client: pd.Series,
     questionnaire: str,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
-    """Generate a questionnaire and assign it to a client.
-
-    Args:
-       driver (WebDriver): The Selenium WebDriver instance used for
-           browser automation.
-       actions (ActionChains): The ActionChains instance used for
-           simulating user actions.
-       config (Config): The configuration object.
-       services (Services): The services object.
-       client (pd.Series): A Pandas Series containing the client's data.
-       questionnaire (str): The type of questionnaire to be added to MHS.
-       accounts_created (dict[str, bool]): A dictionary containing the
-           status of accounts created for the client.
-
-    Returns:
-        tuple[str, dict[str, bool]]: A tuple containing the assigned
-            questionnaire and the updated accounts_created dictionary.
-    """
+    """Generate a questionnaire and assign it to a client."""
     logger.info(
         f"Assigning questionnaire '{questionnaire}' to {client['TA First Name']} {client['TA Last Name']}"
     )
 
     if questionnaire == "Conners EC":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_conners_ec(driver, actions, services, client, accounts_created)
+        return gen_conners_ec(driver, services, client, accounts_created)
     if questionnaire == "Conners 4":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_conners_4(driver, actions, services, client, accounts_created)
+        return gen_conners_4(driver, services, client, accounts_created)
     if questionnaire == "Conners 4 Self":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_conners_4(
-            driver, actions, services, client, accounts_created, self_report=True
+            driver, services, client, accounts_created, self_report=True
         )
     if questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
@@ -308,10 +289,10 @@ def assign_questionnaire(
         return gen_basc_adolescent(driver, config, client), accounts_created
     if questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_asrs_2_5(driver, actions, services, client, accounts_created)
+        return gen_asrs_2_5(driver, services, client, accounts_created)
     if questionnaire == "ASRS (6-18 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_asrs_6_18(driver, actions, services, client, accounts_created)
+        return gen_asrs_6_18(driver, services, client, accounts_created)
     if questionnaire == "Vineland":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
         if not accounts_created.get("qglobal"):
@@ -322,10 +303,10 @@ def assign_questionnaire(
         return gen_vineland(driver, config, client), accounts_created
     if questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
-        return gen_caars_2(driver, actions, services, client, accounts_created)
+        return gen_caars_2(driver, services, client, accounts_created)
     if questionnaire == "DP-4":
         logger.debug(f"Navigating to WPS for {questionnaire}")
-        check_and_login_wps(driver, actions, services)
+        check_and_login_wps(driver, services)
         return gen_dp4(driver, config, client), accounts_created
     logger.critical("Unexpected questionnaire type encountered")
     raise ValueError("Unsupported questionnaire type")
@@ -533,7 +514,7 @@ def main(
 
     """
     services, config = load_config()
-    driver, actions = initialize_selenium()
+    driver, _ = initialize_selenium()
 
     clients = get_clients_to_send(
         config, interactive=interactive, client_filter=client_filter
@@ -553,7 +534,7 @@ def main(
     ]:
         while True:
             try:
-                login(driver, actions, services, first_time=True)
+                login(driver, services, first_time=True)
                 sleep(1)
                 break
             except Exception as e:
@@ -650,7 +631,7 @@ def main(
             if client["Language"] != "Spanish":
                 # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
                 client_url = go_to_client(
-                    driver, actions, services, client["Client ID"]
+                    driver, services, client["Client ID"]
                 )
                 if not client_url:
                     logger.error("Client URL not found")
@@ -882,7 +863,6 @@ def main(
                 try:
                     link, accounts_created = assign_questionnaire(
                         driver,
-                        actions,
                         config,
                         services,
                         client,

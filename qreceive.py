@@ -4,7 +4,6 @@ from datetime import date, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
 from loguru import logger
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from utils.custom_types import (
@@ -202,7 +201,6 @@ def check_failures(
     config: Config,
     services: Services,
     driver: WebDriver,
-    actions: ActionChains,
     failed_clients: dict[int, FailedClientFromDB],
 ):
     """Checks the failures of clients and updates them in the database."""
@@ -216,7 +214,7 @@ def check_failures(
             is_resolved = False
 
             if reason in ["portal not opened", "docs not signed"]:
-                go_to_client(driver, actions, services, str(client_id))
+                go_to_client(driver, services, str(client_id))
                 if reason == "portal not opened":
                     is_resolved = check_if_opened_portal(driver)
                 elif reason == "docs not signed":
@@ -285,10 +283,9 @@ def main():
 
         # Check failures and update in DB
         driver = None
-        actions = None
         if not skip_failures:
-            driver, actions = initialize_selenium()
-            check_failures(config, services, driver, actions, failed_clients)
+            driver, _ = initialize_selenium()
+            check_failures(config, services, driver, failed_clients)
 
         # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config, failed=True)
@@ -375,9 +372,9 @@ def main():
                             if reason == "portal not opened":
                                 if not dry_run:
                                     try:
-                                        assert driver is not None and actions is not None
+                                        assert driver is not None
                                         resend_portal_invite(
-                                            driver, actions, services, str(client.id)
+                                            driver, services, str(client.id)
                                         )
                                     except Exception as e:
                                         logger.error(

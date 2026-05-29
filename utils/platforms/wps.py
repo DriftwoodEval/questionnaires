@@ -21,8 +21,9 @@ from utils.selenium import (
 )
 
 
-def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> None:
+def login_wps(driver: WebDriver, services: Services) -> None:
     """Log in to WPS."""
+    actions = ActionChains(driver)
     set_local_storage_item(
         driver,
         "savedTours",
@@ -45,7 +46,6 @@ def login_wps(driver: WebDriver, actions: ActionChains, services: Services) -> N
 
 def check_and_login_wps(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     first_time: bool = False,
 ) -> None:
@@ -54,8 +54,7 @@ def check_and_login_wps(
     if first_time:
         logger.debug("First time login to WPS, logging in now.")
         driver.get(wps_url)
-
-        login_wps(driver, actions, services)
+        login_wps(driver, services)
         return
     try:
         logger.debug("Checking if logged in to WPS")
@@ -73,7 +72,7 @@ def check_and_login_wps(
         logger.debug("Already logged in to WPS")
     except (NoSuchElementException, TimeoutException):
         logger.debug("Not logged in to WPS, logging in now.")
-        login_wps(driver, actions, services)
+        login_wps(driver, services)
 
 
 def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:

@@ -19,18 +19,11 @@ from utils.selenium import (
 
 def login_ta(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     admin: bool = False,
 ) -> None:
-    """Log in to TherapyAppointment.
-
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance used for browser automation.
-        actions (ActionChains): The ActionChains instance used for simulating user actions.
-        services (Services): The configuration object containing the TherapyAppointment credentials.
-        admin (bool, optional): Whether to log in as an admin user. Defaults to False.
-    """
+    """Log in to TherapyAppointment."""
+    actions = ActionChains(driver)
     logger.debug("Entering username")
     username_field = find_element(driver, By.NAME, "user_username")
     username_field.send_keys(
@@ -54,7 +47,6 @@ def login_ta(
 
 def check_and_login_ta(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     first_time: bool = False,
     admin: bool = False,
@@ -64,7 +56,7 @@ def check_and_login_ta(
     if first_time:
         logger.debug("First time login to TherapyAppointment, logging in now.")
         driver.get(ta_url)
-        login_ta(driver, actions, services, admin)
+        login_ta(driver, services, admin)
         return
     try:
         logger.debug("Checking if logged in to TherapyAppointment")
@@ -73,17 +65,16 @@ def check_and_login_ta(
         logger.debug("Already logged in to TherapyAppointment")
     except (NoSuchElementException, TimeoutException):
         logger.debug("Not logged in to TherapyAppointment, logging in now.")
-        login_ta(driver, actions, services, admin)
+        login_ta(driver, services, admin)
 
 
 def go_to_client(
-    driver: WebDriver, actions: ActionChains, services: Services, client_id: str
+    driver: WebDriver, services: Services, client_id: str
 ) -> str | None:
     """Navigates to the given client in TA and returns the client's URL."""
 
-    def _search_clients(
-        driver: WebDriver, actions: ActionChains, client_id: str
-    ) -> None:
+    def _search_clients(driver: WebDriver, client_id: str) -> None:
+        actions = ActionChains(driver)
         logger.info(f"Searching for {client_id} on TA")
         sleep(2)
 
@@ -104,16 +95,16 @@ def go_to_client(
         click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
 
     def _go_to_client_loop(
-        driver: WebDriver, actions: ActionChains, services: Services, client_id: str
+        driver: WebDriver, services: Services, client_id: str
     ) -> str:
-        check_and_login_ta(driver, actions, services)
+        check_and_login_ta(driver, services)
         sleep(1)
         logger.debug("Navigating to Clients section")
         click_element(driver, By.XPATH, "//*[contains(text(), 'Clients')]")
 
         for attempt in range(3):
             try:
-                _search_clients(driver, actions, client_id)
+                _search_clients(driver, client_id)
                 break
             except Exception as e:
                 if attempt == 2:
@@ -139,7 +130,7 @@ def go_to_client(
 
     for attempt in range(3):
         try:
-            return _go_to_client_loop(driver, actions, services, client_id)
+            return _go_to_client_loop(driver, services, client_id)
         except Exception as e:
             if attempt == 2:
                 logger.error(f"Failed to go to client after 3 attempts: {e}")
@@ -177,10 +168,10 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
 
 
 def resend_portal_invite(
-    driver: WebDriver, actions: ActionChains, services: Services, client_id: str
+    driver: WebDriver, services: Services, client_id: str
 ) -> None:
     """Resend the TA portal invite to the client."""
-    go_to_client(driver, actions, services, client_id)
+    go_to_client(driver, services, client_id)
     try:
         click_element(
             driver,

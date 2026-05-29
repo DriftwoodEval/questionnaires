@@ -22,8 +22,9 @@ from utils.selenium import (
 )
 
 
-def login_mhs(driver: WebDriver, actions: ActionChains, services: Services) -> None:
+def login_mhs(driver: WebDriver, services: Services) -> None:
     """Log in to MHS."""
+    actions = ActionChains(driver)
     logger.debug("Entering username")
     username = find_element(driver, By.NAME, "txtUsername")
 
@@ -39,7 +40,6 @@ def login_mhs(driver: WebDriver, actions: ActionChains, services: Services) -> N
 
 def check_and_login_mhs(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     first_time: bool = False,
 ) -> None:
@@ -48,7 +48,7 @@ def check_and_login_mhs(
     if first_time:
         logger.debug("First time login to MHS, logging in now.")
         driver.get(mhs_url)
-        login_mhs(driver, actions, services)
+        login_mhs(driver, services)
         return
     try:
         logger.debug("Checking if logged in to MHS")
@@ -62,12 +62,11 @@ def check_and_login_mhs(
         logger.debug("Already logged in to MHS")
     except (NoSuchElementException, TimeoutException):
         logger.debug("Not logged in to MHS, logging in now.")
-        login_mhs(driver, actions, services)
+        login_mhs(driver, services)
 
 
 def add_client_to_mhs(
     driver: WebDriver,
-    actions: ActionChains,
     client: pd.Series,
     questionnaire: str,
     accounts_created: dict[str, bool],
@@ -79,8 +78,9 @@ def add_client_to_mhs(
     """
 
     def _add_to_existing(
-        driver: WebDriver, actions: ActionChains, client: pd.Series, questionnaire: str
+        driver: WebDriver, client: pd.Series, questionnaire: str
     ) -> bool:
+        actions = ActionChains(driver)
         logger.debug("Client already exists, adding to existing")
         click_element(
             driver,
@@ -218,7 +218,7 @@ def add_client_to_mhs(
         return True
 
     if accounts_created.get("mhs"):
-        return _add_to_existing(driver, actions, client, questionnaire)
+        return _add_to_existing(driver, client, questionnaire)
 
     logger.info(
         f"Attempting to add {client['TA First Name']} {client['TA Last Name']} to MHS"
@@ -300,7 +300,7 @@ def add_client_to_mhs(
     except TimeoutException:
         logger.success("Added to MHS")
         return True
-    return _add_to_existing(driver, actions, client, questionnaire)
+    return _add_to_existing(driver, client, questionnaire)
 
 
 # Maps our internal questionnaire type names to their MHS Completed Assessments display
@@ -334,7 +334,7 @@ def check_mhs_completed(
     )
 
     try:
-        check_and_login_mhs(driver, actions, services)
+        check_and_login_mhs(driver, services)
 
         click_element(
             driver,
@@ -376,13 +376,12 @@ def check_mhs_completed(
 
 def gen_conners_ec(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners EC assessment for the given client and returns the link."""
-    check_and_login_mhs(driver, actions, services)
+    check_and_login_mhs(driver, services)
     logger.info(
         f"Generating Conners EC for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -401,7 +400,7 @@ def gen_conners_ec(
     )
 
     accounts_created["mhs"] = add_client_to_mhs(
-        driver, actions, client, "Conners EC", accounts_created
+        driver, client, "Conners EC", accounts_created
     )
 
     logger.debug("Selecting assessment description")
@@ -462,14 +461,13 @@ def gen_conners_ec(
 
 def gen_conners_4(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     client: pd.Series,
     accounts_created: dict,
     self_report: bool = False,
 ) -> tuple[str, dict[str, bool]]:
     """Generates a Conners 4 (or Conners 4 Self-Report) assessment for the given client and returns the link."""
-    check_and_login_mhs(driver, actions, services)
+    check_and_login_mhs(driver, services)
     logger.info(
         f"Generating Conners 4{'Self' if self_report else ''} for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -488,7 +486,7 @@ def gen_conners_4(
     )
 
     accounts_created["mhs"] = add_client_to_mhs(
-        driver, actions, client, "Conners 4", accounts_created
+        driver, client, "Conners 4", accounts_created
     )
 
     logger.debug("Selecting assessment description")
@@ -542,13 +540,12 @@ def gen_conners_4(
 
 def gen_asrs_2_5(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates an ASRS 2-5 assessment for the given client and returns the link."""
-    check_and_login_mhs(driver, actions, services)
+    check_and_login_mhs(driver, services)
     logger.info(
         f"Generating ASRS (2-5 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -565,7 +562,7 @@ def gen_asrs_2_5(
     )
 
     accounts_created["mhs"] = add_client_to_mhs(
-        driver, actions, client, "ASRS", accounts_created
+        driver, client, "ASRS", accounts_created
     )
 
     logger.debug("Selecting assessment description")
@@ -632,13 +629,12 @@ def gen_asrs_2_5(
 
 def gen_asrs_6_18(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates an ASRS 6-18 assessment for the given client and returns the link."""
-    check_and_login_mhs(driver, actions, services)
+    check_and_login_mhs(driver, services)
     logger.info(
         f"Generating ASRS (6-18 Years) for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -655,7 +651,7 @@ def gen_asrs_6_18(
     )
 
     accounts_created["mhs"] = add_client_to_mhs(
-        driver, actions, client, "ASRS", accounts_created
+        driver, client, "ASRS", accounts_created
     )
     sleep(1)
 
@@ -722,13 +718,12 @@ def gen_asrs_6_18(
 
 def gen_caars_2(
     driver: WebDriver,
-    actions: ActionChains,
     services: Services,
     client: pd.Series,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generates a CAARS 2 assessment for the given client and returns the link."""
-    check_and_login_mhs(driver, actions, services)
+    check_and_login_mhs(driver, services)
     logger.info(
         f"Generating CAARS 2 for {client['TA First Name']} {client['TA Last Name']}"
     )
@@ -747,7 +742,7 @@ def gen_caars_2(
     )
 
     accounts_created["mhs"] = add_client_to_mhs(
-        driver, actions, client, "CAARS 2", accounts_created
+        driver, client, "CAARS 2", accounts_created
     )
 
     logger.debug("Selecting assessment description")
