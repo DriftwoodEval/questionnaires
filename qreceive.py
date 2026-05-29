@@ -1,3 +1,4 @@
+import argparse
 import sys
 from datetime import date, datetime, timedelta
 
@@ -231,12 +232,33 @@ def check_failures(
                 update_failure_in_db(config, client_id, reason, resolved=True)
                 logger.info(f"Resolved failure for {client.fullName}")
             else:
-                # This updates the checked date
                 update_failure_in_db(config, client_id, reason)
 
 
 def main():
     """Main function for qreceive.py."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without sending texts, updating the punch list, or writing reminder state to the DB.",
+    )
+    parser.add_argument(
+        "--skip-failures",
+        action="store_true",
+        help="Skip checking on and sending reminders for failures; only process questionnaire completion.",
+    )
+    args = parser.parse_args()
+    dry_run = args.dry_run
+    skip_failures = args.skip_failures
+
+    if dry_run:
+        logger.warning(
+            "DRY RUN - no texts, punch list updates, or reminder DB writes will occur."
+        )
+    if skip_failures:
+        logger.warning("SKIP FAILURES - failure checks and reminders will be skipped.")
+
     services, config = load_config()
     openphone = OpenPhone(config, services)
     email_info: AdminEmailInfo = {
@@ -258,12 +280,15 @@ def main():
         clients = filter_inactive_and_not_pending(clients)
 
         email_info["completed"], email_info["errors"] = check_questionnaires(
-            config, clients
+            config, clients, services, dry_run=dry_run
         )
 
         # Check failures and update in DB
-        driver, actions = initialize_selenium()
-        check_failures(config, services, driver, actions, failed_clients)
+        driver = None
+        actions = None
+        if not skip_failures:
+            driver, actions = initialize_selenium()
+            check_failures(config, services, driver, actions, failed_clients)
 
         # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config, failed=True)
@@ -273,7 +298,7 @@ def main():
         ] = []
         numbers_sent = []
 
-        if failed_clients:
+        if failed_clients and not skip_failures:
             for client in failed_clients.values():
                 if any(
                     failure["reason"] in ["portal not opened", "docs not signed"]
@@ -348,18 +373,24 @@ def main():
                         if should_send_reminder(reminded_count, last_reminded_distance):
                             logger.info(f"Sending reminder TO {client.fullName}")
                             if reason == "portal not opened":
-                                try:
-                                    resend_portal_invite(
-                                        driver, actions, services, str(client.id)
+                                if not dry_run:
+                                    try:
+                                        assert driver is not None and actions is not None
+                                        resend_portal_invite(
+                                            driver, actions, services, str(client.id)
+                                        )
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Failed to resend invite for {client.fullName}: {e}"
+                                        )
+                                        email_info["failed"].append(
+                                            (client, "Failed to resend invite")
+                                        )
+                                        continue
+                                else:
+                                    logger.info(
+                                        f"[DRY RUN] Would resend portal invite for {client.fullName}"
                                     )
-                                except Exception as e:
-                                    logger.error(
-                                        f"Failed to resend invite for {client.fullName}: {e}"
-                                    )
-                                    email_info["failed"].append(
-                                        (client, "Failed to resend invite")
-                                    )
-                                    continue
 
                             message = build_failure_message(config, client)
                             # Redundant failsafe to super ensure we don't text people a message that just says "None"
@@ -369,54 +400,59 @@ def main():
                                 )
                                 continue
 
-                            try:
-                                attempt_text = openphone.send_text(
-                                    message, client.phoneNumber, mark_done=True
-                                )
-
-                                if attempt_text and "id" in attempt_text:
-                                    numbers_sent.append(client.phoneNumber)
-                                    messages_sent.append(
-                                        (client, attempt_text["id"], reason)
+                            if not dry_run:
+                                try:
+                                    attempt_text = openphone.send_text(
+                                        message, client.phoneNumber, mark_done=True
                                     )
-                                    try:
-                                        log_questionnaire_msg(
-                                            config,
-                                            client.id,
-                                            attempt_text["id"],
-                                            is_failure_reminder=True,
-                                            failure_reason=reason,
-                                        )
-                                    except Exception as log_err:
-                                        logger.error(
-                                            f"Failed to log automated message: {log_err}"
-                                        )
 
-                                else:
+                                    if attempt_text and "id" in attempt_text:
+                                        numbers_sent.append(client.phoneNumber)
+                                        messages_sent.append(
+                                            (client, attempt_text["id"], reason)
+                                        )
+                                        try:
+                                            log_questionnaire_msg(
+                                                config,
+                                                client.id,
+                                                attempt_text["id"],
+                                                is_failure_reminder=True,
+                                                failure_reason=reason,
+                                            )
+                                        except Exception as log_err:
+                                            logger.error(
+                                                f"Failed to log automated message: {log_err}"
+                                            )
+
+                                    else:
+                                        logger.error(
+                                            f"Failed to send message to {client.fullName}"
+                                        )
+                                        email_info["failed"].append(
+                                            (client, "Failed to send text request")
+                                        )
+                                except InvalidPhoneNumberError as e:
                                     logger.error(
-                                        f"Failed to send message to {client.fullName}"
+                                        f"Invalid phone number for {client.fullName}: {e}"
                                     )
                                     email_info["failed"].append(
-                                        (client, "Failed to send text request")
+                                        (
+                                            client,
+                                            f"Invalid phone number: {client.phoneNumber}",
+                                        )
                                     )
-                            except InvalidPhoneNumberError as e:
-                                logger.error(
-                                    f"Invalid phone number for {client.fullName}: {e}"
-                                )
-                                email_info["failed"].append(
-                                    (
-                                        client,
-                                        f"Invalid phone number: {client.phoneNumber}",
+                                except NotEnoughCreditsError:
+                                    logger.critical(
+                                        "Aborting all further message sends due to insufficient credits."
                                     )
+                                    email_info["errors"].append(
+                                        "OpenPhone API needs more credits to send messages."
+                                    )
+                                    break
+                            else:
+                                logger.info(
+                                    f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
                                 )
-                            except NotEnoughCreditsError:
-                                logger.critical(
-                                    "Aborting all further message sends due to insufficient credits."
-                                )
-                                email_info["errors"].append(
-                                    "OpenPhone API needs more credits to send messages."
-                                )
-                                break
 
         if clients:
             clients = validate_questionnaires(clients)
@@ -492,58 +528,74 @@ def main():
                             )
                             continue
 
-                        try:
-                            attempt_text = openphone.send_text(
-                                message, client.phoneNumber, mark_done=True
-                            )
+                        if not dry_run:
+                            try:
+                                attempt_text = openphone.send_text(
+                                    message, client.phoneNumber, mark_done=True
+                                )
 
-                            if attempt_text and "id" in attempt_text:
-                                numbers_sent.append(client.phoneNumber)
-                                messages_sent.append((client, attempt_text["id"], None))
-                                try:
-                                    log_questionnaire_msg(
-                                        config,
-                                        client.id,
-                                        attempt_text["id"],
-                                        is_failure_reminder=False,
+                                if attempt_text and "id" in attempt_text:
+                                    numbers_sent.append(client.phoneNumber)
+                                    messages_sent.append(
+                                        (client, attempt_text["id"], None)
                                     )
-                                except Exception as log_err:
+                                    try:
+                                        log_questionnaire_msg(
+                                            config,
+                                            client.id,
+                                            attempt_text["id"],
+                                            is_failure_reminder=False,
+                                        )
+                                    except Exception as log_err:
+                                        logger.error(
+                                            f"Failed to log automated message: {log_err}"
+                                        )
+                                else:
                                     logger.error(
-                                        f"Failed to log automated message: {log_err}"
+                                        f"Failed to send message to {client.fullName}"
                                     )
-                            else:
+                                    email_info["failed"].append(
+                                        (client, "Failed to send text request")
+                                    )
+                            except InvalidPhoneNumberError as e:
                                 logger.error(
-                                    f"Failed to send message to {client.fullName}"
+                                    f"Invalid phone number for {client.fullName}: {e}"
                                 )
                                 email_info["failed"].append(
-                                    (client, "Failed to send text request")
+                                    (
+                                        client,
+                                        f"Invalid phone number: {client.phoneNumber}",
+                                    )
                                 )
-                        except InvalidPhoneNumberError as e:
-                            logger.error(
-                                f"Invalid phone number for {client.fullName}: {e}"
-                            )
-                            email_info["failed"].append(
-                                (
-                                    client,
-                                    f"Invalid phone number: {client.phoneNumber}",
+                            except NotEnoughCreditsError:
+                                logger.critical(
+                                    "Aborting all further message sends due to insufficient credits."
                                 )
+                                email_info["errors"].append(
+                                    "OpenPhone API needs more credits to send messages."
+                                )
+                                break
+                        else:
+                            logger.info(
+                                f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
                             )
-                        except NotEnoughCreditsError:
-                            logger.critical(
-                                "Aborting all further message sends due to insufficient credits."
-                            )
-                            email_info["errors"].append(
-                                "OpenPhone API needs more credits to send messages."
-                            )
-                            break
                 elif client in email_info["completed"]:
-                    if len(client.questionnaires) > 2:
-                        update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")
-                        update_punch_list(
-                            config, str(client.id), "EVAL Qs Done", "TRUE"
-                        )
+                    if not dry_run:
+                        if len(client.questionnaires) > 2:
+                            update_punch_list(
+                                config, str(client.id), "DA Qs Done", "TRUE"
+                            )
+                            update_punch_list(
+                                config, str(client.id), "EVAL Qs Done", "TRUE"
+                            )
+                        else:
+                            update_punch_list(
+                                config, str(client.id), "DA Qs Done", "TRUE"
+                            )
                     else:
-                        update_punch_list(config, str(client.id), "DA Qs Done", "TRUE")
+                        logger.info(
+                            f"[DRY RUN] Would update punch list for {client.fullName}"
+                        )
 
         # Check message status
         logger.info(f"Starting status check for {len(messages_sent)} messages.")
@@ -635,16 +687,19 @@ def main():
     finally:
         admin_email_text, admin_email_html = build_admin_email(email_info)
         if admin_email_text != "":
-            try:
-                send_gmail(
-                    message_text=admin_email_text,
-                    subject=f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
-                    to_addr=",".join(config.qreceive_emails),
-                    from_addr=config.automated_email,
-                    html=admin_email_html,
-                )
-            except Exception:
-                logger.exception("Failed to send the admin email")
+            if not dry_run:
+                try:
+                    send_gmail(
+                        message_text=admin_email_text,
+                        subject=f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
+                        to_addr=",".join(config.qreceive_emails),
+                        from_addr=config.automated_email,
+                        html=admin_email_html,
+                    )
+                except Exception:
+                    logger.exception("Failed to send the admin email")
+            else:
+                logger.info(f"[DRY RUN] Would send admin email:\n{admin_email_text}")
 
 
 if __name__ == "__main__":

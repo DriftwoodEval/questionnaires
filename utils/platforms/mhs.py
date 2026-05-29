@@ -11,12 +11,14 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import Select
 
 from utils.custom_types import Services
 from utils.selenium import (
     click_element,
     find_element,
+    wait_for_page_load,
 )
 
 
@@ -299,6 +301,77 @@ def add_client_to_mhs(
         logger.success("Added to MHS")
         return True
     return _add_to_existing(driver, actions, client, questionnaire)
+
+
+# Maps our internal questionnaire type names to their MHS Completed Assessments display
+# prefix. The prefix is used with XPath contains() so it only needs to be specific enough
+# to avoid matching a different rater type for the same assessment family.
+_MHS_DISPLAY_PREFIX: dict[str, str] = {
+    "Conners EC": "Conners EC",
+    "Conners 4": "Conners 4 Parent",
+    "Conners 4 Self": "Conners 4 Self",
+    "ASRS (2-5 Years)": "ASRS (2-5 Years) Parent",
+    "ASRS (6-18 Years)": "ASRS (6-18 Years) Parent",
+    "CAARS 2": "CAARS 2 Self",
+}
+
+
+def check_mhs_completed(
+    driver: WebDriver,
+    services: Services,
+    client_id: int,
+    q_type: str,
+) -> bool:
+    """Fallback check: searches MHS Completed Assessments page for a client's finished questionnaire.
+
+    Returns True if a matching completed assessment row is found.
+    """
+    actions = ActionChains(driver)
+    mhs_hf_id = f"C{str(client_id).zfill(9)}"
+    mhs_type_prefix = _MHS_DISPLAY_PREFIX.get(q_type, q_type)
+    logger.info(
+        f"MHS fallback check: client {mhs_hf_id}, type '{q_type}' (searching '{mhs_type_prefix}')"
+    )
+
+    try:
+        check_and_login_mhs(driver, actions, services)
+
+        click_element(
+            driver,
+            By.XPATH,
+            "//span[contains(normalize-space(text()), 'Completed Assessments')]",
+        )
+        wait_for_page_load(driver)
+
+        search_box = find_element(
+            driver, By.ID, "searchBox", condition=ec.element_to_be_clickable
+        )
+        search_box.click()
+        search_box.clear()
+        search_box.send_keys(mhs_hf_id)
+        sleep(1.5)
+
+        find_element(
+            driver,
+            By.XPATH,
+            f"//tr[@data-uid and @role='row']"
+            f"[td[@role='gridcell'][contains(normalize-space(text()), '{mhs_hf_id}')]]"
+            f"[td[@role='gridcell'][contains(normalize-space(text()), '{mhs_type_prefix}')]]",
+            timeout=5,
+        )
+        logger.info(f"Found '{q_type}' in completed assessments on MHS for {mhs_hf_id}")
+        return True
+
+    except (NoSuchElementException, TimeoutException):
+        logger.info(
+            f"Did not find '{q_type}' in completed assessments on MHS for {mhs_hf_id}"
+        )
+        return False
+    except Exception:
+        logger.exception(
+            f"Error during MHS Completed Assessments fallback for {mhs_hf_id}"
+        )
+        return False
 
 
 def gen_conners_ec(

@@ -20,8 +20,10 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     Questionnaire,
+    Services,
 )
 from utils.database import update_questionnaires_in_db
+from utils.platforms.mhs import check_mhs_completed
 from utils.selenium import (
     initialize_selenium,
     save_screenshot_to_path,
@@ -184,6 +186,8 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 def check_questionnaires(
     config: Config,
     clients: dict[int, ClientWithQuestionnaires],
+    services: Services,
+    dry_run: bool = False,
 ) -> tuple[
     list[ClientWithQuestionnaires],
     list[str],
@@ -237,11 +241,28 @@ def check_questionnaires(
         try:
             q_driver, _ = initialize_selenium()
             try:
-                if check_q_done(
+                is_done = check_q_done(
                     q_driver,
                     questionnaire["link"],
                     questionnaire["questionnaireType"],
-                ):
+                )
+
+                if not is_done and questionnaire["link"] and "mhs.com" in questionnaire["link"]:
+                    is_done = check_mhs_completed(
+                        q_driver,
+                        services,
+                        client.id,
+                        questionnaire["questionnaireType"],
+                    )
+                    if is_done:
+                        filename = generate_screenshot_filename(
+                            "COMPLETED_MHS_PORTAL",
+                            questionnaire["questionnaireType"],
+                            questionnaire["link"],
+                        )
+                        save_screenshot_to_path(q_driver, Path("logs/screenshots", filename))
+
+                if is_done:
                     questionnaire["status"] = "COMPLETED"
                     logger.info(
                         f"{client.fullName}'s {questionnaire['questionnaireType']} is COMPLETED"
@@ -257,7 +278,8 @@ def check_questionnaires(
             logger.error(f"Error checking questionnaires for {client.fullName}: {e}")
             return client.id, e
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    workers = 1 if dry_run else MAX_WORKERS
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         results = list(executor.map(_check_single_q, tasks))
 
     for client_id, result in results:
