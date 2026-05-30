@@ -514,7 +514,7 @@ def main(
 
     """
     services, config = load_config()
-    driver, _ = initialize_selenium()
+    driver = initialize_selenium()
 
     clients = get_clients_to_send(
         config, interactive=interactive, client_filter=client_filter
@@ -630,9 +630,7 @@ def main(
             client_url = ""
             if client["Language"] != "Spanish":
                 # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
-                client_url = go_to_client(
-                    driver, services, client["Client ID"]
-                )
+                client_url = go_to_client(driver, services, client["Client ID"])
                 if not client_url:
                     logger.error("Client URL not found")
                     add_failure(

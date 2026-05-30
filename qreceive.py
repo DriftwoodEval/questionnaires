@@ -284,7 +284,7 @@ def main():
         # Check failures and update in DB
         driver = None
         if not skip_failures:
-            driver, _ = initialize_selenium()
+            driver = initialize_selenium()
             check_failures(config, services, driver, failed_clients)
 
         # Send reminders for failures and questionnaires

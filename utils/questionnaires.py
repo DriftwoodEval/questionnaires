@@ -239,7 +239,7 @@ def check_questionnaires(
             f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
         )
         try:
-            q_driver, _ = initialize_selenium()
+            q_driver = initialize_selenium()
             try:
                 is_done = check_q_done(
                     q_driver,
@@ -247,7 +247,11 @@ def check_questionnaires(
                     questionnaire["questionnaireType"],
                 )
 
-                if not is_done and questionnaire["link"] and "mhs.com" in questionnaire["link"]:
+                if (
+                    not is_done
+                    and questionnaire["link"]
+                    and "mhs.com" in questionnaire["link"]
+                ):
                     is_done = check_mhs_completed(
                         q_driver,
                         services,
@@ -260,7 +264,9 @@ def check_questionnaires(
                             questionnaire["questionnaireType"],
                             questionnaire["link"],
                         )
-                        save_screenshot_to_path(q_driver, Path("logs/screenshots", filename))
+                        save_screenshot_to_path(
+                            q_driver, Path("logs/screenshots", filename)
+                        )
 
                 if is_done:
                     questionnaire["status"] = "COMPLETED"
