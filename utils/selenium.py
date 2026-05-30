@@ -12,14 +12,13 @@ from selenium.common.exceptions import (
     TimeoutException,
 )
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 
-def initialize_selenium() -> tuple[WebDriver, ActionChains]:
+def initialize_selenium() -> WebDriver:
     """Initialize a Selenium WebDriver with the given options.
 
     Returns:
@@ -43,10 +42,9 @@ def initialize_selenium() -> tuple[WebDriver, ActionChains]:
         },
     )
     driver = webdriver.Chrome(options=chrome_options)
-    actions = ActionChains(driver)
     driver.implicitly_wait(5)
     driver.set_window_size(1920, 1080)
-    return driver, actions
+    return driver
 
 
 def find_element(

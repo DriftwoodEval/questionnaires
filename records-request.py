@@ -399,16 +399,16 @@ def main():
     new_success_count = 0
     new_failure_count = 0
 
-    driver, actions = initialize_selenium()
+    driver = initialize_selenium()
     driver.maximize_window()
 
     try:
-        check_and_login_ta(driver, actions, services, first_time=True)
+        check_and_login_ta(driver, services, first_time=True)
         for client in clients_to_process:
             asd_adhd = client.asdAdhd or "Unknown"
             client_name = client.fullName
 
-            if go_to_client(driver, actions, services, str(client.id)):
+            if go_to_client(driver, services, str(client.id)):
                 try:
                     if not check_if_opened_portal(driver):
                         raise Exception("portal not opened")
