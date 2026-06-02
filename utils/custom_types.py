@@ -62,6 +62,7 @@ class Services(BaseModel):
     mhs: Service
     qglobal: Service
     wps: Service
+    novopsych: Service
 
 
 class PieceworkCosts(BaseModel):

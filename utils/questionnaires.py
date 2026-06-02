@@ -24,6 +24,7 @@ from utils.custom_types import (
 )
 from utils.database import update_questionnaires_in_db
 from utils.platforms.mhs import check_mhs_completed
+from utils.platforms.novopsych import check_novopsych_completed
 from utils.selenium import (
     initialize_selenium,
     save_screenshot_to_path,
@@ -241,32 +242,49 @@ def check_questionnaires(
         try:
             q_driver = initialize_selenium()
             try:
-                is_done = check_q_done(
-                    q_driver,
-                    questionnaire["link"],
-                    questionnaire["questionnaireType"],
-                )
-
-                if (
-                    not is_done
-                    and questionnaire["link"]
-                    and "mhs.com" in questionnaire["link"]
-                ):
-                    is_done = check_mhs_completed(
+                if questionnaire["questionnaireType"] == "CAT-Q":
+                    is_done = check_novopsych_completed(
                         q_driver,
                         services,
-                        client.id,
-                        questionnaire["questionnaireType"],
+                        client.firstName,
+                        client.lastName,
                     )
                     if is_done:
                         filename = generate_screenshot_filename(
-                            "COMPLETED_MHS_PORTAL",
+                            "COMPLETED_NOVOPSYCH",
                             questionnaire["questionnaireType"],
                             questionnaire["link"],
                         )
                         save_screenshot_to_path(
                             q_driver, Path("logs/screenshots", filename)
                         )
+                else:
+                    is_done = check_q_done(
+                        q_driver,
+                        questionnaire["link"],
+                        questionnaire["questionnaireType"],
+                    )
+
+                    if (
+                        not is_done
+                        and questionnaire["link"]
+                        and "mhs.com" in questionnaire["link"]
+                    ):
+                        is_done = check_mhs_completed(
+                            q_driver,
+                            services,
+                            client.id,
+                            questionnaire["questionnaireType"],
+                        )
+                        if is_done:
+                            filename = generate_screenshot_filename(
+                                "COMPLETED_MHS_PORTAL",
+                                questionnaire["questionnaireType"],
+                                questionnaire["link"],
+                            )
+                            save_screenshot_to_path(
+                                q_driver, Path("logs/screenshots", filename)
+                            )
 
                 if is_done:
                     questionnaire["status"] = "COMPLETED"
