@@ -18,6 +18,7 @@ from utils.custom_types import ClientFromDB, Config, RecordsContact
 from utils.database import (
     get_clients_needing_records,
     update_external_record_in_db,
+    update_failure_in_db,
 )
 from utils.google import (
     google_authenticate,
@@ -409,6 +410,13 @@ def main():
             client_name = client.fullName
 
             if go_to_client(driver, services, str(client.id)):
+                update_failure_in_db(
+                    config=config,
+                    client_id=client.id,
+                    reason="unable to find client",
+                    da_eval="Records",
+                    resolved=True,
+                )
                 try:
                     if not check_if_opened_portal(driver):
                         raise Exception("portal not opened")

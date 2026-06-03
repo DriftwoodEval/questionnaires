@@ -643,6 +643,14 @@ def main(
                         daeval=client["daeval"],
                     )
                     continue
+                if client.get("Previous Error") == "unable to find client":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason="unable to find client",
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
                 if not check_if_opened_portal(driver):
                     add_failure(
                         config=config,
