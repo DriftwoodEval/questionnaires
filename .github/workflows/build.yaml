@@ -32,7 +32,7 @@ jobs:
 
       - name: Extract metadata for qreceive image
         id: meta-qreceive
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-qreceive
 
@@ -49,7 +49,7 @@ jobs:
 
       - name: Extract metadata for log-server image
         id: meta-log-server
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-log-server
 
