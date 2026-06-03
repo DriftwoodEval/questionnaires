@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import urlparse
 
+from dateutil.relativedelta import relativedelta
 from loguru import logger
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -342,3 +343,61 @@ def get_most_recent_not_done(
     )
 
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
+
+
+def check_battery_completeness(
+    client: ClientWithQuestionnaires,
+    rules: list[dict],
+) -> tuple[bool | None, bool | None]:
+    """Check if DA and EVAL questionnaire batteries are complete for a client.
+
+    Returns (da_done, eval_done) where each is:
+      True  — all required types for this battery are COMPLETED or EXTERNAL
+      False — at least one required type is not done
+      None  — no applicable rules for this battery (don't update the column)
+    """
+    age_in_years = relativedelta(date.today(), client.dob).years
+
+    age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
+
+    wanted_diagnoses: set[str | None] = set()
+    if not client.asdAdhd:
+        wanted_diagnoses.update({"ASD", "ADHD"})
+    else:
+        if "ASD" in client.asdAdhd:
+            wanted_diagnoses.add("ASD")
+        if "ADHD" in client.asdAdhd:
+            wanted_diagnoses.add("ADHD")
+
+    applicable = [
+        r
+        for r in age_filtered
+        if (r["daeval"] == "DAEVAL" and r.get("diagnosis") is None)
+        or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
+    ]
+
+    da_types: set[str] = set()
+    eval_types: set[str] = set()
+    for rule in applicable:
+        qs: list[str] = rule.get("questionnaires") or []
+        if rule["daeval"] in ("DA", "DAEVAL"):
+            da_types.update(qs)
+        if rule["daeval"] in ("EVAL", "DAEVAL"):
+            eval_types.update(qs)
+
+    done_statuses = {"COMPLETED", "EXTERNAL"}
+    completed_types = {
+        q["questionnaireType"]
+        for q in client.questionnaires
+        if q.get("status") != "ARCHIVED" and q.get("status") in done_statuses
+    }
+
+    da_done: bool | None = None
+    if da_types:
+        da_done = da_types.issubset(completed_types)
+
+    eval_done: bool | None = None
+    if eval_types:
+        eval_done = eval_types.issubset(completed_types)
+
+    return da_done, eval_done

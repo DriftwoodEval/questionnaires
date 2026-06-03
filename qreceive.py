@@ -18,11 +18,16 @@ from utils.custom_types import (
 from utils.database import (
     get_most_recent_failure,
     get_previous_clients,
+    get_questionnaire_rules,
     log_questionnaire_msg,
     update_failure_in_db,
     update_questionnaires_in_db,
 )
-from utils.google import build_admin_email, send_gmail, update_punch_list
+from utils.google import (
+    batch_update_punch_list,
+    build_admin_email,
+    send_gmail,
+)
 from utils.misc import check_distance, load_config
 from utils.openphone import InvalidPhoneNumberError, NotEnoughCreditsError, OpenPhone
 from utils.platforms.therapyappointment import (
@@ -33,6 +38,7 @@ from utils.platforms.therapyappointment import (
 )
 from utils.questionnaires import (
     all_questionnaires_done,
+    check_battery_completeness,
     check_if_ignoring,
     check_questionnaires,
     filter_inactive_and_not_pending,
@@ -259,6 +265,7 @@ def main():
 
     services, config = load_config()
     openphone = OpenPhone(config, services)
+    rules = get_questionnaire_rules(config)
     email_info: AdminEmailInfo = {
         "ignoring": [],
         "failed": [],
@@ -275,6 +282,7 @@ def main():
             return
 
         clients = validate_questionnaires(clients)
+        all_clients_with_qs = dict(clients)  # unfiltered, used for end-of-run sync
         clients = filter_inactive_and_not_pending(clients)
 
         email_info["completed"], email_info["errors"] = check_questionnaires(
@@ -577,22 +585,9 @@ def main():
                                 f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
                             )
                 elif client in email_info["completed"]:
-                    if not dry_run:
-                        if len(client.questionnaires) > 2:
-                            update_punch_list(
-                                config, str(client.id), "DA Qs Done", "TRUE"
-                            )
-                            update_punch_list(
-                                config, str(client.id), "EVAL Qs Done", "TRUE"
-                            )
-                        else:
-                            update_punch_list(
-                                config, str(client.id), "DA Qs Done", "TRUE"
-                            )
-                    else:
-                        logger.info(
-                            f"[DRY RUN] Would update punch list for {client.fullName}"
-                        )
+                    logger.info(
+                        f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
+                    )
 
         # Check message status
         logger.info(f"Starting status check for {len(messages_sent)} messages.")
@@ -674,6 +669,22 @@ def main():
                     reminded=reminded,
                     last_reminded=last_reminded,
                 )
+
+        # Sync punchlist Qs Done columns with DB state (all clients, not just newly completed)
+        logger.info("Syncing punchlist Qs Done columns with DB state")
+        sync_updates: list[tuple[str, str, str]] = []
+        for client in all_clients_with_qs.values():
+            da_done, eval_done = check_battery_completeness(client, rules)
+            if da_done:
+                sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))
+            if eval_done:
+                sync_updates.append((str(client.id), "EVAL Qs Done", "TRUE"))
+
+        if not dry_run:
+            batch_update_punch_list(config, sync_updates)
+        else:
+            for client_id_str, col, _ in sync_updates:
+                logger.info(f"[DRY RUN] Would set {col}=TRUE for client {client_id_str}")
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"

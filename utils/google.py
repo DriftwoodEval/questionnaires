@@ -368,6 +368,66 @@ def update_punch_list(
         logger.exception("Failed to update Punch List")
 
 
+def batch_update_punch_list(
+    config: Config,
+    updates: list[tuple[str, str, str]],
+):
+    """Update multiple cells in the Punch List in a single API call.
+
+    Args:
+        config: App config.
+        updates: List of (id_for_search, column_header, new_value) tuples.
+    """
+    if not updates:
+        return
+
+    creds = google_authenticate()
+    service = build("sheets", "v4", credentials=creds)
+    sheet = service.spreadsheets()
+
+    result = (
+        sheet.values()
+        .get(spreadsheetId=config.punch_list_id, range=config.punch_list_range)
+        .execute()
+    )
+    values = result.get("values", [])
+    if not values:
+        return
+
+    headers = values[0]
+    sheet_name = config.punch_list_range.split("!")[0]
+
+    row_map = {row[1]: i + 1 for i, row in enumerate(values) if len(row) > 1}
+    col_map = {header: col_index_to_a1(i) for i, header in enumerate(headers)}
+
+    data = []
+    for id_for_search, header, new_value in updates:
+        row_number = row_map.get(id_for_search)
+        col_letter = col_map.get(header)
+        if row_number is not None and col_letter is not None:
+            data.append(
+                {
+                    "range": f"{sheet_name}!{col_letter}{row_number}",
+                    "values": [[new_value]],
+                }
+            )
+        else:
+            logger.warning(
+                f"batch_update_punch_list: {id_for_search!r} / {header!r} not found, skipping"
+            )
+
+    if data:
+        (
+            sheet.values()
+            .batchUpdate(
+                spreadsheetId=config.punch_list_id,
+                body={"valueInputOption": "USER_ENTERED", "data": data},
+            )
+            .execute()
+        )
+        logger.success(f"Batch updated {len(data)} cells in Punch List")
+
+
 def add_to_failure_sheet(
     config: Config,
     client_id: int,
