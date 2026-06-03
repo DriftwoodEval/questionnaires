@@ -37,7 +37,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-qreceive
 
       - name: Build and push qreceive image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: qreceive
@@ -54,7 +54,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-log-server
 
       - name: Build and push log-server image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: log-server
