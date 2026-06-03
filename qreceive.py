@@ -1,6 +1,8 @@
 import argparse
+import json
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
 from loguru import logger
@@ -55,6 +57,34 @@ logger.add(
 )
 
 logger.add("logs/qreceive.log", rotation="500 MB")
+
+PENDING_TEXTS_PATH = Path("logs/pending_texts.json")
+
+
+def _save_pending_queue(q_ids: list[int], failure_info: list[dict]) -> None:
+    data = {
+        "generated_at": datetime.now().isoformat(),
+        "questionnaire_client_ids": q_ids,
+        "failure_client_info": failure_info,
+    }
+    PENDING_TEXTS_PATH.write_text(json.dumps(data, indent=2))
+    logger.info(f"Pending queue saved: {len(q_ids)} questionnaire, {len(failure_info)} failure clients → will be sent at 1pm")
+
+
+def _load_pending_queue() -> tuple[set[int], set[int]]:
+    """Returns (pending_q_ids, pending_failure_ids)."""
+    if not PENDING_TEXTS_PATH.exists():
+        return set(), set()
+    try:
+        data = json.loads(PENDING_TEXTS_PATH.read_text())
+        q_ids = set(data.get("questionnaire_client_ids", []))
+        failure_ids = {item["id"] for item in data.get("failure_client_info", [])}
+        generated_at = data.get("generated_at", "unknown")
+        logger.info(f"Loaded pending queue (generated {generated_at}): {len(q_ids)} questionnaire, {len(failure_ids)} failure clients")
+        return q_ids, failure_ids
+    except Exception as e:
+        logger.warning(f"Failed to load pending queue: {e}")
+        return set(), set()
 
 
 def build_q_message(
@@ -252,14 +282,29 @@ def main():
         action="store_true",
         help="Skip checking on and sending reminders for failures; only process questionnaire completion.",
     )
+    parser.add_argument(
+        "--force-send",
+        action="store_true",
+        help="Send texts regardless of the current time (bypasses the 1pm-only window).",
+    )
     args = parser.parse_args()
     dry_run = args.dry_run
     skip_failures = args.skip_failures
+    force_send = args.force_send
+
+    is_send_time = datetime.now().hour == 13
+    send_texts = (is_send_time or force_send) and not dry_run
 
     if dry_run:
         logger.warning(
             "DRY RUN - no texts, punch list updates, or reminder DB writes will occur."
         )
+    if not is_send_time and not force_send and not dry_run:
+        logger.info(
+            f"Current hour is {datetime.now().hour} — texts will not be sent outside the 1pm window. Use --force-send to override."
+        )
+    if force_send:
+        logger.warning("--force-send active — sending texts regardless of time.")
     if skip_failures:
         logger.warning("SKIP FAILURES - failure checks and reminders will be skipped.")
 
@@ -302,6 +347,25 @@ def main():
             tuple[FailedClientFromDB | ClientWithQuestionnaires, str, str | None]
         ] = []
         numbers_sent = []
+
+        pending_q_ids: list[int] = []
+        pending_failure_info: list[dict] = []
+        pending_q_ids_set, pending_failure_ids_set = _load_pending_queue() if send_texts else (set(), set())
+
+        if send_texts and (pending_q_ids_set or pending_failure_ids_set):
+            # Drop anyone whose issue was resolved or questionnaires completed since the queue was written
+            pending_q_ids_set = {
+                cid for cid in pending_q_ids_set
+                if cid in clients and not all_questionnaires_done(clients[cid])
+            }
+            pending_failure_ids_set = {
+                cid for cid in pending_failure_ids_set
+                if cid in failed_clients and get_most_recent_failure(failed_clients[cid]) is not None
+            }
+            logger.info(
+                f"After filtering resolved clients: {len(pending_q_ids_set)} questionnaire, "
+                f"{len(pending_failure_ids_set)} failure clients remain queued"
+            )
 
         if failed_clients and not skip_failures:
             for client in failed_clients.values():
@@ -375,10 +439,10 @@ def main():
                         and not already_messaged_today
                         and client.phoneNumber
                     ):
-                        if should_send_reminder(reminded_count, last_reminded_distance):
+                        if should_send_reminder(reminded_count, last_reminded_distance) or client.id in pending_failure_ids_set:
                             logger.info(f"Sending reminder TO {client.fullName}")
                             if reason == "portal not opened":
-                                if not dry_run:
+                                if send_texts:
                                     try:
                                         assert driver is not None
                                         resend_portal_invite(
@@ -392,7 +456,7 @@ def main():
                                             (client, "Failed to resend invite")
                                         )
                                         continue
-                                else:
+                                elif dry_run:
                                     logger.info(
                                         f"[DRY RUN] Would resend portal invite for {client.fullName}"
                                     )
@@ -405,7 +469,7 @@ def main():
                                 )
                                 continue
 
-                            if not dry_run:
+                            if send_texts:
                                 try:
                                     attempt_text = openphone.send_text(
                                         message, client.phoneNumber, mark_done=True
@@ -454,9 +518,14 @@ def main():
                                         "OpenPhone API needs more credits to send messages."
                                     )
                                     break
-                            else:
+                            elif dry_run:
                                 logger.info(
                                     f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
+                                )
+                            else:
+                                pending_failure_info.append({"id": client.id, "reason": reason})
+                                logger.info(
+                                    f"[QUEUED] {client.fullName} ({reason}) — will text at 1pm"
                                 )
 
         if clients:
@@ -518,8 +587,9 @@ def main():
                         most_recent_q["reminded"] < 3
                         and not already_messaged_today
                         and client.phoneNumber
-                        and should_send_reminder(
-                            most_recent_q["reminded"], last_reminded_distance
+                        and (
+                            should_send_reminder(most_recent_q["reminded"], last_reminded_distance)
+                            or client.id in pending_q_ids_set
                         )
                     ):
                         logger.info(f"Sending reminder TO {client.fullName}")
@@ -533,7 +603,7 @@ def main():
                             )
                             continue
 
-                        if not dry_run:
+                        if send_texts:
                             try:
                                 attempt_text = openphone.send_text(
                                     message, client.phoneNumber, mark_done=True
@@ -580,14 +650,27 @@ def main():
                                     "OpenPhone API needs more credits to send messages."
                                 )
                                 break
-                        else:
+                        elif dry_run:
                             logger.info(
                                 f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
+                            )
+                        else:
+                            pending_q_ids.append(client.id)
+                            logger.info(
+                                f"[QUEUED] {client.fullName} — will text at 1pm"
                             )
                 elif client in email_info["completed"]:
                     logger.info(
                         f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                     )
+
+        # Persist or clear the pending texts queue
+        if send_texts:
+            if PENDING_TEXTS_PATH.exists():
+                PENDING_TEXTS_PATH.unlink()
+                logger.info("Cleared pending queue after 1pm send run")
+        elif not dry_run and (pending_q_ids or pending_failure_info):
+            _save_pending_queue(pending_q_ids, pending_failure_info)
 
         # Check message status
         logger.info(f"Starting status check for {len(messages_sent)} messages.")

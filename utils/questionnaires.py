@@ -97,6 +97,18 @@ def generate_screenshot_filename(status: str, q_type: str, url: str) -> str:
     return f"{status.upper()}_{safe_type}_{domain}_{url_identity}_{timestamp}.png"
 
 
+def save_screenshot_deduped(driver: WebDriver, screenshots_dir: Path, filename: str) -> None:
+    """Save a screenshot, replacing any prior screenshot with the same status/type/questionnaire identity."""
+    # Filename format: {STATUS}_{type}_{domain}_{url_identity}_{YYYYMMDD}_{HHMMSS}.png
+    # Strip the trailing _YYYYMMDD_HHMMSS (16 chars) + .png (4 chars) to get the identity prefix.
+    stem = filename[:-4]  # strip .png
+    prefix = stem[:-16]   # strip _YYYYMMDD_HHMMSS
+    for old in screenshots_dir.glob(f"{prefix}_*.png"):
+        old.unlink()
+        logger.debug(f"Removed old screenshot: {old.name}")
+    save_screenshot_to_path(driver, screenshots_dir / filename)
+
+
 def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
     """Checks questionnaire completion status and captures evidence."""
     url_patterns = {
@@ -138,7 +150,7 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
 
     def capture_outcome(status: str):
         filename = generate_screenshot_filename(status, q_type, q_link)
-        save_screenshot_to_path(driver, Path("logs/screenshots", filename))
+        save_screenshot_deduped(driver, Path("logs/screenshots"), filename)
 
     try:
         driver.get(q_link)
@@ -256,8 +268,8 @@ def check_questionnaires(
                             questionnaire["questionnaireType"],
                             questionnaire["link"],
                         )
-                        save_screenshot_to_path(
-                            q_driver, Path("logs/screenshots", filename)
+                        save_screenshot_deduped(
+                            q_driver, Path("logs/screenshots"), filename
                         )
                 else:
                     is_done = check_q_done(
@@ -283,8 +295,8 @@ def check_questionnaires(
                                 questionnaire["questionnaireType"],
                                 questionnaire["link"],
                             )
-                            save_screenshot_to_path(
-                                q_driver, Path("logs/screenshots", filename)
+                            save_screenshot_deduped(
+                                q_driver, Path("logs/screenshots"), filename
                             )
 
                 if is_done:

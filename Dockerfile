@@ -29,7 +29,7 @@ COPY . .
 ENV CHROME_BIN=/usr/bin/chromium \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver \
     TZ=America/New_York \
-    CRON_SCHEDULE="0 13 * * *" \
+    CRON_SCHEDULE="0 7,9,11,13,15,17,19 * * *" \
     PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
