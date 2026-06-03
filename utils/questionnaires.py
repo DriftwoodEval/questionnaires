@@ -38,8 +38,11 @@ MAX_WORKERS = 5
 
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
     """Check if all questionnaires for a given client are completed."""
+    done_statuses = {"COMPLETED", "EXTERNAL"}
     return all(
-        q["status"] == "COMPLETED" for q in client.questionnaires if isinstance(q, dict)
+        q["status"] in done_statuses
+        for q in client.questionnaires
+        if isinstance(q, dict) and q.get("status") != "ARCHIVED"
     )
 
 
@@ -331,9 +334,11 @@ def check_questionnaires(
         update_questionnaires_in_db(config, updated_clients)
 
     # Return clients that became completed in this run
-    completed_clients = [
-        client for client in updated_clients if all_questionnaires_done(client)
-    ]
+    completed_clients = []
+    for client in updated_clients:
+        if all_questionnaires_done(client):
+            logger.success(f"{client.fullName} has completed all questionnaires")
+            completed_clients.append(client)
 
     return completed_clients, error_clients
 
