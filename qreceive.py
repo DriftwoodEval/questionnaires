@@ -61,19 +61,84 @@ logger.add("logs/qreceive.log", rotation="500 MB")
 PENDING_EMAIL_PATH = Path("logs/pending_email.json")
 
 
-def _save_pending_email(text: str, html: str) -> None:
+def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
+    def serialize_client(client: ClientWithQuestionnaires | FailedClientFromDB) -> dict:
+        if isinstance(client, FailedClientFromDB):
+            return {"_type": "failed", **client.model_dump(mode="json")}
+        return {"_type": "with_q", **client.model_dump(mode="json")}
+
+    return {
+        "ignoring": [c.model_dump(mode="json") for c in email_info["ignoring"]],
+        "completed": [c.model_dump(mode="json") for c in email_info["completed"]],
+        "call": [serialize_client(c) for c in email_info["call"]],
+        "failed": [{"client": serialize_client(item[0]), "reason": item[1]} for item in email_info["failed"]],
+        "errors": email_info["errors"],
+    }
+
+
+def _deserialize_email_info(data: dict) -> AdminEmailInfo:
+    def deserialize_client(d: dict) -> ClientWithQuestionnaires | FailedClientFromDB:
+        d = dict(d)
+        t = d.pop("_type")
+        if t == "failed":
+            return FailedClientFromDB.model_validate(d)
+        return ClientWithQuestionnaires.model_validate(d)
+
+    return {
+        "ignoring": [ClientWithQuestionnaires.model_validate(c) for c in data["ignoring"]],
+        "completed": [ClientWithQuestionnaires.model_validate(c) for c in data["completed"]],
+        "call": [deserialize_client(c) for c in data["call"]],
+        "failed": [(deserialize_client(item["client"]), item["reason"]) for item in data["failed"]],
+        "errors": data["errors"],
+    }
+
+
+def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
+    merged: AdminEmailInfo = {"ignoring": [], "completed": [], "call": [], "failed": [], "errors": []}
+    seen_ignoring: set[int] = set()
+    seen_completed: set[int] = set()
+    seen_call: set[int] = set()
+    seen_failed: set[int] = set()
+    seen_errors: set[str] = set()
+
+    for info in infos:
+        for client in info["ignoring"]:
+            if client.id not in seen_ignoring:
+                seen_ignoring.add(client.id)
+                merged["ignoring"].append(client)
+        for client in info["completed"]:
+            if client.id not in seen_completed:
+                seen_completed.add(client.id)
+                merged["completed"].append(client)
+        for client in info["call"]:
+            if client.id not in seen_call:
+                seen_call.add(client.id)
+                merged["call"].append(client)
+        for item in info["failed"]:
+            if item[0].id not in seen_failed:
+                seen_failed.add(item[0].id)
+                merged["failed"].append(item)
+        for error in info["errors"]:
+            if error not in seen_errors:
+                seen_errors.add(error)
+                merged["errors"].append(error)
+
+    return merged
+
+
+def _save_pending_email(email_info: AdminEmailInfo) -> None:
     existing = _load_pending_email()
-    runs = existing + [{"text": text, "html": html, "at": datetime.now().isoformat()}]
-    PENDING_EMAIL_PATH.write_text(json.dumps({"runs": runs}, indent=2))
+    runs = [*existing, email_info]
+    PENDING_EMAIL_PATH.write_text(json.dumps({"runs": [_serialize_email_info(r) for r in runs]}, indent=2))
     logger.info(f"Queued email content for 1pm send ({len(runs)} run(s) accumulated)")
 
 
-def _load_pending_email() -> list[dict]:
+def _load_pending_email() -> list[AdminEmailInfo]:
     if not PENDING_EMAIL_PATH.exists():
         return []
     try:
         data = json.loads(PENDING_EMAIL_PATH.read_text())
-        return data.get("runs", [])
+        return [_deserialize_email_info(r) for r in data.get("runs", [])]
     except Exception as e:
         logger.warning(f"Failed to load pending email queue: {e}")
         return []
@@ -729,14 +794,11 @@ def main():
         raise
 
     finally:
-        admin_email_text, admin_email_html = build_admin_email(email_info)
         if is_send_time or force_send:
             earlier_runs = _load_pending_email()
-            if earlier_runs:
-                prefix_text = "Earlier runs:\n" + "\n---\n".join(r["text"] for r in earlier_runs) + "\n---\nCurrent run:\n"
-                prefix_html = "<h1>Earlier Runs</h1>" + "<hr>".join(r["html"] for r in earlier_runs) + "<hr><h1>Current Run</h1>"
-                admin_email_text = prefix_text + admin_email_text
-                admin_email_html = prefix_html + admin_email_html
+            all_infos = [*earlier_runs, email_info]
+            merged_info = _merge_email_infos(all_infos) if earlier_runs else email_info
+            admin_email_text, admin_email_html = build_admin_email(merged_info)
             if admin_email_text != "":
                 if not dry_run:
                     try:
@@ -752,8 +814,10 @@ def main():
                     PENDING_EMAIL_PATH.unlink(missing_ok=True)
                 else:
                     logger.info(f"[DRY RUN] Would send admin email:\n{admin_email_text}")
-        elif not dry_run and admin_email_text != "":
-            _save_pending_email(admin_email_text, admin_email_html)
+        else:
+            admin_email_text, admin_email_html = build_admin_email(email_info)
+            if not dry_run and admin_email_text != "":
+                _save_pending_email(email_info)
 
 
 if __name__ == "__main__":
