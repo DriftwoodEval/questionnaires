@@ -41,6 +41,7 @@ from utils.platforms.therapyappointment import (
 from utils.questionnaires import (
     all_questionnaires_done,
     check_battery_completeness,
+    check_battery_sent,
     check_if_ignoring,
     check_questionnaires,
     filter_inactive_and_not_pending,
@@ -771,21 +772,37 @@ def main():
                     last_reminded=last_reminded,
                 )
 
-        # Sync punchlist Qs Done columns with DB state (all clients, not just newly completed)
-        logger.info("Syncing punchlist Qs Done columns with DB state")
+        logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")
         sync_updates: list[tuple[str, str, str]] = []
         for client in all_clients_with_qs.values():
             da_done, eval_done = check_battery_completeness(client, rules)
-            if da_done:
+            da_sent, eval_sent = check_battery_sent(client, rules)
+
+            if da_done is True:
                 sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))
-            if eval_done:
+            elif da_done is False:
+                sync_updates.append((str(client.id), "DA Qs Done", ""))
+
+            if eval_done is True:
                 sync_updates.append((str(client.id), "EVAL Qs Done", "TRUE"))
+            elif eval_done is False:
+                sync_updates.append((str(client.id), "EVAL Qs Done", ""))
+
+            if da_sent is True:
+                sync_updates.append((str(client.id), "DA Qs Sent", "TRUE"))
+            elif da_sent is False:
+                sync_updates.append((str(client.id), "DA Qs Sent", ""))
+
+            if eval_sent is True:
+                sync_updates.append((str(client.id), "EVAL Qs Sent", "TRUE"))
+            elif eval_sent is False:
+                sync_updates.append((str(client.id), "EVAL Qs Sent", ""))
 
         if not dry_run:
             batch_update_punch_list(config, sync_updates)
         else:
-            for client_id_str, col, _ in sync_updates:
-                logger.info(f"[DRY RUN] Would set {col}=TRUE for client {client_id_str}")
+            for client_id_str, col, val in sync_updates:
+                logger.info(f"[DRY RUN] Would set {col}={'TRUE' if val else '(cleared)'} for client {client_id_str}")
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"

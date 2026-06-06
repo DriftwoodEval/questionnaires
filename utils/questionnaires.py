@@ -362,6 +362,64 @@ def get_most_recent_not_done(
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
 
 
+def check_battery_sent(
+    client: ClientWithQuestionnaires,
+    rules: list[dict],
+) -> tuple[bool | None, bool | None]:
+    """Check if DA and EVAL questionnaire batteries have been sent for a client.
+
+    Returns (da_sent, eval_sent) where each is:
+      True  — all required types exist and all have status != JUST_ADDED and != ARCHIVED
+      False — any required type is missing, JUST_ADDED, or ARCHIVED
+      None  — no applicable rules for this battery (don't update the column)
+    """
+    age_in_years = relativedelta(date.today(), client.dob).years
+
+    age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
+
+    wanted_diagnoses: set[str | None] = set()
+    if not client.asdAdhd:
+        wanted_diagnoses.update({"ASD", "ADHD"})
+    else:
+        if "ASD" in client.asdAdhd:
+            wanted_diagnoses.add("ASD")
+        if "ADHD" in client.asdAdhd:
+            wanted_diagnoses.add("ADHD")
+
+    applicable = [
+        r
+        for r in age_filtered
+        if (r["daeval"] == "DAEVAL" and r.get("diagnosis") is None)
+        or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
+    ]
+
+    da_types: set[str] = set()
+    eval_types: set[str] = set()
+    for rule in applicable:
+        qs: list[str] = rule.get("questionnaires") or []
+        if rule["daeval"] in ("DA", "DAEVAL"):
+            da_types.update(qs)
+        if rule["daeval"] in ("EVAL", "DAEVAL"):
+            eval_types.update(qs)
+
+    unsent_statuses = {"JUST_ADDED", "ARCHIVED"}
+    active_sent_types = {
+        q["questionnaireType"]
+        for q in client.questionnaires
+        if q.get("status") not in unsent_statuses
+    }
+
+    da_sent: bool | None = None
+    if da_types:
+        da_sent = da_types.issubset(active_sent_types)
+
+    eval_sent: bool | None = None
+    if eval_types:
+        eval_sent = eval_types.issubset(active_sent_types)
+
+    return da_sent, eval_sent
+
+
 def check_battery_completeness(
     client: ClientWithQuestionnaires,
     rules: list[dict],
