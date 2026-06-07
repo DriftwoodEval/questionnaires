@@ -162,9 +162,26 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
     try:
         xpath = "//div[contains(normalize-space(.), 'has completed registration') or contains(normalize-space(.), 'has not completed registration')]"
         element = find_element(driver, By.XPATH, xpath, 3)
-        return "has completed registration" in element.text
+        if "has not completed registration" in element.text:
+            return False
     except TimeoutException:
         return False
+
+    try:
+        click_element(driver, By.LINK_TEXT, "Docs & Forms")
+        find_element(driver, By.XPATH, "//td[@aria-label='Status']", 10)
+    except TimeoutException:
+        return False
+
+    status_cells = driver.find_elements(By.XPATH, "//td[@aria-label='Status']")
+    if not status_cells:
+        return False
+
+    unsigned = [cell.text for cell in status_cells if not cell.text.startswith("Completed on")]
+    if unsigned:
+        logger.info(f"Docs not fully signed. Unsigned statuses: {unsigned}")
+        return False
+    return True
 
 
 def resend_portal_invite(
