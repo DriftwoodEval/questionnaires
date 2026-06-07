@@ -345,10 +345,47 @@ def main():
         action="store_true",
         help="Send texts regardless of the current time (bypasses the 1pm-only window).",
     )
+    parser.add_argument(
+        "--debug-batteries",
+        action="store_true",
+        help="Show detailed battery sent/done analysis for every client and exit. No changes made.",
+    )
     args = parser.parse_args()
     dry_run = args.dry_run
     skip_failures = args.skip_failures
     force_send = args.force_send
+    debug_batteries = args.debug_batteries
+
+    if debug_batteries:
+        services, config = load_config()
+        rules = get_questionnaire_rules(config)
+        clients_raw, _ = get_previous_clients(config, failed=False)
+        clients_with_qs = validate_questionnaires(clients_raw)
+        logger.info(f"Analyzing battery state for {len(clients_with_qs)} clients (verbose)")
+        sync_preview: list[tuple[str, str, str]] = []
+        for client in clients_with_qs.values():
+            da_done, eval_done = check_battery_completeness(client, rules, verbose=True)
+            da_sent, eval_sent = check_battery_sent(client, rules, verbose=True)
+            if da_done is True:
+                sync_preview.append((str(client.id), "DA Qs Done", "TRUE"))
+            elif da_done is False:
+                sync_preview.append((str(client.id), "DA Qs Done", ""))
+            if eval_done is True:
+                sync_preview.append((str(client.id), "EVAL Qs Done", "TRUE"))
+            elif eval_done is False:
+                sync_preview.append((str(client.id), "EVAL Qs Done", ""))
+            if da_sent is True:
+                sync_preview.append((str(client.id), "DA Qs Sent", "TRUE"))
+            elif da_sent is False:
+                sync_preview.append((str(client.id), "DA Qs Sent", ""))
+            if eval_sent is True:
+                sync_preview.append((str(client.id), "EVAL Qs Sent", "TRUE"))
+            elif eval_sent is False:
+                sync_preview.append((str(client.id), "EVAL Qs Sent", ""))
+        logger.info(f"Punch list sync preview — {len(sync_preview)} cell(s) would change:")
+        for cid, col, val in sync_preview:
+            logger.info(f"  client {cid}: {col} = {'TRUE' if val else '(clear)'}")
+        return
 
     start_hour = datetime.now().hour
     is_send_time = start_hour == 13
@@ -775,8 +812,8 @@ def main():
         logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")
         sync_updates: list[tuple[str, str, str]] = []
         for client in all_clients_with_qs.values():
-            da_done, eval_done = check_battery_completeness(client, rules)
-            da_sent, eval_sent = check_battery_sent(client, rules)
+            da_done, eval_done = check_battery_completeness(client, rules, verbose=dry_run)
+            da_sent, eval_sent = check_battery_sent(client, rules, verbose=dry_run)
 
             if da_done is True:
                 sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))

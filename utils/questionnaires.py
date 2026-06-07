@@ -362,9 +362,23 @@ def get_most_recent_not_done(
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
 
 
+def _resolve_wanted_diagnoses(asd_adhd: str | None) -> set[str]:
+    """Convert a client's asdAdhd field to a set of diagnosis strings for rule matching."""
+    if not asd_adhd:
+        return {"ASD", "ADHD"}
+    normalized = "ASD+ADHD" if asd_adhd == "Both" else asd_adhd
+    diagnoses: set[str] = set()
+    if "ASD" in normalized:
+        diagnoses.add("ASD")
+    if "ADHD" in normalized:
+        diagnoses.add("ADHD")
+    return diagnoses or {"ASD", "ADHD"}
+
+
 def check_battery_sent(
     client: ClientWithQuestionnaires,
     rules: list[dict],
+    verbose: bool = False,
 ) -> tuple[bool | None, bool | None]:
     """Check if DA and EVAL questionnaire batteries have been sent for a client.
 
@@ -377,14 +391,7 @@ def check_battery_sent(
 
     age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
 
-    wanted_diagnoses: set[str | None] = set()
-    if not client.asdAdhd:
-        wanted_diagnoses.update({"ASD", "ADHD"})
-    else:
-        if "ASD" in client.asdAdhd:
-            wanted_diagnoses.add("ASD")
-        if "ADHD" in client.asdAdhd:
-            wanted_diagnoses.add("ADHD")
+    wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
 
     applicable = [
         r
@@ -417,12 +424,31 @@ def check_battery_sent(
     if eval_types:
         eval_sent = eval_types.issubset(active_sent_types)
 
+    if verbose:
+        all_q_statuses = {q["questionnaireType"]: q["status"] for q in client.questionnaires}
+        logger.debug(
+            f"[battery-sent] {client.fullName} (ID:{client.id}) "
+            f"asdAdhd={client.asdAdhd!r} age={age_in_years} wanted={wanted_diagnoses}"
+        )
+        logger.debug(f"  applicable rules ({len(applicable)}): " + ", ".join(
+            f"[{r['daeval']}:{r['diagnosis']}]={r['questionnaires']}" for r in applicable
+        ))
+        logger.debug(f"  da_types_required={da_types}  eval_types_required={eval_types}")
+        logger.debug(f"  active_sent_types={active_sent_types}")
+        logger.debug(f"  all_statuses={all_q_statuses}")
+        if da_types and not da_sent:
+            logger.warning(f"  MISSING from DA battery: {da_types - active_sent_types}")
+        if eval_types and not eval_sent:
+            logger.warning(f"  MISSING from EVAL battery: {eval_types - active_sent_types}")
+        logger.info(f"  => da_sent={da_sent}  eval_sent={eval_sent}")
+
     return da_sent, eval_sent
 
 
 def check_battery_completeness(
     client: ClientWithQuestionnaires,
     rules: list[dict],
+    verbose: bool = False,
 ) -> tuple[bool | None, bool | None]:
     """Check if DA and EVAL questionnaire batteries are complete for a client.
 
@@ -435,14 +461,7 @@ def check_battery_completeness(
 
     age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
 
-    wanted_diagnoses: set[str | None] = set()
-    if not client.asdAdhd:
-        wanted_diagnoses.update({"ASD", "ADHD"})
-    else:
-        if "ASD" in client.asdAdhd:
-            wanted_diagnoses.add("ASD")
-        if "ADHD" in client.asdAdhd:
-            wanted_diagnoses.add("ADHD")
+    wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
 
     applicable = [
         r
@@ -474,5 +493,18 @@ def check_battery_completeness(
     eval_done: bool | None = None
     if eval_types:
         eval_done = eval_types.issubset(completed_types)
+
+    if verbose:
+        logger.debug(
+            f"[battery-done] {client.fullName} (ID:{client.id}) "
+            f"asdAdhd={client.asdAdhd!r} age={age_in_years} wanted={wanted_diagnoses}"
+        )
+        logger.debug(f"  da_types_required={da_types}  eval_types_required={eval_types}")
+        logger.debug(f"  completed_types={completed_types}")
+        if da_types and not da_done:
+            logger.warning(f"  NOT DONE in DA battery: {da_types - completed_types}")
+        if eval_types and not eval_done:
+            logger.warning(f"  NOT DONE in EVAL battery: {eval_types - completed_types}")
+        logger.info(f"  => da_done={da_done}  eval_done={eval_done}")
 
     return da_done, eval_done

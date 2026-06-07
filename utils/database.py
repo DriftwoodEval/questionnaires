@@ -327,7 +327,7 @@ def insert_basic_client(
                 first_name,
                 last_name,
                 f"{first_name} {last_name}",
-                "Both" if asd_adhd == "ASD+ADHD" else asd_adhd,
+                asd_adhd,
                 gender,
                 phone_number,
             )
