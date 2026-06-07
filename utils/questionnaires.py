@@ -400,14 +400,17 @@ def check_battery_sent(
         or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
     ]
 
-    da_types: set[str] = set()
-    eval_types: set[str] = set()
+    da_only_types: set[str] = set()
+    eval_only_types: set[str] = set()
+    daeval_types: set[str] = set()
     for rule in applicable:
         qs: list[str] = rule.get("questionnaires") or []
-        if rule["daeval"] in ("DA", "DAEVAL"):
-            da_types.update(qs)
-        if rule["daeval"] in ("EVAL", "DAEVAL"):
-            eval_types.update(qs)
+        if rule["daeval"] == "DA":
+            da_only_types.update(qs)
+        elif rule["daeval"] == "EVAL":
+            eval_only_types.update(qs)
+        elif rule["daeval"] == "DAEVAL":
+            daeval_types.update(qs)
 
     unsent_statuses = {"JUST_ADDED", "ARCHIVED"}
     active_sent_types = {
@@ -416,13 +419,23 @@ def check_battery_sent(
         if q.get("status") not in unsent_statuses
     }
 
-    da_sent: bool | None = None
-    if da_types:
-        da_sent = da_types.issubset(active_sent_types)
+    da_ok = bool(da_only_types) and da_only_types.issubset(active_sent_types)
+    eval_ok = bool(eval_only_types) and eval_only_types.issubset(active_sent_types)
+    daeval_ok = bool(daeval_types) and daeval_types.issubset(active_sent_types)
 
+    # DA: satisfied by DA rules alone, or by DAEVAL rules alone
+    da_sent: bool | None = None
+    if da_ok or daeval_ok:
+        da_sent = True
+    elif da_only_types:
+        da_sent = False
+
+    # EVAL: satisfied by EVAL rules alone, or by DAEVAL rules alone
     eval_sent: bool | None = None
-    if eval_types:
-        eval_sent = eval_types.issubset(active_sent_types)
+    if eval_ok or daeval_ok:
+        eval_sent = True
+    elif eval_only_types:
+        eval_sent = False
 
     if verbose:
         all_q_statuses = {q["questionnaireType"]: q["status"] for q in client.questionnaires}
@@ -433,13 +446,17 @@ def check_battery_sent(
         logger.debug(f"  applicable rules ({len(applicable)}): " + ", ".join(
             f"[{r['daeval']}:{r['diagnosis']}]={r['questionnaires']}" for r in applicable
         ))
-        logger.debug(f"  da_types_required={da_types}  eval_types_required={eval_types}")
-        logger.debug(f"  active_sent_types={active_sent_types}")
+        logger.debug(
+            f"  da_only={da_only_types} eval_only={eval_only_types} daeval={daeval_types}"
+        )
+        logger.debug(
+            f"  da_ok={da_ok} eval_ok={eval_ok} daeval_ok={daeval_ok} | active={active_sent_types}"
+        )
         logger.debug(f"  all_statuses={all_q_statuses}")
-        if da_types and not da_sent:
-            logger.warning(f"  MISSING from DA battery: {da_types - active_sent_types}")
-        if eval_types and not eval_sent:
-            logger.warning(f"  MISSING from EVAL battery: {eval_types - active_sent_types}")
+        if da_sent is False:
+            logger.warning(f"  MISSING from DA: {da_only_types - active_sent_types}")
+        if eval_sent is False:
+            logger.warning(f"  MISSING from EVAL: {eval_only_types - active_sent_types}")
         logger.info(f"  => da_sent={da_sent}  eval_sent={eval_sent}")
 
     return da_sent, eval_sent
@@ -470,14 +487,17 @@ def check_battery_completeness(
         or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
     ]
 
-    da_types: set[str] = set()
-    eval_types: set[str] = set()
+    da_only_types: set[str] = set()
+    eval_only_types: set[str] = set()
+    daeval_types: set[str] = set()
     for rule in applicable:
         qs: list[str] = rule.get("questionnaires") or []
-        if rule["daeval"] in ("DA", "DAEVAL"):
-            da_types.update(qs)
-        if rule["daeval"] in ("EVAL", "DAEVAL"):
-            eval_types.update(qs)
+        if rule["daeval"] == "DA":
+            da_only_types.update(qs)
+        elif rule["daeval"] == "EVAL":
+            eval_only_types.update(qs)
+        elif rule["daeval"] == "DAEVAL":
+            daeval_types.update(qs)
 
     done_statuses = {"COMPLETED", "EXTERNAL"}
     completed_types = {
@@ -486,25 +506,37 @@ def check_battery_completeness(
         if q.get("status") != "ARCHIVED" and q.get("status") in done_statuses
     }
 
+    da_ok = bool(da_only_types) and da_only_types.issubset(completed_types)
+    eval_ok = bool(eval_only_types) and eval_only_types.issubset(completed_types)
+    daeval_ok = bool(daeval_types) and daeval_types.issubset(completed_types)
+
     da_done: bool | None = None
-    if da_types:
-        da_done = da_types.issubset(completed_types)
+    if da_ok or daeval_ok:
+        da_done = True
+    elif da_only_types:
+        da_done = False
 
     eval_done: bool | None = None
-    if eval_types:
-        eval_done = eval_types.issubset(completed_types)
+    if eval_ok or daeval_ok:
+        eval_done = True
+    elif eval_only_types:
+        eval_done = False
 
     if verbose:
         logger.debug(
             f"[battery-done] {client.fullName} (ID:{client.id}) "
             f"asdAdhd={client.asdAdhd!r} age={age_in_years} wanted={wanted_diagnoses}"
         )
-        logger.debug(f"  da_types_required={da_types}  eval_types_required={eval_types}")
-        logger.debug(f"  completed_types={completed_types}")
-        if da_types and not da_done:
-            logger.warning(f"  NOT DONE in DA battery: {da_types - completed_types}")
-        if eval_types and not eval_done:
-            logger.warning(f"  NOT DONE in EVAL battery: {eval_types - completed_types}")
+        logger.debug(
+            f"  da_only={da_only_types} eval_only={eval_only_types} daeval={daeval_types}"
+        )
+        logger.debug(
+            f"  da_ok={da_ok} eval_ok={eval_ok} daeval_ok={daeval_ok} | completed={completed_types}"
+        )
+        if da_done is False:
+            logger.warning(f"  NOT DONE in DA: {da_only_types - completed_types}")
+        if eval_done is False:
+            logger.warning(f"  NOT DONE in EVAL: {eval_only_types - completed_types}")
         logger.info(f"  => da_done={da_done}  eval_done={eval_done}")
 
     return da_done, eval_done

@@ -412,7 +412,7 @@ def batch_update_punch_list(
                 }
             )
         else:
-            logger.warning(
+            logger.debug(
                 f"batch_update_punch_list: {id_for_search!r} / {header!r} not found, skipping"
             )
 

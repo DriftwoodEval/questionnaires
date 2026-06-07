@@ -350,11 +350,46 @@ def main():
         action="store_true",
         help="Show detailed battery sent/done analysis for every client and exit. No changes made.",
     )
+    parser.add_argument(
+        "--sync-batteries",
+        action="store_true",
+        help="Only update the DA/EVAL Qs Sent/Done columns on the punch list. No texts or questionnaire checks.",
+    )
     args = parser.parse_args()
     dry_run = args.dry_run
     skip_failures = args.skip_failures
     force_send = args.force_send
     debug_batteries = args.debug_batteries
+
+    if args.sync_batteries:
+        services, config = load_config()
+        rules = get_questionnaire_rules(config)
+        clients_raw, _ = get_previous_clients(config, failed=False)
+        clients_with_qs = validate_questionnaires(clients_raw)
+        logger.info(f"Syncing battery columns for {len(clients_with_qs)} clients")
+        sync_updates: list[tuple[str, str, str]] = []
+        for client in clients_with_qs.values():
+            da_done, eval_done = check_battery_completeness(client, rules)
+            da_sent, eval_sent = check_battery_sent(client, rules)
+            if da_done is True:
+                sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))
+            elif da_done is False:
+                sync_updates.append((str(client.id), "DA Qs Done", "FALSE"))
+            if eval_done is True:
+                sync_updates.append((str(client.id), "EVAL Qs Done", "TRUE"))
+            elif eval_done is False:
+                sync_updates.append((str(client.id), "EVAL Qs Done", "FALSE"))
+            if da_sent is True:
+                sync_updates.append((str(client.id), "DA Qs Sent", "TRUE"))
+            elif da_sent is False:
+                sync_updates.append((str(client.id), "DA Qs Sent", "FALSE"))
+            if eval_sent is True:
+                sync_updates.append((str(client.id), "EVAL Qs Sent", "TRUE"))
+            elif eval_sent is False:
+                sync_updates.append((str(client.id), "EVAL Qs Sent", "FALSE"))
+        batch_update_punch_list(config, sync_updates)
+        logger.info(f"Updated {len(sync_updates)} cell(s) on the punch list")
+        return
 
     if debug_batteries:
         services, config = load_config()
@@ -369,22 +404,22 @@ def main():
             if da_done is True:
                 sync_preview.append((str(client.id), "DA Qs Done", "TRUE"))
             elif da_done is False:
-                sync_preview.append((str(client.id), "DA Qs Done", ""))
+                sync_preview.append((str(client.id), "DA Qs Done", "FALSE"))
             if eval_done is True:
                 sync_preview.append((str(client.id), "EVAL Qs Done", "TRUE"))
             elif eval_done is False:
-                sync_preview.append((str(client.id), "EVAL Qs Done", ""))
+                sync_preview.append((str(client.id), "EVAL Qs Done", "FALSE"))
             if da_sent is True:
                 sync_preview.append((str(client.id), "DA Qs Sent", "TRUE"))
             elif da_sent is False:
-                sync_preview.append((str(client.id), "DA Qs Sent", ""))
+                sync_preview.append((str(client.id), "DA Qs Sent", "FALSE"))
             if eval_sent is True:
                 sync_preview.append((str(client.id), "EVAL Qs Sent", "TRUE"))
             elif eval_sent is False:
-                sync_preview.append((str(client.id), "EVAL Qs Sent", ""))
+                sync_preview.append((str(client.id), "EVAL Qs Sent", "FALSE"))
         logger.info(f"Punch list sync preview — {len(sync_preview)} cell(s) would change:")
         for cid, col, val in sync_preview:
-            logger.info(f"  client {cid}: {col} = {'TRUE' if val else '(clear)'}")
+            logger.info(f"  client {cid}: {col} = {val}")
         return
 
     start_hour = datetime.now().hour
@@ -818,28 +853,28 @@ def main():
             if da_done is True:
                 sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))
             elif da_done is False:
-                sync_updates.append((str(client.id), "DA Qs Done", ""))
+                sync_updates.append((str(client.id), "DA Qs Done", "FALSE"))
 
             if eval_done is True:
                 sync_updates.append((str(client.id), "EVAL Qs Done", "TRUE"))
             elif eval_done is False:
-                sync_updates.append((str(client.id), "EVAL Qs Done", ""))
+                sync_updates.append((str(client.id), "EVAL Qs Done", "FALSE"))
 
             if da_sent is True:
                 sync_updates.append((str(client.id), "DA Qs Sent", "TRUE"))
             elif da_sent is False:
-                sync_updates.append((str(client.id), "DA Qs Sent", ""))
+                sync_updates.append((str(client.id), "DA Qs Sent", "FALSE"))
 
             if eval_sent is True:
                 sync_updates.append((str(client.id), "EVAL Qs Sent", "TRUE"))
             elif eval_sent is False:
-                sync_updates.append((str(client.id), "EVAL Qs Sent", ""))
+                sync_updates.append((str(client.id), "EVAL Qs Sent", "FALSE"))
 
         if not dry_run:
             batch_update_punch_list(config, sync_updates)
         else:
             for client_id_str, col, val in sync_updates:
-                logger.info(f"[DRY RUN] Would set {col}={'TRUE' if val else '(cleared)'} for client {client_id_str}")
+                logger.info(f"[DRY RUN] Would set {col}={val} for client {client_id_str}")
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"
