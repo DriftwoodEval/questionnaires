@@ -30,7 +30,7 @@ from utils.google import (
     build_admin_email,
     send_gmail,
 )
-from utils.misc import check_distance, load_config
+from utils.misc import check_distance, json_log_format, load_config
 from utils.openphone import InvalidPhoneNumberError, NotEnoughCreditsError, OpenPhone
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
@@ -57,7 +57,7 @@ logger.add(
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
 )
 
-logger.add("logs/qreceive.log", rotation="500 MB")
+logger.add("logs/qreceive.log", format=json_log_format, rotation="500 MB")
 
 PENDING_EMAIL_PATH = Path("logs/pending_email.json")
 

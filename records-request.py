@@ -25,7 +25,13 @@ from utils.google import (
     move_file_in_drive,
     send_gmail,
 )
-from utils.misc import NetworkSink, add_failure, load_config, load_local_settings
+from utils.misc import (
+    LokiSink,
+    add_failure,
+    json_log_format,
+    load_config,
+    load_local_settings,
+)
 from utils.platforms.therapyappointment import (
     check_and_login_ta,
     check_if_docs_signed,
@@ -42,17 +48,10 @@ logger.add(
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
 )
 
-logger.add("logs/records-request.log", rotation="500 MB")
+logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB")
 
-log_host = load_local_settings().log_host
-
-network_sink = NetworkSink(log_host, 9999, app_name="records-request")
-
-logger.add(
-    network_sink.write,
-    format="{time} | {level: <8} | {message}",
-    enqueue=True,
-)
+loki_sink = LokiSink(load_local_settings().effective_loki_url, app_name="records-request")
+logger.add(loki_sink.write, format=json_log_format, enqueue=True)
 
 WAIT_TIMEOUT = 15  # seconds
 

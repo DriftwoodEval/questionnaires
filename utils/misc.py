@@ -1,5 +1,7 @@
-import socket
+import contextlib
+import json as _json
 import sys
+import time
 from datetime import date
 from functools import cache
 from pathlib import Path
@@ -100,30 +102,34 @@ def load_config() -> tuple[Services, Config]:
     return final_services, final_config
 
 
-class NetworkSink:
-    """Class for sending log data to a network socket."""
+def json_log_format(record: dict) -> str:
+    return _json.dumps({
+        "time": record["time"].isoformat(),
+        "level": record["level"].name,
+        "module": record["name"],
+        "function": record["function"],
+        "line": record["line"],
+        "message": record["message"],
+    }) + "\n"
 
-    def __init__(self, log_host: str, port: int, app_name: str):
-        self.ip = log_host
-        self.port = port
-        self.app_name = app_name
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            self.sock.connect((self.ip, port))
-        except (OSError, ConnectionRefusedError, TimeoutError) as e:
-            logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
-            self.sock = None
-            sys.exit(1)
+
+class LokiSink:
+    """Send log lines to Loki's HTTP push API."""
+
+    def __init__(self, loki_url: str, app_name: str):
+        self.push_url = f"{loki_url.rstrip('/')}/loki/api/v1/push"
+        self.labels = {"service": "questionnaires", "app": app_name}
 
     def write(self, message: str):
-        """Write a message to the network socket."""
-        if self.sock and message.strip():
-            for line in message.splitlines():
-                if line.strip():
-                    formatted_line = f"{self.app_name}:{line}\n"
-                    self.sock.sendall(formatted_line.encode("utf-8"))
-                else:
-                    self.sock.sendall(f"{self.app_name}:\n".encode())
+        for raw_line in message.splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            payload = {
+                "streams": [{"stream": self.labels, "values": [[str(time.time_ns()), stripped]]}]
+            }
+            with contextlib.suppress(Exception):
+                requests.post(self.push_url, json=payload, timeout=5)
 
 
 def add_failure(
