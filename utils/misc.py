@@ -1,7 +1,6 @@
-import contextlib
 import json as _json
+import socket
 import sys
-import time
 from datetime import date
 from functools import cache
 from pathlib import Path
@@ -113,23 +112,28 @@ def json_log_format(record: dict) -> str:
     }) + "\n"
 
 
-class LokiSink:
-    """Send log lines to Loki's HTTP push API."""
+class NetworkSink:
+    """Send log lines to a remote log server via TCP."""
 
-    def __init__(self, loki_url: str, app_name: str):
-        self.push_url = f"{loki_url.rstrip('/')}/loki/api/v1/push"
-        self.labels = {"service": "questionnaires", "app": app_name}
+    def __init__(self, log_host: str, port: int, app_name: str):
+        self.ip = log_host
+        self.port = port
+        self.app_name = app_name
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.sock.connect((self.ip, port))
+        except (OSError, ConnectionRefusedError, TimeoutError) as e:
+            logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
+            self.sock = None
+            sys.exit(1)
 
     def write(self, message: str):
-        for raw_line in message.splitlines():
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            payload = {
-                "streams": [{"stream": self.labels, "values": [[str(time.time_ns()), stripped]]}]
-            }
-            with contextlib.suppress(Exception):
-                requests.post(self.push_url, json=payload, timeout=5)
+        if self.sock and message.strip():
+            for line in message.splitlines():
+                if line.strip():
+                    self.sock.sendall(f"{self.app_name}:{line}\n".encode("utf-8"))
+                else:
+                    self.sock.sendall(f"{self.app_name}:\n".encode())
 
 
 def add_failure(

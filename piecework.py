@@ -15,7 +15,7 @@ from openpyxl.styles import Alignment, Font
 from utils.custom_types import Appointment, Config
 from utils.database import get_all_evaluators_info, get_appointments
 from utils.google import get_punch_list, upload_file_to_drive
-from utils.misc import LokiSink, json_log_format, load_config, load_local_settings
+from utils.misc import NetworkSink, json_log_format, load_config, load_local_settings
 
 TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
 
@@ -28,8 +28,9 @@ logger.add(
 
 logger.add("logs/piecework.log", format=json_log_format, rotation="500 MB")
 
-loki_sink = LokiSink(load_local_settings().effective_loki_url, app_name="piecework")
-logger.add(loki_sink.write, format=json_log_format, enqueue=True)
+log_host = load_local_settings().log_host
+network_sink = NetworkSink(log_host, 9999, app_name="piecework")
+logger.add(network_sink.write, format=json_log_format, enqueue=True)
 
 
 def load_tracked_reports() -> dict[str, str]:

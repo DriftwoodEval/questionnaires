@@ -33,3 +33,17 @@ ENV CHROME_BIN=/usr/bin/chromium \
     PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
+
+FROM builder AS log-server
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
+
+COPY . .
+
+ENV TZ=America/New_York \
+    PYTHONUNBUFFERED=1
+
+CMD ["uv", "run", "log-server.py"]

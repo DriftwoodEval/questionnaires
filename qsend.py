@@ -27,7 +27,7 @@ from utils.database import (
 )
 from utils.google import get_punch_list, update_punch_list
 from utils.misc import (
-    LokiSink,
+    NetworkSink,
     add_failure,
     json_log_format,
     load_config,
@@ -73,8 +73,9 @@ logger.add(
 
 logger.add("logs/qsend.log", format=json_log_format, rotation="500 MB")
 
-loki_sink = LokiSink(load_local_settings().effective_loki_url, app_name="qsend")
-logger.add(loki_sink.write, format=json_log_format, enqueue=True)
+log_host = load_local_settings().log_host
+network_sink = NetworkSink(log_host, 9999, app_name="qsend")
+logger.add(network_sink.write, format=json_log_format, enqueue=True)
 
 
 def get_clients_to_send(

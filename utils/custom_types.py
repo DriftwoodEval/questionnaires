@@ -1,6 +1,5 @@
 from datetime import date, datetime
 from typing import Annotated, Literal, TypedDict
-from urllib.parse import urlparse
 
 from pydantic import (
     BaseModel,
@@ -22,15 +21,9 @@ class LocalSettings(BaseModel):
     """Model for reading the local_config.yml file."""
 
     api_url: str = Field(description="The full URL for fetching the remote config.")
-    loki_url: str | None = Field(default=None, description="Override Loki URL; defaults to http://<api_host>:3100")
+    log_host: str = Field(description="Host for sending logs to a remote log server.")
     api_secret: str = Field(description="API secret for authentication")
     config_overrides: LocalConfigOverrides = Field(default_factory=LocalConfigOverrides)
-
-    @property
-    def effective_loki_url(self) -> str:
-        if self.loki_url:
-            return self.loki_url
-        return f"http://{urlparse(self.api_url).hostname}:3100"
 
 
 class Service(BaseModel):
