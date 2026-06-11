@@ -412,8 +412,6 @@ def check_client_failed(
     Returns:
         tuple[bool, Union[str, None]]: (True, error_reason) if a match is found, otherwise (False, None).
     """
-    logger.debug("Checking if client failed previously")
-
     if not prev_failed_clients:
         return (False, None)
 
@@ -484,6 +482,143 @@ def normalize_q_name(name: str) -> str:
     return name.removesuffix(" Self")
 
 
+def diagnose_client(config: Config, client_filter: str) -> None:
+    """Walk through every pre-flight exclusion check for a single client and report pass/fail."""
+    punch_list = get_punch_list(config)
+    if punch_list is None:
+        rich_print("[red]Punch list is empty[/red]")
+        return
+
+    punch_list["Client Name"] = (
+        punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
+    )
+
+    if client_filter.isdigit():
+        matches = punch_list[punch_list["Client ID"] == client_filter]
+    else:
+        matches = punch_list[
+            punch_list["Client Name"].str.lower() == client_filter.lower()
+        ]
+
+    if matches.empty:
+        rich_print(f"[red]'{client_filter}' not found in punch list at all[/red]")
+        return
+
+    client = matches.iloc[0]
+    rich_print(
+        f"\n[bold]Diagnosing: {client['Client Name']} ({client.get('Client ID', 'no ID')})[/bold]\n"
+    )
+
+    def ok(msg: str) -> None:
+        rich_print(f"  [green]PASS[/green]  {msg}")
+
+    def fail(msg: str) -> None:
+        rich_print(f"  [red]FAIL[/red]  {msg}")
+
+    def warn(msg: str) -> None:
+        rich_print(f"  [yellow]WARN[/yellow]  {msg}")
+
+    # 1. Are questionnaires actually needed?
+    is_adhd = client["For"] == "ADHD"
+    da_needed = client.get("DA Qs Needed") == "TRUE" and client.get("DA Qs Sent") != "TRUE"
+    eval_needed = (
+        client.get("EVAL Qs Needed") == "TRUE" and client.get("EVAL Qs Sent") != "TRUE"
+    )
+    if da_needed or (not is_adhd and eval_needed):
+        ok(
+            f"Questionnaires needed  "
+            f"(DA Needed={client.get('DA Qs Needed')}, DA Sent={client.get('DA Qs Sent')}  "
+            f"EVAL Needed={client.get('EVAL Qs Needed')}, EVAL Sent={client.get('EVAL Qs Sent')})"
+        )
+    else:
+        fail(
+            f"No questionnaires needed  "
+            f"(DA Needed={client.get('DA Qs Needed')}, DA Sent={client.get('DA Qs Sent')}  "
+            f"EVAL Needed={client.get('EVAL Qs Needed')}, EVAL Sent={client.get('EVAL Qs Sent')})"
+        )
+
+    # 2. Has a Client ID?
+    client_id_raw = client.get("Client ID")
+    if "Client ID" not in punch_list.columns or pd.isna(client_id_raw):
+        fail("No Client ID")
+        return
+    ok(f"Has Client ID: {client_id_raw}")
+
+    # 3. Record status
+    record_statuses = get_record_ready_client_ids(config)
+    record_status = record_statuses.get(str(client_id_raw), "Unknown")
+    if record_status == "Ready":
+        ok(f"Record status: Ready")
+    else:
+        fail(f"Record status: {record_status}  (must be 'Ready' for non-interactive runs)")
+
+    # 4. Previous failures
+    # Compute daeval the same way get_clients_to_send() does — check_client_failed
+    # branches on it, so without it the check always returns (False, None).
+    da_sent = client.get("DA Qs Sent") == "TRUE"
+    eval_sent = client.get("EVAL Qs Sent") == "TRUE"
+    da_unsent = client.get("DA Qs Needed") == "TRUE" and not da_sent
+    eval_unsent = client.get("EVAL Qs Needed") == "TRUE" and not eval_sent
+    if client["For"] == "ADHD":
+        computed_daeval = "DA"
+    elif da_unsent and eval_unsent:
+        computed_daeval = "DAEVAL"
+    elif eval_unsent:
+        computed_daeval = "EVAL"
+    else:
+        computed_daeval = "DA"
+    client = client.copy()
+    client["daeval"] = computed_daeval
+
+    prev_clients, prev_failed_clients = get_previous_clients(config, failed=True)
+    previously_failed, error = check_client_failed(prev_failed_clients, client)
+    if not previously_failed:
+        ok("No blocking previous failures")
+    elif error in [
+        "too young",
+        "portal not opened",
+        "docs not signed",
+        "not in db",
+        "no dob",
+        "unable to find client",
+        "unknown questionnaire needs",
+    ]:
+        warn(f"Previous retryable failure: {error}")
+    else:
+        fail(f"Previous unresolvable failure: {error}")
+
+    # 5. Language
+    lang = client.get("Language", "")
+    if lang in ["", "English", "Spanish"]:
+        ok(f"Language: {lang if lang else '(blank — treated as English)'}")
+    else:
+        fail(f"Unsupported language: {lang}")
+
+    # 6. Present in database
+    try:
+        client_from_db = prev_clients.get(int(client_id_raw))
+    except (ValueError, TypeError):
+        client_from_db = None
+
+    if not client_from_db:
+        fail("Not found in database (does this client exist in TherapyAppointment?)")
+        return
+    ok("Found in database")
+
+    # 7. autismStop / pause flags
+    if client_from_db.autismStop:
+        fail("autismStop is set")
+    else:
+        ok("autismStop not set")
+
+    if client_from_db.pause:
+        fail("pause is set")
+    else:
+        ok("pause not set")
+
+    rich_print()
+
+
 @app.command()
 def main(
     client_filter: str = typer.Option(
@@ -494,6 +629,9 @@ def main(
         "--interactive",
         "-i",
         help="Interactively allow clients with bad records",
+    ),
+    debug_client: str = typer.Option(
+        None, "--debug-client", help="Diagnose why a client is being skipped (by ID or name)"
     ),
 ):
     """Main function for qsend.py.
@@ -514,6 +652,11 @@ def main(
 
     """
     services, config = load_config()
+
+    if debug_client:
+        diagnose_client(config, debug_client)
+        return
+
     driver = initialize_selenium()
 
     clients = get_clients_to_send(
@@ -558,6 +701,7 @@ def main(
                     "not in db",
                     "no dob",
                     "unable to find client",
+                    "unknown questionnaire needs",
                 ]:
                     logger.error(f"{client['Client Name']} has already failed to send")
                     add_failure(
