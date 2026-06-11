@@ -66,6 +66,7 @@ from utils.selenium import (
 app = typer.Typer()
 
 logger.remove()
+logger.level("NOTICE", no=25, color="<yellow><bold>", icon="!")
 logger.add(
     sys.stdout,
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
@@ -520,7 +521,9 @@ def diagnose_client(config: Config, client_filter: str) -> None:
 
     # 1. Are questionnaires actually needed?
     is_adhd = client["For"] == "ADHD"
-    da_needed = client.get("DA Qs Needed") == "TRUE" and client.get("DA Qs Sent") != "TRUE"
+    da_needed = (
+        client.get("DA Qs Needed") == "TRUE" and client.get("DA Qs Sent") != "TRUE"
+    )
     eval_needed = (
         client.get("EVAL Qs Needed") == "TRUE" and client.get("EVAL Qs Sent") != "TRUE"
     )
@@ -548,9 +551,11 @@ def diagnose_client(config: Config, client_filter: str) -> None:
     record_statuses = get_record_ready_client_ids(config)
     record_status = record_statuses.get(str(client_id_raw), "Unknown")
     if record_status == "Ready":
-        ok(f"Record status: Ready")
+        ok("Record status: Ready")
     else:
-        fail(f"Record status: {record_status}  (must be 'Ready' for non-interactive runs)")
+        fail(
+            f"Record status: {record_status}  (must be 'Ready' for non-interactive runs)"
+        )
 
     # 4. Previous failures
     # Compute daeval the same way get_clients_to_send() does — check_client_failed
@@ -590,7 +595,7 @@ def diagnose_client(config: Config, client_filter: str) -> None:
     # 5. Language
     lang = client.get("Language", "")
     if lang in ["", "English", "Spanish"]:
-        ok(f"Language: {lang if lang else '(blank — treated as English)'}")
+        ok(f"Language: {lang or '(blank — treated as English)'}")
     else:
         fail(f"Unsupported language: {lang}")
 
@@ -631,7 +636,9 @@ def main(
         help="Interactively allow clients with bad records",
     ),
     debug_client: str = typer.Option(
-        None, "--debug-client", help="Diagnose why a client is being skipped (by ID or name)"
+        None,
+        "--debug-client",
+        help="Diagnose why a client is being skipped (by ID or name)",
     ),
 ):
     """Main function for qsend.py.
@@ -703,7 +710,9 @@ def main(
                     "unable to find client",
                     "unknown questionnaire needs",
                 ]:
-                    logger.error(f"{client['Client Name']} has already failed to send")
+                    logger.log(
+                        "NOTICE", f"{client['Client Name']} has already failed to send"
+                    )
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
@@ -720,7 +729,7 @@ def main(
                 )
 
         if client["Language"] not in ["", "English", "Spanish"]:
-            logger.error(f"{client['Client Name']} speaks {client['Language']}")
+            logger.log("NOTICE", f"{client['Client Name']} speaks {client['Language']}")
             add_failure(
                 config=config,
                 client_id=client["Client ID"],
@@ -764,11 +773,11 @@ def main(
             client["TA Last Name"] = client_from_db.lastName
 
             if client_from_db.autismStop:
-                logger.error(f"{client['Client Name']} has autism stop")
+                logger.log("NOTICE", f"{client['Client Name']} has autism stop")
                 continue
 
             if client_from_db.pause:
-                logger.error(f"{client['Client Name']} has been paused")
+                logger.log("NOTICE", f"{client['Client Name']} has been paused")
                 continue
 
             client_url = ""
@@ -796,6 +805,9 @@ def main(
                         resolved=True,
                     )
                 if not check_if_opened_portal(driver):
+                    logger.log(
+                        "NOTICE", f"{client['Client Name']} has not opened portal"
+                    )
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
@@ -817,6 +829,7 @@ def main(
                     )
 
                 if not check_if_docs_signed(driver):
+                    logger.log("NOTICE", f"{client['Client Name']} has not signed docs")
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
@@ -861,7 +874,7 @@ def main(
             )
 
             if str(questionnaires_needed) == "Too young":
-                logger.error(f"{client['Client Name']} is too young")
+                logger.log("NOTICE", f"{client['Client Name']} is too young")
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
