@@ -124,6 +124,9 @@ def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
                 seen_errors.add(error)
                 merged["errors"].append(error)
 
+    # A client in "completed" has finished their objectives — remove them from "call"
+    merged["call"] = [c for c in merged["call"] if c.id not in seen_completed]
+
     return merged
 
 
@@ -479,6 +482,7 @@ def main():
         ] = []
         numbers_sent = []
 
+        completed_ids = {c.id for c in email_info["completed"]}
         if failed_clients and not skip_failures:
             for client in failed_clients.values():
                 if any(
@@ -536,7 +540,7 @@ def main():
                             f"Already messaged {client.fullName} at {client.phoneNumber} today"
                         )
 
-                    if reminded_count == 3 and last_reminded_distance > 3:
+                    if reminded_count == 3 and last_reminded_distance > 3 and client.id not in completed_ids:
                         email_info["call"].append(client)
                         update_failure_in_db(
                             config,
