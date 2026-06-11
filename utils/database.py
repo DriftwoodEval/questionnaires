@@ -138,6 +138,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             INNER JOIN emr_external_record_request err ON c.id = err.clientId
             WHERE c.recordsNeeded = "Needed"
             AND err.requestedDate IS NULL
+            AND (err.hold_until IS NULL OR err.hold_until <= CURDATE())
             AND c.status IS NOT FALSE
             AND c.language = "English"
             AND LENGTH(c.id) != 5
