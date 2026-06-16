@@ -240,10 +240,10 @@ def get_qglobal_link(driver: WebDriver) -> str | None:
     return link_element.get_attribute("href")
 
 
-_BASC_RADIO_IDS = {
-    "Preschool": "2600_radio",
-    "Child": "2598_radio",
-    "Adolescent": "2596_radio",
+_BASC_XPATHS = {
+    "Preschool": "//tr[.//span[contains(., 'BASC-4 PRS-Preschool')]]//input[@type='radio']",
+    "Child": "//tr[.//span[contains(., 'BASC-4 PRS-Child')]]//input[@type='radio']",
+    "Adolescent": "//tr[.//span[contains(., 'BASC-4 PRS-Adolescent')]]//input[@type='radio']",
 }
 
 
@@ -258,7 +258,7 @@ def _gen_basc(
     )
     search_select_qglobal(driver, client)
     click_element(driver, By.ID, "examAssessTabFormId:add_assessment")
-    click_element(driver, By.ID, _BASC_RADIO_IDS[variant])
+    click_element(driver, By.XPATH, _BASC_XPATHS[variant])
     click_element(driver, By.ID, "examAssessTabFormId:assignAssessmentBtn")
     click_element(
         driver, By.XPATH, "//button[contains(.,'Send the assessment link via e-mail')]"
