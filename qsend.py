@@ -32,6 +32,7 @@ from utils.misc import (
     json_log_format,
     load_config,
     load_local_settings,
+    stderr_log_format,
 )
 from utils.platforms.mhs import (
     check_and_login_mhs,
@@ -67,10 +68,7 @@ app = typer.Typer()
 
 logger.remove()
 logger.level("NOTICE", no=25, color="<yellow><bold>", icon="!")
-logger.add(
-    sys.stdout,
-    format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
-)
+logger.add(sys.stdout, format=stderr_log_format)
 
 logger.add("logs/qsend.log", format=json_log_format, rotation="500 MB")
 

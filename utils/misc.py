@@ -102,9 +102,26 @@ def load_config() -> tuple[Services, Config]:
     return final_services, final_config
 
 
+def stderr_log_format(record: "loguru.Record") -> str:
+    # Escape < so loguru's color parser doesn't choke on HTML in exception messages.
+    # Also escape { } so format_map doesn't treat message content as placeholders.
+    safe_msg = (
+        record["message"]
+        .replace("<", r"\<")
+        .replace("{", "{{")
+        .replace("}", "}}")
+    )
+    return (
+        f"[<dim>{{time:YY-MM-DD HH:mm:ss}}</dim>] "
+        f"<level>{{level: <8}}</level> | "
+        f"<level>{safe_msg}</level>\n"
+    )
+
+
 def json_log_format(record: "loguru.Record") -> str:
     # Escape braces so loguru's format_map treats this as a literal string, not a template.
-    # format_map then unescapes {{ → { and }} → }, restoring valid JSON.
+    # Escape < so loguru's markup parser doesn't choke on tags in exception messages.
+    # Both transformations are undone by loguru's post-processing step.
     return (
         (
             _json.dumps(
@@ -121,6 +138,7 @@ def json_log_format(record: "loguru.Record") -> str:
         )
         .replace("{", "{{")
         .replace("}", "}}")
+        .replace("<", r"\<")
     )
 
 
