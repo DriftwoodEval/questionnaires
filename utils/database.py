@@ -255,6 +255,38 @@ def get_all_evaluators_info(config: Config) -> dict[int, dict]:
     return evaluators_info
 
 
+def load_tracked_reports(config: Config) -> dict[str, str]:
+    """Load piecework report tracking entries from the database."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute("SELECT clientId, tracked_date FROM emr_piecework_report_tracking")
+        rows = cursor.fetchall()
+    return {str(row["clientId"]): str(row["tracked_date"]) for row in rows}
+
+
+def save_new_tracked_reports(config: Config, client_ids: list[int], tracked_date: str) -> None:
+    """Insert new piecework report tracking entries, ignoring duplicates."""
+    if not client_ids:
+        return
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.executemany(
+            "INSERT IGNORE INTO emr_piecework_report_tracking (clientId, tracked_date) VALUES (%s, %s)",
+            [(cid, tracked_date) for cid in client_ids],
+        )
+    logger.info(f"Saved {len(client_ids)} new piecework tracking entries to DB")
+
+
+def update_tracking_writer(config: Config, client_id: int, writer_email: str) -> None:
+    """Update the writer email for a piecework report tracking entry."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE emr_piecework_report_tracking SET writer_email = %s WHERE clientId = %s",
+            (writer_email, client_id),
+        )
+
+
 def get_appointments(
     config: Config, start_date: date, end_date: date
 ) -> list[Appointment] | None:

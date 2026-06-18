@@ -1,5 +1,4 @@
 import argparse
-import json
 import re
 import sys
 from collections import defaultdict
@@ -13,11 +12,15 @@ from loguru import logger
 from openpyxl.styles import Alignment, Font
 
 from utils.custom_types import Appointment, Config
-from utils.database import get_all_evaluators_info, get_appointments
+from utils.database import (
+    get_all_evaluators_info,
+    get_appointments,
+    load_tracked_reports,
+    save_new_tracked_reports,
+    update_tracking_writer,
+)
 from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import NetworkSink, json_log_format, load_config, load_local_settings
-
-TRACKING_FILE = Path("piecework_output") / "reports_tracking.json"
 
 logger.remove()
 logger.add(
@@ -33,39 +36,6 @@ network_sink = NetworkSink(log_host, 9999, app_name="piecework")
 logger.add(network_sink.write, format=json_log_format, enqueue=True)
 
 
-def load_tracked_reports() -> dict[str, str]:
-    """Load the set of previously tracked client IDs from disk."""
-    if not TRACKING_FILE.exists():
-        return {}
-
-    try:
-        with Path.open(TRACKING_FILE) as f:
-            data = json.load(f)
-            client_ids = data.get("client_ids", {})
-            if not isinstance(client_ids, dict):
-                logger.warning(
-                    "Previously paid reports file structure is invalid (not a dict). Resetting."
-                )
-                return {}
-            return client_ids
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.exception(
-            "Failed to load client IDs for previously paid reports, resetting."
-        )
-        return {}
-
-
-def save_tracked_reports(client_ids: dict[str, str]):
-    """Save the set of tracked client IDs to disk."""
-    TRACKING_FILE.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with Path.open(TRACKING_FILE, "w") as f:
-            json.dump({"client_ids": client_ids}, f, indent=2)
-        logger.info(
-            f"Saved {len(client_ids)} entries for report writing to {TRACKING_FILE}"
-        )
-    except Exception:
-        logger.exception(f"Failed to save report writing info to {TRACKING_FILE}")
 
 
 def extract_writer_initials(assigned_to: str) -> str:
@@ -102,13 +72,13 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
         logger.debug(report_done)
 
-        tracked_reports = load_tracked_reports()
+        tracked_reports = load_tracked_reports(config)
         today_str = date.today().strftime("%Y-%m-%d")
 
         logger.info(f"Loaded report history: {len(tracked_reports)}")
 
-        is_tracked_today = report_done["Client ID"].isin(tracked_reports)
-        matches_today = report_done["Client ID"].map(tracked_reports) == today_str
+        is_tracked_today = report_done["Client ID"].astype(str).isin(tracked_reports)
+        matches_today = report_done["Client ID"].astype(str).map(tracked_reports) == today_str
 
         new_reports = report_done[~is_tracked_today | matches_today].copy()
 
@@ -116,11 +86,14 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             logger.info("No new reports found")
             return None
 
-        for client_id in new_reports["Client ID"]:
-            if client_id not in tracked_reports:
-                tracked_reports[client_id] = today_str
-
-        save_tracked_reports(tracked_reports)
+        new_client_ids = [
+            int(cid)
+            for cid in new_reports["Client ID"]
+            if str(cid) not in tracked_reports
+        ]
+        save_new_tracked_reports(config, new_client_ids, today_str)
+        for cid in new_client_ids:
+            tracked_reports[str(cid)] = today_str
 
         result = new_reports[
             [
@@ -209,11 +182,21 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             )
             return None
 
-        for client_id in result["Client ID"]:
-            if client_id not in tracked_reports:
-                tracked_reports[client_id] = today_str
+        # Save any newly added clients and update writer emails
+        newly_added = [
+            int(cid)
+            for cid in result["Client ID"]
+            if str(cid) not in tracked_reports
+        ]
+        save_new_tracked_reports(config, newly_added, today_str)
 
-        save_tracked_reports(tracked_reports)
+        for _, row in result.iterrows():
+            writer_name = row["Writer Name"]
+            writer_email = config.piecework.payroll_emails.get(writer_name)
+            if writer_email:
+                update_tracking_writer(config, int(row["Client ID"]), str(writer_email))
+            else:
+                logger.warning(f"No payroll email found for writer: {writer_name}")
 
         result = result.drop(columns=["Initials", "Assigned To"])
         logger.debug(result)
