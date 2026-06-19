@@ -189,7 +189,9 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
         capture_outcome("INCOMPLETE")
         return False
 
-    except WebDriverException:
+    except WebDriverException as e:
+        if "Read timed out" in str(e):
+            raise
         logger.exception(f"WebDriver error checking questionnaire at {q_link}")
         capture_outcome("WEBDRIVER_ERROR")
         return False
@@ -255,68 +257,77 @@ def check_questionnaires(
         logger.info(
             f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
         )
-        try:
-            q_driver = initialize_selenium()
+        for attempt in range(3):
             try:
-                if questionnaire["questionnaireType"] == "CAT-Q":
-                    is_done = check_novopsych_completed(
-                        q_driver,
-                        services,
-                        client.firstName,
-                        client.lastName,
-                    )
-                    if is_done:
-                        filename = generate_screenshot_filename(
-                            "COMPLETED_NOVOPSYCH",
-                            questionnaire["questionnaireType"],
-                            questionnaire["link"],
-                        )
-                        save_screenshot_deduped(
-                            q_driver, Path("logs/screenshots"), filename
-                        )
-                else:
-                    is_done = check_q_done(
-                        q_driver,
-                        questionnaire["link"],
-                        questionnaire["questionnaireType"],
-                    )
-
-                    if (
-                        not is_done
-                        and questionnaire["link"]
-                        and "mhs.com" in questionnaire["link"]
-                    ):
-                        is_done = check_mhs_completed(
+                q_driver = initialize_selenium()
+                try:
+                    if questionnaire["questionnaireType"] == "CAT-Q":
+                        is_done = check_novopsych_completed(
                             q_driver,
                             services,
-                            client.id,
-                            questionnaire["questionnaireType"],
+                            client.firstName,
+                            client.lastName,
                         )
                         if is_done:
                             filename = generate_screenshot_filename(
-                                "COMPLETED_MHS_PORTAL",
+                                "COMPLETED_NOVOPSYCH",
                                 questionnaire["questionnaireType"],
                                 questionnaire["link"],
                             )
                             save_screenshot_deduped(
                                 q_driver, Path("logs/screenshots"), filename
                             )
+                    else:
+                        is_done = check_q_done(
+                            q_driver,
+                            questionnaire["link"],
+                            questionnaire["questionnaireType"],
+                        )
 
-                if is_done:
-                    questionnaire["status"] = "COMPLETED"
-                    logger.info(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is COMPLETED"
+                        if (
+                            not is_done
+                            and questionnaire["link"]
+                            and "mhs.com" in questionnaire["link"]
+                        ):
+                            is_done = check_mhs_completed(
+                                q_driver,
+                                services,
+                                client.id,
+                                questionnaire["questionnaireType"],
+                            )
+                            if is_done:
+                                filename = generate_screenshot_filename(
+                                    "COMPLETED_MHS_PORTAL",
+                                    questionnaire["questionnaireType"],
+                                    questionnaire["link"],
+                                )
+                                save_screenshot_deduped(
+                                    q_driver, Path("logs/screenshots"), filename
+                                )
+
+                    if is_done:
+                        questionnaire["status"] = "COMPLETED"
+                        logger.info(
+                            f"{client.fullName}'s {questionnaire['questionnaireType']} is COMPLETED"
+                        )
+                        return client.id, True
+                    logger.warning(
+                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
-                    return client.id, True
-                logger.warning(
-                    f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
-                )
-                return client.id, False
-            finally:
-                q_driver.quit()
-        except Exception as e:
-            logger.error(f"Error checking questionnaires for {client.fullName}: {e}")
-            return client.id, e
+                    return client.id, False
+                finally:
+                    q_driver.quit()
+            except WebDriverException as e:
+                if "Read timed out" in str(e) and attempt < 2:
+                    logger.warning(
+                        f"Timeout checking {client.fullName}'s {questionnaire['questionnaireType']}, retrying (attempt {attempt + 2}/3)"
+                    )
+                    continue
+                logger.error(f"Error checking questionnaires for {client.fullName}: {e}")
+                return client.id, e
+            except Exception as e:
+                logger.error(f"Error checking questionnaires for {client.fullName}: {e}")
+                return client.id, e
 
     workers = 1 if dry_run else MAX_WORKERS
     with ThreadPoolExecutor(max_workers=workers) as executor:
