@@ -72,7 +72,10 @@ def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
         "ignoring": [c.model_dump(mode="json") for c in email_info["ignoring"]],
         "completed": [c.model_dump(mode="json") for c in email_info["completed"]],
         "call": [serialize_client(c) for c in email_info["call"]],
-        "failed": [{"client": serialize_client(item[0]), "reason": item[1]} for item in email_info["failed"]],
+        "failed": [
+            {"client": serialize_client(item[0]), "reason": item[1]}
+            for item in email_info["failed"]
+        ],
         "errors": email_info["errors"],
     }
 
@@ -86,16 +89,29 @@ def _deserialize_email_info(data: dict) -> AdminEmailInfo:
         return ClientWithQuestionnaires.model_validate(d)
 
     return {
-        "ignoring": [ClientWithQuestionnaires.model_validate(c) for c in data["ignoring"]],
-        "completed": [ClientWithQuestionnaires.model_validate(c) for c in data["completed"]],
+        "ignoring": [
+            ClientWithQuestionnaires.model_validate(c) for c in data["ignoring"]
+        ],
+        "completed": [
+            ClientWithQuestionnaires.model_validate(c) for c in data["completed"]
+        ],
         "call": [deserialize_client(c) for c in data["call"]],
-        "failed": [(deserialize_client(item["client"]), item["reason"]) for item in data["failed"]],
+        "failed": [
+            (deserialize_client(item["client"]), item["reason"])
+            for item in data["failed"]
+        ],
         "errors": data["errors"],
     }
 
 
 def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
-    merged: AdminEmailInfo = {"ignoring": [], "completed": [], "call": [], "failed": [], "errors": []}
+    merged: AdminEmailInfo = {
+        "ignoring": [],
+        "completed": [],
+        "call": [],
+        "failed": [],
+        "errors": [],
+    }
     seen_ignoring: set[int] = set()
     seen_completed: set[int] = set()
     seen_call: set[int] = set()
@@ -133,7 +149,9 @@ def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
 def _save_pending_email(email_info: AdminEmailInfo) -> None:
     existing = _load_pending_email()
     runs = [*existing, email_info]
-    PENDING_EMAIL_PATH.write_text(json.dumps({"runs": [_serialize_email_info(r) for r in runs]}, indent=2))
+    PENDING_EMAIL_PATH.write_text(
+        json.dumps({"runs": [_serialize_email_info(r) for r in runs]}, indent=2)
+    )
     logger.info(f"Queued email content for 1pm send ({len(runs)} run(s) accumulated)")
 
 
@@ -399,7 +417,9 @@ def main():
         rules = get_questionnaire_rules(config)
         clients_raw, _ = get_previous_clients(config, failed=False)
         clients_with_qs = validate_questionnaires(clients_raw)
-        logger.info(f"Analyzing battery state for {len(clients_with_qs)} clients (verbose)")
+        logger.info(
+            f"Analyzing battery state for {len(clients_with_qs)} clients (verbose)"
+        )
         sync_preview: list[tuple[str, str, str]] = []
         for client in clients_with_qs.values():
             da_done, eval_done = check_battery_completeness(client, rules, verbose=True)
@@ -420,7 +440,9 @@ def main():
                 sync_preview.append((str(client.id), "EVAL Qs Sent", "TRUE"))
             elif eval_sent is False:
                 sync_preview.append((str(client.id), "EVAL Qs Sent", "FALSE"))
-        logger.info(f"Punch list sync preview — {len(sync_preview)} cell(s) would change:")
+        logger.info(
+            f"Punch list sync preview — {len(sync_preview)} cell(s) would change:"
+        )
         for cid, col, val in sync_preview:
             logger.info(f"  client {cid}: {col} = {val}")
         return
@@ -540,7 +562,11 @@ def main():
                             f"Already messaged {client.fullName} at {client.phoneNumber} today"
                         )
 
-                    if reminded_count == 3 and last_reminded_distance > 3 and client.id not in completed_ids:
+                    if (
+                        reminded_count == 3
+                        and last_reminded_distance > 3
+                        and client.id not in completed_ids
+                    ):
                         email_info["call"].append(client)
                         update_failure_in_db(
                             config,
@@ -569,7 +595,10 @@ def main():
                                             f"Failed to resend invite for {client.fullName}: {e}"
                                         )
                                         email_info["failed"].append(
-                                            (client, "Failed to resend invite")
+                                            (
+                                                client,
+                                                "Failed to resend invite (possibly never initially invited?)",
+                                            )
                                         )
                                         continue
                                 elif dry_run:
@@ -698,7 +727,9 @@ def main():
                         most_recent_q["reminded"] < 3
                         and not already_messaged_today
                         and client.phoneNumber
-                        and should_send_reminder(most_recent_q["reminded"], last_reminded_distance)
+                        and should_send_reminder(
+                            most_recent_q["reminded"], last_reminded_distance
+                        )
                     ):
                         logger.info(f"Sending reminder TO {client.fullName}")
                         message = build_q_message(
@@ -851,7 +882,9 @@ def main():
         logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")
         sync_updates: list[tuple[str, str, str]] = []
         for client in all_clients_with_qs.values():
-            da_done, eval_done = check_battery_completeness(client, rules, verbose=dry_run)
+            da_done, eval_done = check_battery_completeness(
+                client, rules, verbose=dry_run
+            )
             da_sent, eval_sent = check_battery_sent(client, rules, verbose=dry_run)
 
             if da_done is True:
@@ -878,7 +911,9 @@ def main():
             batch_update_punch_list(config, sync_updates)
         else:
             for client_id_str, col, val in sync_updates:
-                logger.info(f"[DRY RUN] Would set {col}={val} for client {client_id_str}")
+                logger.info(
+                    f"[DRY RUN] Would set {col}={val} for client {client_id_str}"
+                )
 
     except Exception as e:
         error_message = f"An unhandled exception occurred during the run: {e}"
@@ -906,7 +941,9 @@ def main():
                         logger.exception("Failed to send the admin email")
                     PENDING_EMAIL_PATH.unlink(missing_ok=True)
                 else:
-                    logger.info(f"[DRY RUN] Would send admin email:\n{admin_email_text}")
+                    logger.info(
+                        f"[DRY RUN] Would send admin email:\n{admin_email_text}"
+                    )
         else:
             admin_email_text, admin_email_html = build_admin_email(email_info)
             if not dry_run and admin_email_text != "":
