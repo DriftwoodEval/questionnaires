@@ -269,6 +269,7 @@ def get_punch_list(config: Config):
                     "Assigned to OR added to report writing folder",
                     "Billed?",
                     "AJP Review Done/Hold for payroll",
+                    "MCS Review Needed",
                 ]
             ]
 

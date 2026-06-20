@@ -36,8 +36,6 @@ network_sink = NetworkSink(log_host, 9999, app_name="piecework")
 logger.add(network_sink.write, format=json_log_format, enqueue=True)
 
 
-
-
 def extract_writer_initials(assigned_to: str) -> str:
     """Extract only letters from the assigned to column."""
     if pd.isna(assigned_to) or not assigned_to:
@@ -53,6 +51,35 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
         if punch_list is None:
             logger.critical("Punch list is empty")
             return None
+
+        billed_pending = punch_list[
+            (punch_list["MCS Review Needed"] == "TRUE")
+            & (punch_list["Billed?"] != "TRUE")
+        ]
+
+        if not billed_pending.empty:
+            client_list = [
+                f"{row['Client Name'].strip()} ({row['Client ID'].strip()})"
+                for _, row in billed_pending.iterrows()
+            ]
+            questions = [
+                inquirer.List(
+                    "action",
+                    message=f"These reports are awaiting review: {', '.join(client_list)}. What would you like to do?",
+                    choices=[
+                        ("I've reviewed them, reload the sheet", "reload"),
+                        ("Skip this check and continue", "continue"),
+                    ],
+                ),
+            ]
+            answers = inquirer.prompt(questions)
+            if not answers:
+                logger.info("Aborting.")
+                sys.exit()
+
+            if answers["action"] == "reload":
+                logger.info("Reloading punch list...")
+                continue
 
         report_done = punch_list[
             (punch_list["Billed?"] == "TRUE")
@@ -78,7 +105,9 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
         logger.info(f"Loaded report history: {len(tracked_reports)}")
 
         is_tracked_today = report_done["Client ID"].astype(str).isin(tracked_reports)
-        matches_today = report_done["Client ID"].astype(str).map(tracked_reports) == today_str
+        matches_today = (
+            report_done["Client ID"].astype(str).map(tracked_reports) == today_str
+        )
 
         new_reports = report_done[~is_tracked_today | matches_today].copy()
 
@@ -184,9 +213,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
         # Save any newly added clients and update writer emails
         newly_added = [
-            int(cid)
-            for cid in result["Client ID"]
-            if str(cid) not in tracked_reports
+            int(cid) for cid in result["Client ID"] if str(cid) not in tracked_reports
         ]
         save_new_tracked_reports(config, newly_added, today_str)
 
