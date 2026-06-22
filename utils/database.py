@@ -259,12 +259,16 @@ def load_tracked_reports(config: Config) -> dict[str, str]:
     """Load piecework report tracking entries from the database."""
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
-        cursor.execute("SELECT clientId, tracked_date FROM emr_piecework_report_tracking")
+        cursor.execute(
+            "SELECT clientId, tracked_date FROM emr_piecework_report_tracking"
+        )
         rows = cursor.fetchall()
     return {str(row["clientId"]): str(row["tracked_date"]) for row in rows}
 
 
-def save_new_tracked_reports(config: Config, client_ids: list[int], tracked_date: str) -> None:
+def save_new_tracked_reports(
+    config: Config, client_ids: list[int], tracked_date: str
+) -> None:
     """Insert new piecework report tracking entries, ignoring duplicates."""
     if not client_ids:
         return
@@ -562,6 +566,33 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
             }
         )
     return rules
+
+
+def get_self_report_writer_for_client(config: Config, client_id: int) -> str | None:
+    """Return the providerName of the most recent non-billing-only 96136 appointment's
+    evaluator for this client, if that evaluator has writesOwnReports=True. Otherwise None."""
+    db_connection = get_db(config)
+    try:
+        with db_connection, db_connection.cursor() as cursor:
+            sql = """
+                SELECT e.providerName
+                FROM emr_appointment a
+                JOIN emr_evaluator e ON a.evaluatorNpi = e.npi
+                WHERE a.clientId = %s
+                  AND a.billingOnly = 0
+                  AND a.cancelled = 0
+                  AND a.cpt LIKE %s
+                  AND e.writesOwnReports = 1
+                ORDER BY a.startTime DESC
+                LIMIT 1
+            """
+            cursor.execute(sql, (client_id, "%96136%"))
+            row = cursor.fetchone()
+            if row:
+                return str(row["providerName"])
+    except Exception:
+        logger.exception(f"Failed to look up self-report writer for client {client_id}")
+    return None
 
 
 def get_most_recent_failure(

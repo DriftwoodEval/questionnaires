@@ -15,6 +15,7 @@ from utils.custom_types import Appointment, Config
 from utils.database import (
     get_all_evaluators_info,
     get_appointments,
+    get_self_report_writer_for_client,
     load_tracked_reports,
     save_new_tracked_reports,
     update_tracking_writer,
@@ -116,7 +117,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             return None
 
         new_client_ids = [
-            int(cid)
+            int(cid)  # type: ignore[arg-type]
             for cid in new_reports["Client ID"]
             if str(cid) not in tracked_reports
         ]
@@ -135,10 +136,25 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
         )
 
         result["Initials"] = result["Assigned To"].apply(extract_writer_initials)
+        result["Writer Name"] = ""
 
+        # Auto-fill writer from most recent 96136 evaluator when punchlist is blank
+        # and that evaluator has writesOwnReports enabled.
         unassigned_mask = result["Initials"].isna() | (result["Initials"] == "")
-        if unassigned_mask.any():
-            unassigned_rows = result[unassigned_mask]
+        for idx in result[unassigned_mask].index:
+            client_id = int(result.loc[idx, "Client ID"])  # type: ignore[arg-type]
+            writer = get_self_report_writer_for_client(config, client_id)
+            if writer:
+                result.loc[idx, "Writer Name"] = writer
+                logger.info(
+                    f"Auto-assigned report writer '{writer}' for client {client_id} (writes own reports)"
+                )
+
+        # Only prompt for clients still unresolved after auto-fill
+        still_unassigned = unassigned_mask & (result["Writer Name"] == "")
+
+        if still_unassigned.any():
+            unassigned_rows = result[still_unassigned]
             unassigned_clients = [
                 f"{row['Client Name'].strip()} ({row['Client ID'].strip()})"
                 for _, row in unassigned_rows.iterrows()
@@ -168,7 +184,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
                 continue
 
             # Drop missing writers if continuing
-            result = result[~unassigned_mask]
+            result = result[~still_unassigned]
 
         if result.empty:
             logger.error(
@@ -176,7 +192,11 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             )
             return None
 
-        result["Writer Name"] = result["Initials"].apply(
+        # Only resolve from initials for rows not already auto-filled via writesOwnReports
+        needs_lookup = result["Writer Name"] == ""
+        result.loc[needs_lookup, "Writer Name"] = result.loc[
+            needs_lookup, "Initials"
+        ].apply(
             lambda initials: (
                 config.piecework.get_full_name(initials) if initials else ""
             )
@@ -213,7 +233,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
         # Save any newly added clients and update writer emails
         newly_added = [
-            int(cid) for cid in result["Client ID"] if str(cid) not in tracked_reports
+            int(cid) for cid in result["Client ID"] if str(cid) not in tracked_reports  # type: ignore[arg-type]
         ]
         save_new_tracked_reports(config, newly_added, today_str)
 
@@ -221,7 +241,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
             writer_name = row["Writer Name"]
             writer_email = config.piecework.payroll_emails.get(writer_name)
             if writer_email:
-                update_tracking_writer(config, int(row["Client ID"]), str(writer_email))
+                update_tracking_writer(config, int(row["Client ID"]), str(writer_email))  # type: ignore[arg-type]
             else:
                 logger.warning(f"No payroll email found for writer: {writer_name}")
 
