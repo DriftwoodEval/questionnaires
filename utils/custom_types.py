@@ -243,6 +243,7 @@ class _SharedClientFromDB(_ClientBase):
     babyNetERNeeded: bool  # noqa: N815
     babyNetERDownloaded: bool  # noqa: N815
     language: str
+    addedDate: date | None = None  # noqa: N815
     latitude: float | None = None
     longitude: float | None = None
     address: str | None = None
@@ -288,7 +289,7 @@ class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
     ignoring: list[ClientWithQuestionnaires]
-    failed: list[tuple[ClientWithQuestionnaires | FailedClientFromDB, str]]
+    failed: list[tuple[ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB, str]]
     call: list[ClientWithQuestionnaires | FailedClientFromDB]
     completed: list[ClientWithQuestionnaires]
     errors: list[str]

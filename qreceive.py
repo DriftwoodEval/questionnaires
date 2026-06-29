@@ -10,6 +10,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 
 from utils.custom_types import (
     AdminEmailInfo,
+    ClientFromDB,
     ClientWithQuestionnaires,
     Config,
     FailedClientFromDB,
@@ -21,7 +22,9 @@ from utils.database import (
     get_most_recent_failure,
     get_previous_clients,
     get_questionnaire_rules,
+    get_sent_referral_client_ids,
     log_questionnaire_msg,
+    log_referral_msg,
     update_failure_in_db,
     update_questionnaires_in_db,
 )
@@ -498,6 +501,7 @@ def main():
 
         # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config, failed=True)
+        all_clients_raw = dict(clients)
 
         messages_sent: list[
             tuple[FailedClientFromDB | ClientWithQuestionnaires, str, str | None]
@@ -798,6 +802,67 @@ def main():
                         f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                     )
 
+        # Send referral messages to new clients
+        REFERRAL_MSG = "This is Driftwood Evaluation Center. We have received your referral. We are managing a very large amount of patients and will reach out to you as soon as we can. Thank you!"
+        referral_messages_sent: list[tuple[ClientFromDB, str]] = []
+
+        if send_texts or dry_run:
+            cutoff_date = date.today() - timedelta(days=1)
+            sent_referral_ids = get_sent_referral_client_ids(config)
+            new_clients = [
+                c
+                for c in all_clients_raw.values()
+                if c.addedDate is not None
+                and c.addedDate >= cutoff_date
+                and c.id not in sent_referral_ids
+                and not c.autismStop
+                and not c.pause
+            ]
+            logger.info(f"Found {len(new_clients)} new client(s) to send referral message")
+            for client in new_clients:
+                if not client.phoneNumber:
+                    logger.warning(f"{client.fullName} is a new client but has no phone number")
+                    email_info["failed"].append((client, "New referral — no phone number"))
+                    continue
+                if client.phoneNumber in numbers_sent:
+                    logger.warning(
+                        f"Already messaged {client.fullName} today, skipping referral msg"
+                    )
+                    continue
+                logger.info(
+                    f"Sending referral message to new client {client.fullName} (added {client.addedDate})"
+                )
+                if send_texts:
+                    try:
+                        attempt_text = openphone.send_text(
+                            REFERRAL_MSG, client.phoneNumber, mark_done=True
+                        )
+                        if attempt_text and "id" in attempt_text:
+                            numbers_sent.append(client.phoneNumber)
+                            referral_messages_sent.append((client, attempt_text["id"]))
+                        else:
+                            logger.error(f"Failed to send referral msg to {client.fullName}")
+                            email_info["failed"].append(
+                                (client, "New referral — failed to send text request")
+                            )
+                    except InvalidPhoneNumberError as e:
+                        logger.error(f"Invalid phone number for {client.fullName}: {e}")
+                        email_info["failed"].append(
+                            (client, f"New referral — invalid phone number: {client.phoneNumber}")
+                        )
+                    except NotEnoughCreditsError:
+                        logger.critical(
+                            "Aborting referral messages due to insufficient credits."
+                        )
+                        email_info["errors"].append(
+                            "OpenPhone API needs more credits to send messages."
+                        )
+                        break
+                elif dry_run:
+                    logger.info(
+                        f"[DRY RUN] Would send referral msg to {client.fullName} ({client.phoneNumber}):\n{REFERRAL_MSG}"
+                    )
+
         # Check message status
         logger.info(f"Starting status check for {len(messages_sent)} messages.")
 
@@ -877,6 +942,35 @@ def main():
                     reason,
                     reminded=reminded,
                     last_reminded=last_reminded,
+                )
+
+        # Check referral message delivery
+        logger.info(
+            f"Starting status check for {len(referral_messages_sent)} referral message(s)."
+        )
+        for client, message_id in referral_messages_sent:
+            try:
+                delivered = openphone.check_text_delivered(message_id)
+                if delivered:
+                    logger.success(
+                        f"Delivered referral msg to {client.fullName} ({message_id})"
+                    )
+                    try:
+                        log_referral_msg(config, client.id, message_id)
+                    except Exception as log_err:
+                        logger.error(
+                            f"Failed to log referral msg for {client.fullName}: {log_err}"
+                        )
+                else:
+                    logger.error(
+                        f"Failed to deliver referral msg to {client.fullName} ({message_id})"
+                    )
+                    email_info["failed"].append(
+                        (client, "New referral — did not deliver within timeout")
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error checking referral msg status for {client.fullName} ({message_id}): {e}"
                 )
 
         logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")

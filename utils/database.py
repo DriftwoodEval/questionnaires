@@ -522,6 +522,26 @@ def update_failure_in_db(
         db_connection.commit()
 
 
+def get_sent_referral_client_ids(config: Config) -> set[int]:
+    """Return the set of client IDs that have already been sent a referral message."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute("SELECT clientId FROM emr_referral_msg_log")
+        rows = cursor.fetchall()
+    return {row["clientId"] for row in rows}
+
+
+def log_referral_msg(config: Config, client_id: int, openphone_message_id: str) -> None:
+    """Log that a referral message was delivered to a client."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT IGNORE INTO emr_referral_msg_log (clientId, openphoneMessageId, sentAt) VALUES (%s, %s, NOW())",
+            (client_id, openphone_message_id),
+        )
+        db_connection.commit()
+
+
 def log_questionnaire_msg(
     config: Config,
     client_id: int,
