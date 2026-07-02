@@ -66,10 +66,14 @@ PENDING_EMAIL_PATH = Path("logs/pending_email.json")
 
 
 def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
-    def serialize_client(client: ClientWithQuestionnaires | FailedClientFromDB) -> dict:
+    def serialize_client(
+        client: ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB,
+    ) -> dict:
         if isinstance(client, FailedClientFromDB):
             return {"_type": "failed", **client.model_dump(mode="json")}
-        return {"_type": "with_q", **client.model_dump(mode="json")}
+        if isinstance(client, ClientWithQuestionnaires):
+            return {"_type": "with_q", **client.model_dump(mode="json")}
+        return {"_type": "client", **client.model_dump(mode="json")}
 
     return {
         "ignoring": [c.model_dump(mode="json") for c in email_info["ignoring"]],
@@ -84,11 +88,22 @@ def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
 
 
 def _deserialize_email_info(data: dict) -> AdminEmailInfo:
-    def deserialize_client(d: dict) -> ClientWithQuestionnaires | FailedClientFromDB:
+    def deserialize_call_client(d: dict) -> ClientWithQuestionnaires | FailedClientFromDB:
         d = dict(d)
         t = d.pop("_type")
         if t == "failed":
             return FailedClientFromDB.model_validate(d)
+        return ClientWithQuestionnaires.model_validate(d)
+
+    def deserialize_failed_client(
+        d: dict,
+    ) -> ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB:
+        d = dict(d)
+        t = d.pop("_type")
+        if t == "failed":
+            return FailedClientFromDB.model_validate(d)
+        if t == "client":
+            return ClientFromDB.model_validate(d)
         return ClientWithQuestionnaires.model_validate(d)
 
     return {
@@ -98,9 +113,9 @@ def _deserialize_email_info(data: dict) -> AdminEmailInfo:
         "completed": [
             ClientWithQuestionnaires.model_validate(c) for c in data["completed"]
         ],
-        "call": [deserialize_client(c) for c in data["call"]],
+        "call": [deserialize_call_client(c) for c in data["call"]],
         "failed": [
-            (deserialize_client(item["client"]), item["reason"])
+            (deserialize_failed_client(item["client"]), item["reason"])
             for item in data["failed"]
         ],
         "errors": data["errors"],
@@ -803,7 +818,7 @@ def main():
                     )
 
         # Send referral messages to new clients
-        REFERRAL_MSG = "This is Driftwood Evaluation Center. We have received your referral. We are managing a very large amount of patients and will reach out to you as soon as we can. Thank you!"
+        referral_msg = "This is Driftwood Evaluation Center. We have received your referral. We are managing a very large amount of patients and will reach out to you as soon as we can. Thank you!"
         referral_messages_sent: list[tuple[ClientFromDB, str]] = []
 
         if send_texts or dry_run:
@@ -818,11 +833,17 @@ def main():
                 and not c.autismStop
                 and not c.pause
             ]
-            logger.info(f"Found {len(new_clients)} new client(s) to send referral message")
+            logger.info(
+                f"Found {len(new_clients)} new client(s) to send referral message"
+            )
             for client in new_clients:
                 if not client.phoneNumber:
-                    logger.warning(f"{client.fullName} is a new client but has no phone number")
-                    email_info["failed"].append((client, "New referral — no phone number"))
+                    logger.warning(
+                        f"{client.fullName} is a new client but has no phone number"
+                    )
+                    email_info["failed"].append(
+                        (client, "New referral — no phone number")
+                    )
                     continue
                 if client.phoneNumber in numbers_sent:
                     logger.warning(
@@ -835,20 +856,25 @@ def main():
                 if send_texts:
                     try:
                         attempt_text = openphone.send_text(
-                            REFERRAL_MSG, client.phoneNumber, mark_done=True
+                            referral_msg, client.phoneNumber, mark_done=True
                         )
                         if attempt_text and "id" in attempt_text:
                             numbers_sent.append(client.phoneNumber)
                             referral_messages_sent.append((client, attempt_text["id"]))
                         else:
-                            logger.error(f"Failed to send referral msg to {client.fullName}")
+                            logger.error(
+                                f"Failed to send referral msg to {client.fullName}"
+                            )
                             email_info["failed"].append(
                                 (client, "New referral — failed to send text request")
                             )
                     except InvalidPhoneNumberError as e:
                         logger.error(f"Invalid phone number for {client.fullName}: {e}")
                         email_info["failed"].append(
-                            (client, f"New referral — invalid phone number: {client.phoneNumber}")
+                            (
+                                client,
+                                f"New referral — invalid phone number: {client.phoneNumber}",
+                            )
                         )
                     except NotEnoughCreditsError:
                         logger.critical(
@@ -860,7 +886,7 @@ def main():
                         break
                 elif dry_run:
                     logger.info(
-                        f"[DRY RUN] Would send referral msg to {client.fullName} ({client.phoneNumber}):\n{REFERRAL_MSG}"
+                        f"[DRY RUN] Would send referral msg to {client.fullName} ({client.phoneNumber}):\n{referral_msg}"
                     )
 
         # Check message status
