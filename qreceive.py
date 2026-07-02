@@ -317,8 +317,8 @@ def should_send_reminder(reminded_count: int, last_reminded_distance: int) -> bo
     """Checks if a reminder should be sent to the client, based on the last reminder distance."""
     reminder_schedule = {
         0: 0,  # Initial message (same day)
-        1: 7,  # First follow-up (1 week later)
-        2: 5,  # Second follow-up (5 days after first follow-up)
+        1: 14,  # First follow-up (2 weeks later)
+        2: 7,  # Second follow-up (1 week after first follow-up)
     }
 
     expected_day = reminder_schedule.get(reminded_count)
