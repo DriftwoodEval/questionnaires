@@ -832,6 +832,7 @@ def main():
                 and c.id not in sent_referral_ids
                 and not c.autismStop
                 and not c.pause
+                and len(str(c.id)) != 5
             ]
             logger.info(
                 f"Found {len(new_clients)} new client(s) to send referral message"
