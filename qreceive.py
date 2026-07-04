@@ -750,6 +750,26 @@ def main():
                             most_recent_q["reminded"], last_reminded_distance
                         )
                     ):
+                        if most_recent_q["reminded"] == 2 and most_recent_q["sent"] is not None:
+                            has_replied = openphone.has_client_replied(
+                                client.phoneNumber, since=most_recent_q["sent"]
+                            )
+                            if has_replied:
+                                logger.info(
+                                    f"{client.fullName} has replied since questionnaires were sent — skipping final reminder, setting questionnaires to IGNORING"
+                                )
+                                for q in client.questionnaires:
+                                    if q["status"] in ("PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"):
+                                        q["status"] = "IGNORING"
+                                if not dry_run:
+                                    update_questionnaires_in_db(config, [client])
+                                else:
+                                    logger.info(
+                                        f"[DRY RUN] Would set {client.fullName}'s questionnaires to IGNORING"
+                                    )
+                                email_info["ignoring"].append(client)
+                                continue
+
                         logger.info(f"Sending reminder TO {client.fullName}")
                         message = build_q_message(
                             config, client, most_recent_q, distance

@@ -1,3 +1,5 @@
+from datetime import date, datetime, timezone
+
 import requests
 from loguru import logger
 from ratelimit import RateLimitException, limits
@@ -146,6 +148,76 @@ class OpenPhone:
 
         except Exception as e:
             logger.error(f"Failed to verify delivery for {message_id}: {e}")
+            return False
+
+    @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
+    @_retry_network
+    def _fetch_phone_number_id(self) -> str | None:
+        """Fetch the OpenPhone phone number ID for the main number."""
+        url = f"{API_BASE}phone-numbers"
+        response = self.session.get(url)
+        response.raise_for_status()
+        for pn in response.json().get("data", []):
+            if pn.get("phoneNumber") == self.main_number:
+                return pn["id"]
+        logger.warning(f"Could not find phone number ID for {self.main_number}")
+        return None
+
+    def _get_phone_number_id(self) -> str | None:
+        """Return the cached phone number ID, fetching it if needed."""
+        if not hasattr(self, "_phone_number_id"):
+            self._phone_number_id = self._fetch_phone_number_id()
+        return self._phone_number_id
+
+    def has_client_replied(self, client_phone: str, since: date | None = None) -> bool:
+        """Return True if the client has sent us an incoming message, optionally since a given date."""
+        phone_number_id = self._get_phone_number_id()
+        if not phone_number_id:
+            return False
+
+        digits = "".join(filter(str.isdigit, client_phone))
+        if len(digits) == 10:
+            clean_phone = "+1" + digits
+        elif len(digits) == 11 and digits.startswith("1"):
+            clean_phone = "+" + digits
+        else:
+            logger.warning(f"Cannot check replies for malformed number: {client_phone}")
+            return False
+
+        try:
+            url = f"{API_BASE}messages"
+            params: list[tuple[str, str]] = [
+                ("phoneNumberId", phone_number_id),
+                ("participants[]", clean_phone),
+                ("direction", "incoming"),
+                ("maxResults", "25"),
+            ]
+            if since is not None:
+                since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=timezone.utc)
+                params.append(("createdAfter", since_dt.isoformat()))
+
+            response = self.session.get(url, params=params)
+            response.raise_for_status()
+            data = response.json().get("data", [])
+
+            if since is None:
+                return len(data) > 0
+
+            # Client-side filter as a fallback in case the API ignores createdAfter
+            since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=timezone.utc)
+            for msg in data:
+                created_at = msg.get("createdAt") or msg.get("createdAtMs")
+                if created_at is None:
+                    continue
+                if isinstance(created_at, (int, float)):
+                    msg_dt = datetime.fromtimestamp(created_at / 1000, tz=timezone.utc)
+                else:
+                    msg_dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+                if msg_dt >= since_dt:
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to check incoming messages for {client_phone}: {e}")
             return False
 
     @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
