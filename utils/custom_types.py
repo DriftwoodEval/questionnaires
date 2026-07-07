@@ -233,6 +233,7 @@ class _ClientBase(BaseModel):
     gender: str | None = None
     asdAdhd: str | None = None  # noqa: N815
     status: bool
+    sessionStartedAt: datetime | None = None  # noqa: N815
 
 
 class _SharedClientFromDB(_ClientBase):

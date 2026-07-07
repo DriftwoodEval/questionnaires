@@ -36,13 +36,33 @@ from utils.selenium import (
 MAX_WORKERS = 5
 
 
+def _in_current_session(client: ClientWithQuestionnaires, q: dict) -> bool:
+    """Whether a questionnaire dict belongs to the client's current session.
+
+    Clients can go inactive and later reactivate under the same id; on
+    reactivation `sessionStartedAt` is stamped and prior questionnaires should
+    stop counting toward completion/battery checks. `None` means the client
+    has never been reset, so all history counts.
+    """
+    if not client.sessionStartedAt:
+        return True
+    q_date = q.get("sent") or q.get("updatedAt")
+    if not q_date:
+        return True
+    if isinstance(q_date, date) and not isinstance(q_date, datetime):
+        q_date = datetime.combine(q_date, datetime.min.time())
+    return q_date >= client.sessionStartedAt
+
+
 def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
     """Check if all questionnaires for a given client are completed."""
     done_statuses = {"COMPLETED", "EXTERNAL"}
     return all(
         q["status"] in done_statuses
         for q in client.questionnaires
-        if isinstance(q, dict) and q.get("status") != "ARCHIVED"
+        if isinstance(q, dict)
+        and q.get("status") != "ARCHIVED"
+        and _in_current_session(client, q)
     )
 
 
@@ -65,7 +85,7 @@ def filter_inactive_and_not_pending(
                 "RESCHEDULED",
             ]
             for q in client.questionnaires
-            if isinstance(q, dict)
+            if isinstance(q, dict) and _in_current_session(client, q)
         )
     }
 
@@ -169,8 +189,9 @@ def check_q_done(driver: WebDriver, q_link: str, q_type: str) -> bool:
             patterns = [expected] if isinstance(expected, str) else expected
 
             if not any(pattern in final_url for pattern in patterns):
-                error_msg = f"URL mismatch: Expected one of {patterns} in URL for type '{q_type}', but got '{final_url}'"
-                # raise Exception(error_msg)
+                logger.warning(
+                    f"URL mismatch: Expected one of {patterns} in URL for type '{q_type}', but got '{final_url}'"
+                )
 
         for host_key, xpath in completion_xpaths.items():
             if host_key in link_host:
@@ -375,6 +396,7 @@ def get_most_recent_not_done(
             # or q["status"] == "SPANISH"
         )
         and q["sent"] is not None
+        and _in_current_session(client, q)
     )
 
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
@@ -434,7 +456,7 @@ def check_battery_sent(
     active_sent_types = {
         q["questionnaireType"]
         for q in client.questionnaires
-        if q.get("status") not in unsent_statuses
+        if q.get("status") not in unsent_statuses and _in_current_session(client, q)
     }
 
     da_ok = bool(da_only_types) and da_only_types.issubset(active_sent_types)
@@ -529,7 +551,9 @@ def check_battery_completeness(
     completed_types = {
         q["questionnaireType"]
         for q in client.questionnaires
-        if q.get("status") != "ARCHIVED" and q.get("status") in done_statuses
+        if q.get("status") != "ARCHIVED"
+        and q.get("status") in done_statuses
+        and _in_current_session(client, q)
     }
 
     da_ok = bool(da_only_types) and da_only_types.issubset(completed_types)
