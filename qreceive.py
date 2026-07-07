@@ -23,6 +23,7 @@ from utils.database import (
     get_previous_clients,
     get_questionnaire_rules,
     get_sent_referral_client_ids,
+    has_requested_records_date,
     log_questionnaire_msg,
     log_referral_msg,
     update_failure_in_db,
@@ -88,7 +89,9 @@ def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
 
 
 def _deserialize_email_info(data: dict) -> AdminEmailInfo:
-    def deserialize_call_client(d: dict) -> ClientWithQuestionnaires | FailedClientFromDB:
+    def deserialize_call_client(
+        d: dict,
+    ) -> ClientWithQuestionnaires | FailedClientFromDB:
         d = dict(d)
         t = d.pop("_type")
         if t == "failed":
@@ -358,6 +361,9 @@ def check_failures(
 
             elif reason == "too young for adhd" and client.dob is not None:
                 is_resolved = client.dob < five_years_ago
+
+            elif reason == "District on receive does not match district on send":
+                is_resolved = has_requested_records_date(config, client_id)
 
             if is_resolved:
                 update_failure_in_db(config, client_id, reason, resolved=True)
@@ -750,7 +756,10 @@ def main():
                             most_recent_q["reminded"], last_reminded_distance
                         )
                     ):
-                        if most_recent_q["reminded"] == 2 and most_recent_q["sent"] is not None:
+                        if (
+                            most_recent_q["reminded"] == 2
+                            and most_recent_q["sent"] is not None
+                        ):
                             has_replied = openphone.has_client_replied(
                                 client.phoneNumber, since=most_recent_q["sent"]
                             )
@@ -759,7 +768,11 @@ def main():
                                     f"{client.fullName} has replied since questionnaires were sent — skipping final reminder, setting questionnaires to IGNORING"
                                 )
                                 for q in client.questionnaires:
-                                    if q["status"] in ("PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"):
+                                    if q["status"] in (
+                                        "PENDING",
+                                        "POSTDA_PENDING",
+                                        "POSTEVAL_PENDING",
+                                    ):
                                         q["status"] = "IGNORING"
                                 if not dry_run:
                                     update_questionnaires_in_db(config, [client])

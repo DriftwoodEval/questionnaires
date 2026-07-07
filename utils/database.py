@@ -214,6 +214,20 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
     return statuses
 
 
+def has_requested_records_date(config: Config, client_id: int) -> bool:
+    """Check whether any record request for this client has a requestedDate set."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        sql = """
+            SELECT 1
+            FROM emr_external_record_request
+            WHERE clientId=%s AND requestedDate IS NOT NULL
+            LIMIT 1
+        """
+        cursor.execute(sql, (client_id,))
+        return cursor.fetchone() is not None
+
+
 def update_external_record_in_db(
     config: Config,
     client_id: int,
