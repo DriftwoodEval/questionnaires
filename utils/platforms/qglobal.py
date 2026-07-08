@@ -1,5 +1,8 @@
+from collections.abc import Callable
 from datetime import datetime
+from functools import wraps
 from time import sleep
+from typing import TypeVar
 
 import pandas as pd
 from loguru import logger
@@ -15,12 +18,54 @@ from utils.custom_types import Config, Services
 from utils.selenium import (
     click_element,
     find_element,
+    get_with_retry,
 )
 
 
 def rearrange_dob(dob: str) -> str:
     """Rearrange a date of birth string from "YYYY/MM/DD" to "MM/DD/YYYY" format."""
     return datetime.strptime(dob, "%Y/%m/%d").strftime("%m/%d/%Y")
+
+
+F = TypeVar("F", bound=Callable)
+
+
+def with_qglobal_recovery(recover: Callable[..., None] | None = None) -> Callable[[F], F]:
+    """Retry a QGlobal flow if a page load ever hangs.
+
+    QGlobal occasionally never fires the page load complete event, which
+    Selenium surfaces as a TimeoutException once the (short) page load
+    timeout is hit. Recovering mid-flow isn't reliable since QGlobal's
+    server-side state may be partial, so instead we stop the hung load, put
+    the browser back to a known-good spot via `recover` (called with the
+    same args as the wrapped function; defaults to just re-checking login),
+    and retry the whole operation once.
+    """
+
+    def decorator(func: F) -> F:
+        @wraps(func)
+        def wrapper(driver: WebDriver, *args, **kwargs):
+            attempts = 2
+            for attempt in range(attempts):
+                try:
+                    return func(driver, *args, **kwargs)
+                except TimeoutException:
+                    if attempt == attempts - 1:
+                        raise
+                    logger.warning(
+                        f"QGlobal page load hung during {func.__name__}, "
+                        "recovering and retrying."
+                    )
+                    driver.execute_script("window.stop();")
+                    if recover is not None:
+                        recover(driver, *args, **kwargs)
+                    else:
+                        check_and_login_qglobal(driver)
+            raise AssertionError("unreachable")
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorator
 
 
 def login_qglobal(driver: WebDriver) -> None:
@@ -44,19 +89,19 @@ def check_and_login_qglobal(
     login_url = "http://qglobal.pearsonassessments.com/qg/welcome.seam"
     if first_time:
         logger.debug("First time login to QGlobal, opening URL.")
-        driver.get(login_url)
+        get_with_retry(driver, login_url)
         login_qglobal(driver)
         return
     try:
         logger.debug("Checking if logged in to QGlobal")
-        driver.get(qglobal_url)
+        get_with_retry(driver, qglobal_url)
         find_element(driver, By.XPATH, "//a[text()='Search']", timeout=5)
         logger.debug("Already logged in to QGlobal")
     except (NoSuchElementException, TimeoutException):
         logger.debug(
             "Not logged in to QGlobal or Search link not visible, waiting for manual login."
         )
-        driver.get(login_url)
+        get_with_retry(driver, login_url)
         login_qglobal(driver)
 
 
@@ -134,6 +179,13 @@ def search_select_qglobal(
             input("Press Enter once you have navigated to the client's page...")
 
 
+def _recover_to_search(driver: WebDriver, client: pd.Series) -> None:
+    """Get back to the search results page for a client, for recovery after a hang."""
+    check_and_login_qglobal(driver)
+    search_qglobal(driver, client)
+
+
+@with_qglobal_recovery()
 def check_for_qglobal_account(driver: WebDriver, client: pd.Series) -> bool:
     """Check if a client has an account on QGlobal.
 
@@ -155,6 +207,7 @@ def check_for_qglobal_account(driver: WebDriver, client: pd.Series) -> bool:
         return False
 
 
+@with_qglobal_recovery(recover=_recover_to_search)
 def add_client_to_qglobal(driver: WebDriver, client: pd.Series) -> bool:
     """Add a client to QGlobal if they don't already have an account.
 
@@ -247,6 +300,7 @@ _BASC_XPATHS = {
 }
 
 
+@with_qglobal_recovery()
 def _gen_basc(
     driver: WebDriver,
     config: Config,
@@ -301,6 +355,7 @@ def gen_basc_adolescent(
     return _gen_basc(driver, config, client, "Adolescent")
 
 
+@with_qglobal_recovery()
 def gen_vineland(
     driver: WebDriver,
     config: Config,

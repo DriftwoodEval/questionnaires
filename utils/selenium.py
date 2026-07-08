@@ -43,6 +43,11 @@ def initialize_selenium() -> WebDriver:
     )
     driver = webdriver.Chrome(options=chrome_options)
     driver.implicitly_wait(5)
+    # Selenium's default page load timeout is 300s. Some sites (e.g. QGlobal)
+    # occasionally never fire the page load complete event, which would hang
+    # any navigation (driver.get, or a click that triggers a full page load)
+    # for the full 300s instead of failing fast so we can retry.
+    driver.set_page_load_timeout(20)
     driver.set_window_size(1920, 1080)
     return driver
 
@@ -114,12 +119,37 @@ def click_element(
             TimeoutException,
             ElementClickInterceptedException,
         ) as e:
+            if isinstance(e, TimeoutException):
+                # Click may have triggered a navigation that never finished
+                # loading (page load timeout). Cancel it so the page isn't
+                # left in a half-loaded state for the next attempt.
+                driver.execute_script("window.stop();")
             if attempt == max_attempts - 1:
                 raise e
             logger.warning(
                 f"Click element failed ({type(e).__name__}): trying again after 1s."
             )
             sleep(1)
+
+
+def get_with_retry(driver: WebDriver, url: str, retries: int = 3) -> None:
+    """Navigate to a URL, retrying if the page never finishes loading.
+
+    Relies on the driver's page load timeout (set in initialize_selenium) to
+    fail fast instead of hanging on a page that never fires the load
+    complete event.
+    """
+    for attempt in range(retries):
+        try:
+            driver.get(url)
+            return
+        except TimeoutException:
+            logger.warning(
+                f"Timed out loading {url}, attempt {attempt + 1}/{retries}."
+            )
+            driver.execute_script("window.stop();")
+            if attempt == retries - 1:
+                raise
 
 
 def wait_for_page_load(driver: WebDriver, timeout: int = 15) -> bool:
