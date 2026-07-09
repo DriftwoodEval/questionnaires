@@ -3,9 +3,11 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 FROM builder AS qreceive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
+    chromium=147.0.7727.137-1~deb12u1 \
+    chromium-driver=147.0.7727.137-1~deb12u1 \
+    chromium-common=147.0.7727.137-1~deb12u1 \
     curl \
+    && apt-mark hold chromium chromium-driver chromium-common \
     && rm -rf /var/lib/apt/lists/*
 
 ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.34/supercronic-linux-amd64 \
