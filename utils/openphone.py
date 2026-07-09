@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import requests
 from loguru import logger
@@ -193,7 +193,7 @@ class OpenPhone:
                 ("maxResults", "25"),
             ]
             if since is not None:
-                since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=timezone.utc)
+                since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=UTC)
                 params.append(("createdAfter", since_dt.isoformat()))
 
             response = self.session.get(url, params=params)
@@ -204,15 +204,15 @@ class OpenPhone:
                 return len(data) > 0
 
             # Client-side filter as a fallback in case the API ignores createdAfter
-            since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=timezone.utc)
+            since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=UTC)
             for msg in data:
                 created_at = msg.get("createdAt") or msg.get("createdAtMs")
                 if created_at is None:
                     continue
                 if isinstance(created_at, (int, float)):
-                    msg_dt = datetime.fromtimestamp(created_at / 1000, tz=timezone.utc)
+                    msg_dt = datetime.fromtimestamp(created_at / 1000, tz=UTC)
                 else:
-                    msg_dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+                    msg_dt = datetime.fromisoformat(str(created_at))
                 if msg_dt >= since_dt:
                     return True
             return False

@@ -19,6 +19,7 @@ from utils.custom_types import (
     validate_questionnaires,
 )
 from utils.database import (
+    get_most_recent_eval_appointment_dates,
     get_most_recent_failure,
     get_previous_clients,
     get_questionnaire_rules,
@@ -409,13 +410,19 @@ def main():
     if args.sync_batteries:
         services, config = load_config()
         rules = get_questionnaire_rules(config)
+        eval_dates = get_most_recent_eval_appointment_dates(config)
         clients_raw, _ = get_previous_clients(config, failed=False)
         clients_with_qs = validate_questionnaires(clients_raw)
         logger.info(f"Syncing battery columns for {len(clients_with_qs)} clients")
         sync_updates: list[tuple[str, str, str]] = []
         for client in clients_with_qs.values():
-            da_done, eval_done = check_battery_completeness(client, rules)
-            da_sent, eval_sent = check_battery_sent(client, rules)
+            eval_date = eval_dates.get(client.id)
+            da_done, eval_done = check_battery_completeness(
+                client, rules, most_recent_eval_date=eval_date
+            )
+            da_sent, eval_sent = check_battery_sent(
+                client, rules, most_recent_eval_date=eval_date
+            )
             if da_done is True:
                 sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))
             elif da_done is False:
@@ -439,6 +446,7 @@ def main():
     if debug_batteries:
         services, config = load_config()
         rules = get_questionnaire_rules(config)
+        eval_dates = get_most_recent_eval_appointment_dates(config)
         clients_raw, _ = get_previous_clients(config, failed=False)
         clients_with_qs = validate_questionnaires(clients_raw)
         logger.info(
@@ -446,8 +454,13 @@ def main():
         )
         sync_preview: list[tuple[str, str, str]] = []
         for client in clients_with_qs.values():
-            da_done, eval_done = check_battery_completeness(client, rules, verbose=True)
-            da_sent, eval_sent = check_battery_sent(client, rules, verbose=True)
+            eval_date = eval_dates.get(client.id)
+            da_done, eval_done = check_battery_completeness(
+                client, rules, verbose=True, most_recent_eval_date=eval_date
+            )
+            da_sent, eval_sent = check_battery_sent(
+                client, rules, verbose=True, most_recent_eval_date=eval_date
+            )
             if da_done is True:
                 sync_preview.append((str(client.id), "DA Qs Done", "TRUE"))
             elif da_done is False:
@@ -491,6 +504,7 @@ def main():
     services, config = load_config()
     openphone = OpenPhone(config, services)
     rules = get_questionnaire_rules(config)
+    eval_dates = get_most_recent_eval_appointment_dates(config)
     email_info: AdminEmailInfo = {
         "ignoring": [],
         "failed": [],
@@ -1036,10 +1050,13 @@ def main():
         logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")
         sync_updates: list[tuple[str, str, str]] = []
         for client in all_clients_with_qs.values():
+            eval_date = eval_dates.get(client.id)
             da_done, eval_done = check_battery_completeness(
-                client, rules, verbose=dry_run
+                client, rules, verbose=dry_run, most_recent_eval_date=eval_date
             )
-            da_sent, eval_sent = check_battery_sent(client, rules, verbose=dry_run)
+            da_sent, eval_sent = check_battery_sent(
+                client, rules, verbose=dry_run, most_recent_eval_date=eval_date
+            )
 
             if da_done is True:
                 sync_updates.append((str(client.id), "DA Qs Done", "TRUE"))

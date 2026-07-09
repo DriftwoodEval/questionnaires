@@ -602,6 +602,34 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
     return rules
 
 
+def get_most_recent_eval_appointment_dates(config: Config) -> dict[int, date]:
+    """Return a map of clientId to the start date of their most recent eval appointment.
+
+    Used to determine the age a client should be treated as for questionnaire
+    eligibility: their age at their most recent eval appointment if they have
+    one, otherwise their current age.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        sql = """
+            SELECT clientId, MAX(startTime) AS mostRecentEval
+            FROM emr_appointment
+            WHERE daEval IN ('EVAL', 'DAEVAL')
+              AND cancelled = 0
+              AND billingOnly = 0
+              AND placeholder = 0
+            GROUP BY clientId
+        """
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+
+    return {
+        row["clientId"]: row["mostRecentEval"].date()
+        for row in rows
+        if row["mostRecentEval"] is not None
+    }
+
+
 def get_self_report_writer_for_client(config: Config, client_id: int) -> str | None:
     """Return the providerName of the most recent non-billing-only 96136 appointment's
     evaluator for this client, if that evaluator has writesOwnReports=True. Otherwise None."""

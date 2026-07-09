@@ -419,6 +419,7 @@ def check_battery_sent(
     client: ClientWithQuestionnaires,
     rules: list[dict],
     verbose: bool = False,
+    most_recent_eval_date: date | None = None,
 ) -> tuple[bool | None, bool | None]:
     """Check if DA and EVAL questionnaire batteries have been sent for a client.
 
@@ -426,8 +427,14 @@ def check_battery_sent(
       True  — all required types exist and all have status != JUST_ADDED and != ARCHIVED
       False — any required type is missing, JUST_ADDED, or ARCHIVED
       None  — no applicable rules for this battery (don't update the column)
+
+    `most_recent_eval_date`, if given, is the start date of the client's most
+    recent eval appointment. Age is computed as of that date rather than today,
+    since eligibility for a battery is determined by the client's age at eval.
     """
-    age_in_years = relativedelta(date.today(), client.dob).years
+    age_in_years = relativedelta(
+        most_recent_eval_date or date.today(), client.dob
+    ).years
 
     age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
 
@@ -514,6 +521,7 @@ def check_battery_completeness(
     client: ClientWithQuestionnaires,
     rules: list[dict],
     verbose: bool = False,
+    most_recent_eval_date: date | None = None,
 ) -> tuple[bool | None, bool | None]:
     """Check if DA and EVAL questionnaire batteries are complete for a client.
 
@@ -521,8 +529,14 @@ def check_battery_completeness(
       True  — all required types for this battery are COMPLETED or EXTERNAL
       False — at least one required type is not done
       None  — no applicable rules for this battery (don't update the column)
+
+    `most_recent_eval_date`, if given, is the start date of the client's most
+    recent eval appointment. Age is computed as of that date rather than today,
+    since eligibility for a battery is determined by the client's age at eval.
     """
-    age_in_years = relativedelta(date.today(), client.dob).years
+    age_in_years = relativedelta(
+        most_recent_eval_date or date.today(), client.dob
+    ).years
 
     age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
 

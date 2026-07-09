@@ -326,7 +326,6 @@ def check_mhs_completed(
 
     Returns True if a matching completed assessment row is found.
     """
-    actions = ActionChains(driver)
     mhs_hf_id = f"C{str(client_id).zfill(9)}"
     mhs_type_prefix = _MHS_DISPLAY_PREFIX.get(q_type, q_type)
     logger.info(

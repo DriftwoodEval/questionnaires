@@ -17,6 +17,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 
 from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
 from utils.database import (
+    get_most_recent_eval_appointment_dates,
     get_previous_clients,
     get_questionnaire_rules,
     get_record_ready_client_ids,
@@ -669,6 +670,7 @@ def main(
     )
     prev_clients, prev_failed_clients = get_previous_clients(config, failed=True)
     questionnaire_rules = get_questionnaire_rules(config)
+    eval_dates = get_most_recent_eval_appointment_dates(config)
 
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
@@ -758,7 +760,10 @@ def main(
                 continue
 
             client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
-            client["Age"] = relativedelta(datetime.now(), client_from_db.dob).years
+            eval_date = eval_dates.get(client_from_db.id)
+            client["Age"] = relativedelta(
+                eval_date or datetime.now(), client_from_db.dob
+            ).years
             client["Gender"] = client_from_db.gender
             client["Phone Number"] = client_from_db.phoneNumber
             if (
