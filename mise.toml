@@ -1,0 +1,43 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+[settings.task]
+output = "interleave"
+
+[tasks.install]
+description = "Install dependencies and register git hooks"
+run = """
+uv sync
+uv run lefthook install
+"""
+
+[tasks.check]
+description = "Lint and format Python, and check for unused dependencies"
+run = """
+uv run ruff check . --fix
+uv run ruff format .
+uv run deptry .
+"""
+
+[tasks.qsend]
+description = "Send questionnaires to clients ahead of their appointments"
+raw_args = true
+run = "uv run qsend.py"
+
+[tasks.qreceive]
+raw_args = true
+description = "Check on sent questionnaires, send reminders, and sync completion status"
+run = "uv run qreceive.py"
+
+[tasks.piecework]
+description = "Run piecework/billing processing"
+run = "uv run piecework.py"
+
+[tasks."records-request"]
+description = "Automatic records request form downloads and sending"
+run = "uv run records-request.py"
+
+[tasks."log-server"]
+description = "Start the log server that collects logs from the other scripts"
+run = "uv run log-server.py"

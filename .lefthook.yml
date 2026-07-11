@@ -1,12 +1,14 @@
 pre-commit:
   commands:
+    betterleaks:
+      run: mise x betterleaks -- betterleaks git --pre-commit --redact --staged --verbose --no-banner
     ruff-check:
       glob: "*.py"
       stage_fixed: true
-      run: uvx ruff check {staged_files} --fix --exit-non-zero-on-fix
+      run: mise x -- uvx ruff check {staged_files} --fix --exit-non-zero-on-fix
     ruff-fmt:
       glob: "*.py"
       stage_fixed: true
-      run: uvx ruff format {staged_files}
+      run: mise x -- uvx ruff format {staged_files}
     deptry:
-      run: uv run deptry .
+      run: mise x -- uv run deptry .
