@@ -6,6 +6,9 @@ Automation for Driftwood Evaluation Center's client questionnaire workflow: send
 ## Commands
 - `mise run check` to lint. Trust its output over your own assumptions about Python syntax validity.
 
+## Testing
+- Prefer `pytest.mark.parametrize` over near-duplicate test methods that only vary in input/expected values. Only keep separate test methods when the setup or assertions genuinely differ.
+
 ## Architecture
 
 ### Entry-point scripts (repo root)

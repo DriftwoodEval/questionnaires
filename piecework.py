@@ -22,6 +22,7 @@ from utils.database import (
 )
 from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import NetworkSink, json_log_format, load_config, load_local_settings
+from utils.piecework import extract_writer_initials
 
 logger.remove()
 logger.add(
@@ -37,13 +38,6 @@ app = typer.Typer()
 log_host = load_local_settings().log_host
 network_sink = NetworkSink(log_host, 9999, app_name="piecework")
 logger.add(network_sink.write, format=json_log_format, enqueue=True)
-
-
-def extract_writer_initials(assigned_to: str) -> str:
-    """Extract only letters from the assigned to column."""
-    if pd.isna(assigned_to) or not assigned_to:
-        return ""
-    return re.sub(r"[^a-zA-Z]", "", assigned_to)
 
 
 def get_report_clients(config: Config) -> pd.DataFrame | None:

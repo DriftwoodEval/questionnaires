@@ -18,7 +18,7 @@ run = """
 uv run ruff check . --fix
 uv run ruff format .
 uv run deptry .
-uv run pyright
+uv run pyright --stats
 """
 
 [tasks.test]

@@ -15,7 +15,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 
-from utils.custom_types import ClientFromDB, Config, FailedClientFromDB, Services
+from utils.custom_types import Config, Services
 from utils.database import (
     get_most_recent_eval_appointment_dates,
     get_previous_clients,
@@ -27,6 +27,7 @@ from utils.database import (
     update_questionnaire_in_db,
 )
 from utils.google import get_punch_list, update_punch_list
+from utils.messages import format_ta_message
 from utils.misc import (
     NetworkSink,
     add_failure,
@@ -60,6 +61,11 @@ from utils.platforms.therapyappointment import (
     send_message_ta,
 )
 from utils.platforms.wps import check_and_login_wps, gen_dp4
+from utils.questionnaires import (
+    check_client_failed,
+    check_client_previous,
+    normalize_q_name,
+)
 from utils.selenium import (
     find_element,
     initialize_selenium,
@@ -385,101 +391,6 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
         "age": age,
         "phone_number": phone_number,
     }
-
-
-def format_ta_message(questionnaires: list[dict]) -> str:
-    """Formats the message to be sent in TA."""
-    logger.debug("Formatting TA message")
-    message = ""
-    for q_id, questionnaire in enumerate(questionnaires, start=1):
-        notes = ""
-        if "Self" in questionnaire["type"]:
-            notes = " - For client being tested"
-        message += f"{q_id}) {questionnaire['link']}{notes}\n"
-    logger.success("Formatted TA message")
-    return message
-
-
-def check_client_failed(
-    prev_failed_clients: dict[int, FailedClientFromDB], client_info: pd.Series
-) -> tuple[bool, str | None]:
-    """Checks if the client has a previous, unresolved failure that prevents scheduling.
-
-    Args:
-        prev_failed_clients (dict): Dictionary of previously failed clients (ID -> FailedClientFromDB object).
-        client_info (pd.Series): Pandas Series containing the client to be checked's data.
-
-    Returns:
-        tuple[bool, Union[str, None]]: (True, error_reason) if a match is found, otherwise (False, None).
-    """
-    if not prev_failed_clients:
-        return (False, None)
-
-    client_id_raw = client_info.get("Client ID")
-    if not client_id_raw:
-        return (False, None)
-
-    try:
-        client_id = int(client_id_raw)
-    except ValueError:
-        logger.warning(f"Client ID '{client_id_raw}' is not a valid integer.")
-        return (False, None)
-
-    if client_id not in prev_failed_clients:
-        return (False, None)
-
-    prev_failed_client = prev_failed_clients[client_id]
-
-    current_daeval = client_info.get("daeval")
-
-    for failure in prev_failed_client.failure:
-        if failure.get("reminded", 0) >= 100:
-            continue
-
-        prev_daeval = failure.get("daEval", None)
-        reason = failure.get("reason", None)
-
-        # Don't count records failures for QSend
-        if prev_daeval == "Records":
-            continue
-
-        error = str(reason).lower() if reason else None
-
-        if current_daeval == "DA":
-            return (True, error)
-
-        if current_daeval == "EVAL":
-            if prev_daeval == "DA":
-                continue
-            return (True, error)
-
-        if current_daeval == "DAEVAL":
-            return (True, error)
-
-    return (False, None)
-
-
-def check_client_previous(
-    prev_clients: dict[int, ClientFromDB], client_info: pd.Series
-):
-    """Check if a client has any questionnaires from a previous run.
-
-    Returns:
-        list | None: A list of questionnaires for the client, if the client was found in the previous clients dictionary and had questionnaires. Otherwise, None.
-    """
-    if not prev_clients:
-        return None
-
-    client_id = int(client_info["Client ID"])
-
-    if client_id in prev_clients:
-        return prev_clients[client_id].questionnaires
-
-    return None
-
-
-def normalize_q_name(name: str) -> str:
-    return name.removesuffix(" Self")
 
 
 def diagnose_client(config: Config, client_filter: str) -> None:

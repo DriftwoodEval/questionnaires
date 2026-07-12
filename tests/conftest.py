@@ -4,6 +4,8 @@ import pytest
 
 from utils.custom_types import (
     ClientWithQuestionnaires,
+    Config,
+    PieceworkConfig,
     Questionnaire,
     QuestionnaireStatus,
 )
@@ -60,6 +62,28 @@ def make_client(
     )
 
 
+def make_config(**overrides) -> Config:
+    fields = {
+        "initials": "TC",
+        "name": "Test Clinician",
+        "email": "clinician@example.com",
+        "automated_email": "automated@example.com",
+        "qreceive_emails": ["admin@example.com"],
+        "punch_list_id": "punch-list-id",
+        "punch_list_range": "Sheet1!A1:Z",
+        "failed_sheet_id": "failed-sheet-id",
+        "payroll_folder_id": "payroll-folder-id",
+        "database_url": "mysql://user:pass@localhost/db",
+        "excluded_ta": [],
+        "records_folder_id": "records-folder-id",
+        "sent_records_folder_id": "sent-records-folder-id",
+        "records_emails": {},
+        "piecework": PieceworkConfig(costs={}, name_map={}, payroll_emails={}),
+    }
+    fields.update(overrides)
+    return Config.model_validate(fields)
+
+
 @pytest.fixture
 def questionnaire_factory():
     return make_questionnaire
@@ -68,3 +92,8 @@ def questionnaire_factory():
 @pytest.fixture
 def client_factory():
     return make_client
+
+
+@pytest.fixture
+def config_factory():
+    return make_config

@@ -88,20 +88,19 @@ class PieceworkConfig(BaseModel):
         Falls back to default costs if evaluator-specific costs are not found.
         """
         default_costs = self.costs["default"]
+        default_cost = getattr(default_costs, appointment_type, None)
 
         if evaluator_name in self.costs:
             evaluator_costs = self.costs[evaluator_name]
-            if hasattr(evaluator_costs, appointment_type):
-                cost = getattr(evaluator_costs, appointment_type)
-                if cost is None and hasattr(default_costs, appointment_type):
-                    return getattr(default_costs, appointment_type)
-                return cost
+            evaluator_cost = getattr(evaluator_costs, appointment_type, None)
+            if evaluator_cost is not None:
+                return evaluator_cost
+            if default_cost is not None:
+                return default_cost
+            return 0.00
 
-        if hasattr(default_costs, appointment_type):
-            cost = getattr(default_costs, appointment_type)
-            if cost is None:
-                return 0.00
-            return cost
+        if default_cost is not None:
+            return default_cost
 
         return 0.00
 

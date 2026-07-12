@@ -1,15 +1,26 @@
 from datetime import date, datetime
+from pathlib import Path
+from typing import cast
 
+import pandas as pd
+import pytest
+from selenium.webdriver.remote.webdriver import WebDriver
+
+from utils.custom_types import ClientFromDB, FailedClientFromDB
 from utils.questionnaires import (
     _in_current_session,
     _resolve_wanted_diagnoses,
     all_questionnaires_done,
     check_battery_completeness,
     check_battery_sent,
+    check_client_failed,
+    check_client_previous,
     check_if_ignoring,
     filter_inactive_and_not_pending,
     generate_screenshot_filename,
     get_most_recent_not_done,
+    normalize_q_name,
+    save_screenshot_deduped,
 )
 
 
@@ -179,6 +190,46 @@ class TestGenerateScreenshotFilename:
         assert "_localhost_" in filename
 
 
+class _FakeDriver:
+    """Stands in for a WebDriver's save_screenshot, writing a real file to disk."""
+
+    def save_screenshot(self, filepath) -> None:
+        Path(filepath).write_bytes(b"fake-png-bytes")
+
+
+def make_fake_driver() -> WebDriver:
+    return cast(WebDriver, _FakeDriver())
+
+
+class TestSaveScreenshotDeduped:
+    def test_saves_the_new_screenshot(self, tmp_path):
+        save_screenshot_deduped(
+            make_fake_driver(), tmp_path, "COMPLETED_ASRS_x_20240101_120000.png"
+        )
+        assert (tmp_path / "COMPLETED_ASRS_x_20240101_120000.png").exists()
+
+    def test_removes_prior_screenshot_with_same_identity_prefix(self, tmp_path):
+        old = tmp_path / "COMPLETED_ASRS_x_20240101_090000.png"
+        old.write_bytes(b"old-bytes")
+
+        save_screenshot_deduped(
+            make_fake_driver(), tmp_path, "COMPLETED_ASRS_x_20240101_120000.png"
+        )
+
+        assert not old.exists()
+        assert (tmp_path / "COMPLETED_ASRS_x_20240101_120000.png").exists()
+
+    def test_leaves_screenshots_with_different_identity_alone(self, tmp_path):
+        unrelated = tmp_path / "PENDING_BASC_y_20240101_090000.png"
+        unrelated.write_bytes(b"unrelated-bytes")
+
+        save_screenshot_deduped(
+            make_fake_driver(), tmp_path, "COMPLETED_ASRS_x_20240101_120000.png"
+        )
+
+        assert unrelated.exists()
+
+
 class TestGetMostRecentNotDone:
     def test_returns_most_recent_pending(self, client_factory, questionnaire_factory):
         older = questionnaire_factory(status="PENDING", sent=date(2024, 1, 1))
@@ -208,20 +259,18 @@ class TestGetMostRecentNotDone:
 
 
 class TestResolveWantedDiagnoses:
-    def test_none_defaults_to_both(self):
-        assert _resolve_wanted_diagnoses(None) == {"ASD", "ADHD"}
-
-    def test_empty_string_defaults_to_both(self):
-        assert _resolve_wanted_diagnoses("") == {"ASD", "ADHD"}
-
-    def test_both_maps_to_asd_and_adhd(self):
-        assert _resolve_wanted_diagnoses("Both") == {"ASD", "ADHD"}
-
-    def test_asd_only(self):
-        assert _resolve_wanted_diagnoses("ASD") == {"ASD"}
-
-    def test_adhd_only(self):
-        assert _resolve_wanted_diagnoses("ADHD") == {"ADHD"}
+    @pytest.mark.parametrize(
+        ("asd_adhd", "expected"),
+        [
+            (None, {"ASD", "ADHD"}),
+            ("", {"ASD", "ADHD"}),
+            ("Both", {"ASD", "ADHD"}),
+            ("ASD", {"ASD"}),
+            ("ADHD", {"ADHD"}),
+        ],
+    )
+    def test_resolve_wanted_diagnoses(self, asd_adhd, expected):
+        assert _resolve_wanted_diagnoses(asd_adhd) == expected
 
 
 # check_battery_sent/completeness only match non-DAEVAL rules against a
@@ -409,3 +458,180 @@ class TestCheckBatteryCompleteness:
         # Adult with ASD-only diagnosis: DAEVAL rule (diagnosis=None) still applies at 18-99
         da_done, eval_done = check_battery_completeness(client, RULES)
         assert (da_done, eval_done) == (True, True)
+
+
+def make_failed_client(client_id: int = 1, failure: list[dict] | None = None):
+    return FailedClientFromDB.model_validate(
+        {
+            "id": client_id,
+            "dob": date(2015, 1, 1),
+            "firstName": "Test",
+            "lastName": "Client",
+            "fullName": "Test Client",
+            "status": True,
+            "autismStop": False,
+            "pause": False,
+            "babyNetERNeeded": False,
+            "babyNetERDownloaded": False,
+            "language": "English",
+            "failure": failure
+            if failure is not None
+            else [
+                {
+                    "failedDate": date(2024, 1, 1),
+                    "reason": "Failed randomly",
+                    "daEval": "DA",
+                    "reminded": 0,
+                    "lastReminded": None,
+                }
+            ],
+        }
+    )
+
+
+def make_client_from_db(client_id: int = 1, questionnaires=None):
+    return ClientFromDB.model_validate(
+        {
+            "id": client_id,
+            "dob": date(2015, 1, 1),
+            "firstName": "Test",
+            "lastName": "Client",
+            "fullName": "Test Client",
+            "status": True,
+            "autismStop": False,
+            "pause": False,
+            "babyNetERNeeded": False,
+            "babyNetERDownloaded": False,
+            "language": "English",
+            "questionnaires": questionnaires,
+        }
+    )
+
+
+class TestNormalizeQName:
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("ASRS Self", "ASRS"),
+            ("BASC", "BASC"),
+        ],
+    )
+    def test_normalize_q_name(self, name, expected):
+        assert normalize_q_name(name) == expected
+
+
+class TestCheckClientFailed:
+    def test_no_previous_failures_is_false(self):
+        client_info = pd.Series({"Client ID": "1", "daeval": "DA"})
+        assert check_client_failed({}, client_info) == (False, None)
+
+    def test_missing_client_id_is_false(self):
+        client_info = pd.Series({"Client ID": None, "daeval": "DA"})
+        assert check_client_failed({1: make_failed_client(1)}, client_info) == (
+            False,
+            None,
+        )
+
+    def test_non_integer_client_id_is_false(self):
+        client_info = pd.Series({"Client ID": "not-a-number", "daeval": "DA"})
+        assert check_client_failed({1: make_failed_client(1)}, client_info) == (
+            False,
+            None,
+        )
+
+    def test_client_id_not_in_failures_is_false(self):
+        client_info = pd.Series({"Client ID": "2", "daeval": "DA"})
+        assert check_client_failed({1: make_failed_client(1)}, client_info) == (
+            False,
+            None,
+        )
+
+    def test_fully_reminded_failure_is_ignored(self):
+        failure = [
+            {
+                "failedDate": date(2024, 1, 1),
+                "reason": "No show",
+                "daEval": "DA",
+                "reminded": 100,
+                "lastReminded": None,
+            }
+        ]
+        client_info = pd.Series({"Client ID": "1", "daeval": "DA"})
+        failed_clients = {1: make_failed_client(1, failure=failure)}
+        assert check_client_failed(failed_clients, client_info) == (False, None)
+
+    def test_records_failure_is_ignored_for_qsend(self):
+        failure = [
+            {
+                "failedDate": date(2024, 1, 1),
+                "reason": "Missing records",
+                "daEval": "Records",
+                "reminded": 0,
+                "lastReminded": None,
+            }
+        ]
+        client_info = pd.Series({"Client ID": "1", "daeval": "DA"})
+        failed_clients = {1: make_failed_client(1, failure=failure)}
+        assert check_client_failed(failed_clients, client_info) == (False, None)
+
+    def test_da_current_matches_da_failure(self):
+        client_info = pd.Series({"Client ID": "1", "daeval": "DA"})
+        failed_clients = {1: make_failed_client(1)}
+        assert check_client_failed(failed_clients, client_info) == (
+            True,
+            "failed randomly",
+        )
+
+    def test_eval_current_skips_da_only_failure(self):
+        client_info = pd.Series({"Client ID": "1", "daeval": "EVAL"})
+        failed_clients = {1: make_failed_client(1)}
+        assert check_client_failed(failed_clients, client_info) == (False, None)
+
+    def test_eval_current_matches_eval_failure(self):
+        failure = [
+            {
+                "failedDate": date(2024, 1, 1),
+                "reason": "No show",
+                "daEval": "EVAL",
+                "reminded": 0,
+                "lastReminded": None,
+            }
+        ]
+        client_info = pd.Series({"Client ID": "1", "daeval": "EVAL"})
+        failed_clients = {1: make_failed_client(1, failure=failure)}
+        assert check_client_failed(failed_clients, client_info) == (True, "no show")
+
+    def test_daeval_current_always_matches(self):
+        client_info = pd.Series({"Client ID": "1", "daeval": "DAEVAL"})
+        failed_clients = {1: make_failed_client(1)}
+        assert check_client_failed(failed_clients, client_info) == (
+            True,
+            "failed randomly",
+        )
+
+
+class TestCheckClientPrevious:
+    def test_no_previous_clients_returns_none(self):
+        client_info = pd.Series({"Client ID": "1"})
+        assert check_client_previous({}, client_info) is None
+
+    def test_client_not_found_returns_none(self):
+        client_info = pd.Series({"Client ID": "2"})
+        prev_clients = {1: make_client_from_db(1, questionnaires=[])}
+        assert check_client_previous(prev_clients, client_info) is None
+
+    def test_client_found_returns_questionnaires(self):
+        client_info = pd.Series({"Client ID": "1"})
+        questionnaires = [
+            {
+                "clientId": 1,
+                "questionnaireType": "ASRS",
+                "link": None,
+                "sent": None,
+                "status": "PENDING",
+                "reminded": 0,
+                "lastReminded": None,
+            }
+        ]
+        prev_clients = {1: make_client_from_db(1, questionnaires=questionnaires)}
+        assert check_client_previous(prev_clients, client_info) == questionnaires

@@ -38,6 +38,7 @@ from utils.platforms.therapyappointment import (
     check_if_opened_portal,
     go_to_client,
 )
+from utils.records import normalize_district, resolve_school_contact
 from utils.selenium import (
     initialize_selenium,
 )
@@ -55,30 +56,6 @@ network_sink = NetworkSink(log_host, 9999, app_name="records-request")
 logger.add(network_sink.write, format=json_log_format, enqueue=True)
 
 WAIT_TIMEOUT = 15  # seconds
-
-
-def normalize_district(name: str | None) -> str:
-    if not name:
-        return ""
-
-    pattern = r"\b(county school district|school district|county)\b"
-
-    clean = re.sub(rf"(?i){pattern}", "", name)
-
-    return " ".join(clean.split()).lower()
-
-
-def resolve_school_contact(
-    name: str, school_contacts: dict[str, RecordsContact]
-) -> tuple[str, RecordsContact] | tuple[None, None]:
-    """Helper to find a contact by name or alias."""
-    name = name.lower().strip()
-    if name in school_contacts:
-        return name, school_contacts[name]
-    for canonical_name, contact in school_contacts.items():
-        if name in [a.lower().strip() for a in contact.aliases]:
-            return canonical_name, contact
-    return None, None
 
 
 def download_consent_forms(

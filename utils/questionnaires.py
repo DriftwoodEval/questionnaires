@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import urlparse
 
+import pandas as pd
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 from selenium.common.exceptions import (
@@ -18,8 +19,10 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.custom_types import (
+    ClientFromDB,
     ClientWithQuestionnaires,
     Config,
+    FailedClientFromDB,
     Questionnaire,
     Services,
 )
@@ -36,7 +39,7 @@ from utils.selenium import (
 MAX_WORKERS = 5
 
 
-def _in_current_session(client: ClientWithQuestionnaires, q: dict) -> bool:
+def _in_current_session(client: ClientWithQuestionnaires, q: Questionnaire) -> bool:
     """Whether a questionnaire dict belongs to the client's current session.
 
     Clients can go inactive and later reactivate under the same id; on
@@ -397,6 +400,88 @@ def get_most_recent_not_done(
     )
 
     return max(pending_and_sent, key=lambda q: cast(date, q["sent"]), default=None)
+
+
+def normalize_q_name(name: str) -> str:
+    return name.removesuffix(" Self")
+
+
+def check_client_failed(
+    prev_failed_clients: dict[int, FailedClientFromDB], client_info: pd.Series
+) -> tuple[bool, str | None]:
+    """Checks if the client has a previous, unresolved failure that prevents scheduling.
+
+    Args:
+        prev_failed_clients (dict): Dictionary of previously failed clients (ID -> FailedClientFromDB object).
+        client_info (pd.Series): Pandas Series containing the client to be checked's data.
+
+    Returns:
+        tuple[bool, Union[str, None]]: (True, error_reason) if a match is found, otherwise (False, None).
+    """
+    if not prev_failed_clients:
+        return (False, None)
+
+    client_id_raw = client_info.get("Client ID")
+    if not client_id_raw:
+        return (False, None)
+
+    try:
+        client_id = int(client_id_raw)
+    except ValueError:
+        logger.warning(f"Client ID '{client_id_raw}' is not a valid integer.")
+        return (False, None)
+
+    if client_id not in prev_failed_clients:
+        return (False, None)
+
+    prev_failed_client = prev_failed_clients[client_id]
+
+    current_daeval = client_info.get("daeval")
+
+    for failure in prev_failed_client.failure:
+        if failure.get("reminded", 0) >= 100:
+            continue
+
+        prev_daeval = failure.get("daEval", None)
+        reason = failure.get("reason", None)
+
+        # Don't count records failures for QSend
+        if prev_daeval == "Records":
+            continue
+
+        error = str(reason).lower() if reason else None
+
+        if current_daeval == "DA":
+            return (True, error)
+
+        if current_daeval == "EVAL":
+            if prev_daeval == "DA":
+                continue
+            return (True, error)
+
+        if current_daeval == "DAEVAL":
+            return (True, error)
+
+    return (False, None)
+
+
+def check_client_previous(
+    prev_clients: dict[int, ClientFromDB], client_info: pd.Series
+):
+    """Check if a client has any questionnaires from a previous run.
+
+    Returns:
+        list | None: A list of questionnaires for the client, if the client was found in the previous clients dictionary and had questionnaires. Otherwise, None.
+    """
+    if not prev_clients:
+        return None
+
+    client_id = int(client_info["Client ID"])
+
+    if client_id in prev_clients:
+        return prev_clients[client_id].questionnaires
+
+    return None
 
 
 def _resolve_wanted_diagnoses(asd_adhd: str | None) -> set[str]:
