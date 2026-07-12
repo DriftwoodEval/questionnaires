@@ -13,11 +13,12 @@ uv run lefthook install
 """
 
 [tasks.check]
-description = "Lint and format Python, and check for unused dependencies"
+description = "Lint and format Python, check for unused dependencies, and type-check"
 run = """
 uv run ruff check . --fix
 uv run ruff format .
 uv run deptry .
+uv run pyright
 """
 
 [tasks.test]
