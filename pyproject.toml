@@ -26,10 +26,24 @@ dependencies = [
 [dependency-groups]
 dev = [
   "deptry>=0.25.1",
-  "icecream>=2.1.8",
+  "icecream>=2.2.0",
   "lefthook>=2.1.4",
+  "pytest>=9.1.1",
+  "pytest-cov>=7.1.0",
   "ruff>=0.15.11",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov --cov-context=test --cov-report=html"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", ".venv/*", "conftest.py"]
+
+[tool.coverage.html]
+show_contexts = true
 
 [tool.ruff.lint]
 select = [

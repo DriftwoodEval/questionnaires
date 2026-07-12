@@ -20,6 +20,11 @@ uv run ruff format .
 uv run deptry .
 """
 
+[tasks.test]
+description = "Run the test suite"
+raw_args = true
+run = "uv run pytest"
+
 [tasks.qsend]
 description = "Send questionnaires to clients ahead of their appointments"
 raw_args = true

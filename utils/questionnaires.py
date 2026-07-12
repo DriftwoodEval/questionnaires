@@ -69,7 +69,7 @@ def all_questionnaires_done(client: ClientWithQuestionnaires) -> bool:
 def filter_inactive_and_not_pending(
     clients: dict[int, ClientWithQuestionnaires],
 ) -> dict[int, ClientWithQuestionnaires]:
-    """Filter out clients that are inactive and don't have pending, rescheduled, or ignoring questionnaires."""
+    """Filter out clients that are inactive and don't have pending or ignoring questionnaires."""
     return {
         client.id: client
         for client in clients.values()
@@ -82,7 +82,6 @@ def filter_inactive_and_not_pending(
                 "POSTDA_PENDING",
                 "POSTEVAL_PENDING",
                 "IGNORING",
-                "RESCHEDULED",
             ]
             for q in client.questionnaires
             if isinstance(q, dict) and _in_current_session(client, q)
@@ -93,9 +92,7 @@ def filter_inactive_and_not_pending(
 def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
     """Check if any questionnaire for the given client is being ignored."""
     return any(
-        q["status"] == "RESCHEDULED" or q["status"] == "IGNORING"
-        for q in client.questionnaires
-        if isinstance(q, dict)
+        q["status"] == "IGNORING" for q in client.questionnaires if isinstance(q, dict)
     )
 
 
