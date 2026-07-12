@@ -30,7 +30,9 @@ def rearrange_dob(dob: str) -> str:
 F = TypeVar("F", bound=Callable)
 
 
-def with_qglobal_recovery(recover: Callable[..., None] | None = None) -> Callable[[F], F]:
+def with_qglobal_recovery(
+    recover: Callable[..., None] | None = None,
+) -> Callable[[F], F]:
     """Retry a QGlobal flow if a page load ever hangs.
 
     QGlobal occasionally never fires the page load complete event, which

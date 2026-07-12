@@ -1,4 +1,3 @@
-import argparse
 import re
 import sys
 from collections import defaultdict
@@ -8,6 +7,7 @@ from typing import Any
 
 import inquirer
 import pandas as pd
+import typer
 from loguru import logger
 from openpyxl.styles import Alignment, Font
 
@@ -31,6 +31,8 @@ logger.add(
 )
 
 logger.add("logs/piecework.log", format=json_log_format, rotation="500 MB")
+
+app = typer.Typer()
 
 log_host = load_local_settings().log_host
 network_sink = NetworkSink(log_host, 9999, app_name="piecework")
@@ -233,7 +235,9 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
         # Save any newly added clients and update writer emails
         newly_added = [
-            int(cid) for cid in result["Client ID"] if str(cid) not in tracked_reports  # type: ignore[arg-type]
+            int(cid)
+            for cid in result["Client ID"]
+            if str(cid) not in tracked_reports  # type: ignore[arg-type]
         ]
         save_new_tracked_reports(config, newly_added, today_str)
 
@@ -624,16 +628,16 @@ def generate_individual_detail_reports(
             )
 
 
-def main():
-    """Main function to run piecework."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
+@app.command()
+def main(
+    dev: bool = typer.Option(
+        False,
         "--dev",
-        action="store_true",
         help="Run in dev mode (do not upload to Google Drive)",
-    )
-    args = parser.parse_args()
-    dev_mode = args.dev
+    ),
+):
+    """Main function to run piecework."""
+    dev_mode = dev
     _, config = load_config()
     date_range = get_date_range()
 
@@ -681,4 +685,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    app()

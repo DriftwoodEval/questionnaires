@@ -290,7 +290,9 @@ class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
     ignoring: list[ClientWithQuestionnaires]
-    failed: list[tuple[ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB, str]]
+    failed: list[
+        tuple[ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB, str]
+    ]
     call: list[ClientWithQuestionnaires | FailedClientFromDB]
     completed: list[ClientWithQuestionnaires]
     errors: list[str]

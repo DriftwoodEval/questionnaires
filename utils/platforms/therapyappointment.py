@@ -68,9 +68,7 @@ def check_and_login_ta(
         login_ta(driver, services, admin)
 
 
-def go_to_client(
-    driver: WebDriver, services: Services, client_id: str
-) -> str | None:
+def go_to_client(driver: WebDriver, services: Services, client_id: str) -> str | None:
     """Navigates to the given client in TA and returns the client's URL."""
 
     def _search_clients(driver: WebDriver, client_id: str) -> None:
@@ -177,16 +175,16 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
     if not status_cells:
         return False
 
-    unsigned = [cell.text for cell in status_cells if not cell.text.startswith("Completed on")]
+    unsigned = [
+        cell.text for cell in status_cells if not cell.text.startswith("Completed on")
+    ]
     if unsigned:
         logger.info(f"Docs not fully signed. Unsigned statuses: {unsigned}")
         return False
     return True
 
 
-def resend_portal_invite(
-    driver: WebDriver, services: Services, client_id: str
-) -> None:
+def resend_portal_invite(driver: WebDriver, services: Services, client_id: str) -> None:
     """Resend the TA portal invite to the client."""
     go_to_client(driver, services, client_id)
     try:

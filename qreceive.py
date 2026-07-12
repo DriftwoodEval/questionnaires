@@ -1,9 +1,9 @@
-import argparse
 import json
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import typer
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -63,6 +63,8 @@ logger.add(
 )
 
 logger.add("logs/qreceive.log", format=json_log_format, rotation="500 MB")
+
+app = typer.Typer()
 
 PENDING_EMAIL_PATH = Path("logs/pending_email.json")
 
@@ -373,41 +375,36 @@ def check_failures(
                 update_failure_in_db(config, client_id, reason)
 
 
-def main():
-    """Main function for qreceive.py."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
+@app.command()
+def main(
+    dry_run: bool = typer.Option(
+        False,
         "--dry-run",
-        action="store_true",
         help="Run without sending texts, updating the punch list, or writing reminder state to the DB.",
-    )
-    parser.add_argument(
+    ),
+    skip_failures: bool = typer.Option(
+        False,
         "--skip-failures",
-        action="store_true",
         help="Skip checking on and sending reminders for failures; only process questionnaire completion.",
-    )
-    parser.add_argument(
+    ),
+    force_send: bool = typer.Option(
+        False,
         "--force-send",
-        action="store_true",
         help="Send texts regardless of the current time (bypasses the 1pm-only window).",
-    )
-    parser.add_argument(
+    ),
+    debug_batteries: bool = typer.Option(
+        False,
         "--debug-batteries",
-        action="store_true",
         help="Show detailed battery sent/done analysis for every client and exit. No changes made.",
-    )
-    parser.add_argument(
+    ),
+    sync_batteries: bool = typer.Option(
+        False,
         "--sync-batteries",
-        action="store_true",
         help="Only update the DA/EVAL Qs Sent/Done columns on the punch list. No texts or questionnaire checks.",
-    )
-    args = parser.parse_args()
-    dry_run = args.dry_run
-    skip_failures = args.skip_failures
-    force_send = args.force_send
-    debug_batteries = args.debug_batteries
-
-    if args.sync_batteries:
+    ),
+):
+    """Main function for qreceive.py."""
+    if sync_batteries:
         services, config = load_config()
         rules = get_questionnaire_rules(config)
         eval_dates = get_most_recent_eval_appointment_dates(config)
@@ -1122,4 +1119,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    app()

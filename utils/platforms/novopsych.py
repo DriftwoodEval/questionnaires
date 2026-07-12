@@ -15,7 +15,9 @@ def login_novopsych(driver: WebDriver, services: Services) -> None:
     driver.get(NOVOPSYCH_LOGIN_URL)
     wait_for_page_load(driver)
 
-    email_field = find_element(driver, By.CSS_SELECTOR, "input[name='email']", timeout=10)
+    email_field = find_element(
+        driver, By.CSS_SELECTOR, "input[name='email']", timeout=10
+    )
     email_field.send_keys(services.novopsych.username)
 
     password_field = find_element(driver, By.CSS_SELECTOR, "input[name='password']")

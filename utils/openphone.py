@@ -193,7 +193,9 @@ class OpenPhone:
                 ("maxResults", "25"),
             ]
             if since is not None:
-                since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=UTC)
+                since_dt = datetime.combine(since, datetime.min.time()).replace(
+                    tzinfo=UTC
+                )
                 params.append(("createdAfter", since_dt.isoformat()))
 
             response = self.session.get(url, params=params)

@@ -106,10 +106,7 @@ def stderr_log_format(record: "loguru.Record") -> str:
     # Escape < so loguru's color parser doesn't choke on HTML in exception messages.
     # Also escape { } so format_map doesn't treat message content as placeholders.
     safe_msg = (
-        record["message"]
-        .replace("<", r"\<")
-        .replace("{", "{{")
-        .replace("}", "}}")
+        record["message"].replace("<", r"\<").replace("{", "{{").replace("}", "}}")
     )
     return (
         f"[<dim>{{time:YY-MM-DD HH:mm:ss}}</dim>] "

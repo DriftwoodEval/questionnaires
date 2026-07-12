@@ -144,9 +144,7 @@ def get_with_retry(driver: WebDriver, url: str, retries: int = 3) -> None:
             driver.get(url)
             return
         except TimeoutException:
-            logger.warning(
-                f"Timed out loading {url}, attempt {attempt + 1}/{retries}."
-            )
+            logger.warning(f"Timed out loading {url}, attempt {attempt + 1}/{retries}.")
             driver.execute_script("window.stop();")
             if attempt == retries - 1:
                 raise
