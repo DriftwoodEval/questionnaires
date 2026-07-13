@@ -38,11 +38,21 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov --cov-context=test --cov-report=html"
+addopts = "--cov --cov-context=test --cov-report=html -m \"not integration\""
+markers = [
+  "integration: hits real third-party sites with a fake client; never run by default, invoke explicitly with `pytest tests/integration -m integration`",
+  "mhs: integration tests that hit the real MHS site",
+  "qglobal: integration tests that hit the real QGlobal site",
+  "wps: integration tests that hit the real WPS site",
+]
 
 [tool.coverage.run]
 source = ["."]
 omit = ["tests/*", ".venv/*", "conftest.py"]
+# Unit tests write here by default so a real integration run (see mise.toml,
+# which points COVERAGE_FILE at .coverage.integration) never clobbers it -
+# `mise run coverage` combines both into .coverage for the HTML report.
+data_file = ".coverage.unit"
 
 [tool.coverage.html]
 show_contexts = true

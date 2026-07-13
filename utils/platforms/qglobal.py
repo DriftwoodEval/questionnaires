@@ -267,6 +267,26 @@ def add_client_to_qglobal(driver: WebDriver, client: pd.Series) -> bool:
     return True
 
 
+def delete_client_from_qglobal(driver: WebDriver, client: pd.Series) -> None:
+    """Navigate to a client's QGlobal record and wait for a human to delete it.
+
+    QGlobal doesn't expose a verified, stable selector for its delete-examinee
+    action, so this only automates getting to the right examinee and then
+    hands off to a human for the actual deletion.
+    """
+    check_and_login_qglobal(driver)
+    if not check_for_qglobal_account(driver, client):
+        logger.debug(
+            f"No QGlobal account found for {client['Human Friendly ID']}, nothing to delete"
+        )
+        return
+    search_select_qglobal(driver, client)
+    input(
+        f"QGlobal: please delete examinee {client['Human Friendly ID']} "
+        f"({client['TA First Name']} {client['TA Last Name']}) and press enter..."
+    )
+
+
 def get_qglobal_link(driver: WebDriver) -> str | None:
     """Clicks through the QGlobal UI to get the link for an assessment.
 

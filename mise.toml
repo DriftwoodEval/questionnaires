@@ -26,6 +26,43 @@ description = "Run the test suite"
 raw_args = true
 run = "uv run pytest"
 
+[tasks."test-integration"]
+description = "Run all integration tests against real third-party sites (never run in CI; prints a cleanup list of clients to delete at the end)"
+raw_args = true
+env = { COVERAGE_FILE = ".coverage.integration" }
+run = "uv run pytest -s tests/integration -m integration"
+
+[tasks."test-integration:mhs"]
+description = "Run MHS integration tests only"
+raw_args = true
+env = { COVERAGE_FILE = ".coverage.integration" }
+run = "uv run pytest -s tests/integration -m 'integration and mhs'"
+
+[tasks."test-integration:qglobal"]
+description = "Run QGlobal integration tests only"
+raw_args = true
+env = { COVERAGE_FILE = ".coverage.integration" }
+run = "uv run pytest -s tests/integration -m 'integration and qglobal'"
+
+[tasks."test-integration:wps"]
+description = "Run WPS integration tests only"
+raw_args = true
+env = { COVERAGE_FILE = ".coverage.integration" }
+run = "uv run pytest -s tests/integration -m 'integration and wps'"
+
+[tasks.coverage]
+description = "Combine coverage from unit + integration test runs (if present) and regenerate the HTML report, without re-running tests"
+run = """
+set -e
+sources=".coverage.unit"
+if [ -f .coverage.integration ]; then
+  sources="$sources .coverage.integration"
+fi
+uv run coverage combine --keep --data-file=.coverage $sources
+uv run coverage html
+echo "Report written to htmlcov/index.html"
+"""
+
 [tasks.qsend]
 description = "Send questionnaires to clients ahead of their appointments"
 raw_args = true

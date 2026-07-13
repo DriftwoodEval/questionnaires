@@ -602,6 +602,35 @@ def get_questionnaire_rules(config: Config) -> list[dict]:
     return rules
 
 
+def get_assessment_types(config: Config) -> list[dict]:
+    """Load assessment type definitions from the database.
+
+    This is the canonical per-instrument age range (questionnaire_rule's
+    minAge/maxAge are a business rule for a daeval/diagnosis combo, and can
+    be narrower than what the instrument itself supports).
+
+    Returns a list of dicts with keys: name, site, minAge, maxAge, minutes, inPerson.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT name, site, minAge, maxAge, minutes, in_person FROM emr_assessment_type"
+        )
+        rows = cursor.fetchall()
+
+    return [
+        {
+            "name": row["name"],
+            "site": row["site"],
+            "minAge": row["minAge"],
+            "maxAge": row["maxAge"],
+            "minutes": row["minutes"],
+            "inPerson": bool(row["in_person"]),
+        }
+        for row in rows
+    ]
+
+
 def get_most_recent_eval_appointment_dates(config: Config) -> dict[int, date]:
     """Return a map of clientId to the start date of their most recent eval appointment.
 

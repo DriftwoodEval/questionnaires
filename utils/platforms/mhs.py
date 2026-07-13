@@ -1,3 +1,4 @@
+import contextlib
 from time import sleep
 
 import pandas as pd
@@ -11,8 +12,9 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from utils.custom_types import Services
 from utils.selenium import (
@@ -63,6 +65,184 @@ def check_and_login_mhs(
     except (NoSuchElementException, TimeoutException):
         logger.debug("Not logged in to MHS, logging in now.")
         login_mhs(driver, services)
+
+
+def _select_and_wait_for_postback(
+    driver: WebDriver, dropdown: WebElement, text: str, timeout: int = 5
+) -> None:
+    """Selects a dropdown option and waits for the ASP.NET UpdatePanel
+    postback it triggers to finish.
+
+    Selecting the description dropdown repopulates the rater type dropdown
+    via an async postback. That postback replaces the rater dropdown's DOM
+    node, so a fixed sleep can still lose the race: it's long enough to
+    *look* fine to Selenium (no exception), but the site silently discards
+    the selection because it landed on the node mid-replacement. Waiting
+    for `dropdown` to go stale confirms the postback actually happened.
+    """
+    Select(dropdown).select_by_visible_text(text)
+    with contextlib.suppress(TimeoutException):
+        WebDriverWait(driver, timeout).until(ec.staleness_of(dropdown))
+
+
+def _select_description(driver: WebDriver, description: str, timeout: int = 10) -> None:
+    """Selects an option in ddl_Description, waiting for it to actually
+    exist first.
+
+    ddl_Description is itself populated asynchronously - e.g. filtered down
+    to what's valid for the client's age - after the add/search-client flow
+    completes. The existing-client path involves more postback round trips
+    (search, age-mismatch correction, confirm) than adding a new client, so
+    a fixed sleep before grabbing the dropdown can lose that race even
+    though the option shows up moments later.
+    """
+    WebDriverWait(driver, timeout).until(
+        ec.presence_of_element_located(
+            (
+                By.XPATH,
+                f"//select[@id='ddl_Description']/option[normalize-space(text())='{description}']",
+            )
+        )
+    )
+    dropdown = find_element(driver, By.ID, "ddl_Description")
+    _select_and_wait_for_postback(driver, dropdown, description)
+
+
+def _find_link_in_pending_invitations(
+    driver: WebDriver,
+    services: Services,
+    client: pd.Series,
+    description: str,
+    rater_type: str,
+) -> str | None:
+    """Fallback for when the invite wizard's own link field comes back
+    empty even though the invitation was actually created: looks the
+    invitation up on the Pending Invitations page, which lists its link too.
+
+    The page is often frozen (mid-postback from whatever caused the link
+    field to come back empty), so re-home via check_and_login_mhs first
+    rather than trying to click around the stuck page.
+    """
+    hf_id = client["Human Friendly ID"]
+    logger.warning(
+        f"Link field was empty, checking Pending Invitations for {hf_id} "
+        f"({description}/{rater_type})"
+    )
+    try:
+        check_and_login_mhs(driver, services)
+        click_element(
+            driver,
+            By.XPATH,
+            "//span[contains(normalize-space(text()), 'Pending Invitations')]",
+        )
+        wait_for_page_load(driver)
+        row = find_element(
+            driver,
+            By.XPATH,
+            "//tr[@role='row']"
+            f"[td[contains(normalize-space(text()), '{hf_id}')]]"
+            f"[td[normalize-space(text())='{description}']]"
+            f"[td[normalize-space(text())='{rater_type}']]",
+            timeout=10,
+        )
+        link_cell = row.find_element(
+            By.XPATH, ".//td[starts-with(normalize-space(text()), 'http')]"
+        )
+        link = link_cell.text.strip()
+        if not link:
+            return None
+        logger.success(f"Found link {link} in Pending Invitations for {hf_id}")
+        return link
+    except (NoSuchElementException, TimeoutException):
+        logger.error(f"Could not find a pending invitation for {hf_id} either")
+        return None
+
+
+def delete_client_from_mhs(
+    driver: WebDriver, services: Services, client: pd.Series
+) -> bool:
+    """Search for a client, confirm with a human that it's the right one,
+    then delete it from MHS.
+
+    Returns:
+        bool: True if the client was deleted, False if a human skipped it
+        (e.g. it turned out to be the wrong client).
+    """
+    check_and_login_mhs(driver, services)
+    hf_id = client["Human Friendly ID"]
+
+    logger.debug("Navigating to My Clients")
+    click_element(
+        driver,
+        By.XPATH,
+        "//span[contains(normalize-space(text()), 'My Clients')]",
+    )
+    wait_for_page_load(driver)
+
+    logger.debug("Searching for client")
+    search_box = find_element(
+        driver, By.ID, "searchBox", condition=ec.element_to_be_clickable
+    )
+    search_box.click()
+    search_box.clear()
+    search_box.send_keys(hf_id)
+    sleep(1.5)
+
+    logger.debug("Opening client")
+    click_element(
+        driver,
+        By.XPATH,
+        f"//td[@role='gridcell'][normalize-space(text())='{hf_id}']",
+    )
+    wait_for_page_load(driver)
+
+    expected_name = f"{client['TA First Name']} {client['TA Last Name']}"
+    heading_name = find_element(driver, By.ID, "titleHeading").text.strip()
+    if heading_name != expected_name:
+        logger.error(
+            f"Opened client page shows '{heading_name}', expected "
+            f"'{expected_name}' for {hf_id}. Skipping deletion."
+        )
+        return False
+
+    confirmation = input(
+        f"MHS: about to delete client {hf_id} ({heading_name}). "
+        "Is this the correct client? [y/N] "
+    )
+    if confirmation.strip().lower() != "y":
+        logger.warning(f"Skipping deletion of {hf_id}, not confirmed by user")
+        return False
+
+    logger.debug("Clicking Delete")
+    click_element(driver, By.ID, "btnDelete")
+
+    logger.debug("Confirming deletion")
+    click_element(
+        driver,
+        By.ID,
+        "ctrl__Controls_Common_ClientManagement_AddEditClient_ascx_btnDeleteClient",
+    )
+
+    logger.success(f"Deleted client {hf_id} from MHS")
+    return True
+
+
+def empty_mhs_deleted_items(driver: WebDriver, services: Services) -> None:
+    """Navigate to Deleted Items and wait for a human to permanently trash
+    everything there.
+
+    MHS moves deleted clients to a "Deleted Items" holding area rather than
+    removing them right away, so call this once after all pending clients
+    for a run have been deleted via delete_client_from_mhs.
+    """
+    check_and_login_mhs(driver, services)
+    logger.debug("Navigating to Deleted Items")
+    click_element(
+        driver,
+        By.XPATH,
+        "//span[contains(normalize-space(text()), 'Deleted Items')]",
+    )
+    input("MHS: please trash all deleted items and press enter...")
 
 
 def add_client_to_mhs(
@@ -291,6 +471,17 @@ def add_client_to_mhs(
     logger.debug("Saving")
     click_element(driver, By.CSS_SELECTOR, ".pull-right > input[type='submit']")
     try:
+        logger.debug("Checking for duplicate name confirmation")
+        confirm_id = (
+            "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_ClientProfile_confirm"
+            if questionnaire == "ASRS"
+            else "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx_ClientProfile_confirm"
+        )
+        click_element(driver, By.ID, confirm_id, timeout=2)
+        logger.debug("Confirmed same-name client is not a duplicate")
+    except (NoSuchElementException, TimeoutException):
+        pass
+    try:
         logger.debug("Checking for existing client")
         find_element(
             driver,
@@ -403,25 +594,17 @@ def gen_conners_ec(
     )
 
     logger.debug("Selecting assessment description")
-    purpose_element = find_element(driver, By.ID, "ddl_Description")
-    purpose = Select(purpose_element)
-    sleep(1)
-
-    logger.debug("Selecting Conners EC")
-    purpose.select_by_visible_text("Conners EC")
+    _select_description(driver, "Conners EC")
 
     logger.debug("Selecting rater type")
     rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
-    rater_type_select = Select(rater_type_element)
-    sleep(1)
 
     logger.debug("Selecting Parent")
-    rater_type_select.select_by_visible_text("Parent")
+    _select_and_wait_for_postback(driver, rater_type_element, "Parent")
 
     logger.debug("Selecting language")
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
-    sleep(1)
     if client["Language"] != "Spanish":
         language_select.select_by_visible_text("English")
     else:
@@ -451,7 +634,11 @@ def gen_conners_ec(
 
     logger.debug("Getting link")
     link = find_element(driver, By.ID, "txtLink").get_attribute("value")
-    if link is None:
+    if not link:
+        link = _find_link_in_pending_invitations(
+            driver, services, client, "Conners EC", "Parent"
+        )
+    if not link:
         raise ValueError("Link is None")
 
     logger.success(f"Returning link {link} and accounts_created {accounts_created}")
@@ -489,30 +676,28 @@ def gen_conners_4(
     )
 
     logger.debug("Selecting assessment description")
-    purpose_element = find_element(driver, By.ID, "ddl_Description")
-    purpose = Select(purpose_element)
-    sleep(1)
-    purpose.select_by_visible_text("Conners 4")
+    _select_description(driver, "Conners 4")
 
     logger.debug("Selecting rater type")
     rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
-    rater_type_select = Select(rater_type_element)
-    sleep(1)
-    rater_type_select.select_by_visible_text("Self-Report" if self_report else "Parent")
+    rater_type_text = "Self-Report" if self_report else "Parent"
+    _select_and_wait_for_postback(driver, rater_type_element, rater_type_text)
 
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
-    sleep(1)
     if client["Language"] != "Spanish":
         language_select.select_by_visible_text("English")
     else:
         language_select.select_by_visible_text("Spanish")
 
-    logger.debug("Entering rater name")
-    if client["Language"] != "Spanish":
-        find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
-    else:
-        find_element(driver, By.ID, "txtRaterName").send_keys("Madre/Padre/Cuidador")
+    if not self_report:
+        logger.debug("Entering rater name")
+        if client["Language"] != "Spanish":
+            find_element(driver, By.ID, "txtRaterName").send_keys("Parent/Caregiver")
+        else:
+            find_element(driver, By.ID, "txtRaterName").send_keys(
+                "Madre/Padre/Cuidador"
+            )
 
     logger.debug("Selecting next")
     click_element(driver, By.ID, "_btnnext")
@@ -530,7 +715,11 @@ def gen_conners_4(
         )
     sleep(3)
     link = find_element(driver, By.ID, "txtLink").get_attribute("value")
-    if link is None:
+    if not link:
+        link = _find_link_in_pending_invitations(
+            driver, services, client, "Conners 4", rater_type_text
+        )
+    if not link:
         raise ValueError("Link is None")
 
     logger.success(f"Returning link {link} and accounts_created {accounts_created}")
@@ -565,21 +754,15 @@ def gen_asrs_2_5(
     )
 
     logger.debug("Selecting assessment description")
-    purpose_element = find_element(driver, By.ID, "ddl_Description")
-    purpose = Select(purpose_element)
-    sleep(1)
-    purpose.select_by_visible_text("ASRS (2-5 Years)")
+    _select_description(driver, "ASRS (2-5 Years)")
 
     logger.debug("Selecting rater type")
     rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
-    rater_select = Select(rater_type_element)
-    sleep(1)
-    rater_select.select_by_visible_text("Parent")
+    _select_and_wait_for_postback(driver, rater_type_element, "Parent")
 
     logger.debug("Selecting language")
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
-    sleep(1)
     if client["Language"] != "Spanish":
         language_select.select_by_visible_text("English")
     else:
@@ -619,7 +802,11 @@ def gen_asrs_2_5(
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
-    if link is None:
+    if not link:
+        link = _find_link_in_pending_invitations(
+            driver, services, client, "ASRS (2-5 Years)", "Parent"
+        )
+    if not link:
         raise ValueError("Link is None")
 
     logger.success(f"Returning link {link} and accounts_created {accounts_created}")
@@ -655,16 +842,11 @@ def gen_asrs_6_18(
     sleep(1)
 
     logger.debug("Selecting assessment description")
-    purpose_element = find_element(driver, By.ID, "ddl_Description")
-    purpose = Select(purpose_element)
-    purpose.select_by_visible_text("ASRS (6-18 Years)")
-    sleep(1)
+    _select_description(driver, "ASRS (6-18 Years)")
 
     logger.debug("Selecting rater type")
     rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
-    rater_select = Select(rater_type_element)
-    rater_select.select_by_visible_text("Parent")
-    sleep(1)
+    _select_and_wait_for_postback(driver, rater_type_element, "Parent")
 
     logger.debug("Selecting language")
     language_element = find_element(driver, By.ID, "ddl_Language")
@@ -708,7 +890,11 @@ def gen_asrs_6_18(
         By.ID,
         "ctrl__Controls_Product_Custom_ASRS_Wizard_InviteWizardContainer_ascx_CreateLink_rptraters_txtLink_0",
     ).get_attribute("value")
-    if link is None:
+    if not link:
+        link = _find_link_in_pending_invitations(
+            driver, services, client, "ASRS (6-18 Years)", "Parent"
+        )
+    if not link:
         raise ValueError("Link is None")
 
     logger.success(f"Returning link {link} and accounts_created {accounts_created}")
@@ -745,21 +931,15 @@ def gen_caars_2(
     )
 
     logger.debug("Selecting assessment description")
-    purpose_element = find_element(driver, By.ID, "ddl_Description")
-    purpose = Select(purpose_element)
-    sleep(1)
-    purpose.select_by_visible_text("CAARS 2")
+    _select_description(driver, "CAARS 2")
 
     logger.debug("Selecting rater type")
     rater_type_element = find_element(driver, By.ID, "ddl_RaterType")
-    rater_type_select = Select(rater_type_element)
-    sleep(1)
-    rater_type_select.select_by_visible_text("Self-Report")
+    _select_and_wait_for_postback(driver, rater_type_element, "Self-Report")
 
     logger.debug("Selecting language")
     language_element = find_element(driver, By.ID, "ddl_Language")
     language_select = Select(language_element)
-    sleep(1)
     if client["Language"] != "Spanish":
         language_select.select_by_visible_text("English")
     else:
@@ -785,8 +965,11 @@ def gen_caars_2(
         By.NAME,
         "ctrl__Controls_Product_Wizard_InviteWizardContainer_ascx$CreateLink$txtLink",
     ).get_attribute("value")
-
-    if link is None:
+    if not link:
+        link = _find_link_in_pending_invitations(
+            driver, services, client, "CAARS 2", "Self-Report"
+        )
+    if not link:
         raise ValueError("Link is None")
 
     logger.success(f"Returning link {link} and accounts_created {accounts_created}")

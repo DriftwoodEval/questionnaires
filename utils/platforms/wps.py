@@ -75,6 +75,54 @@ def check_and_login_wps(
         login_wps(driver, services)
 
 
+def find_and_select_client_wps(
+    driver: WebDriver, firstname: str, lastname: str
+) -> None:
+    """Search for a client by name in the WPS client list and open their profile."""
+    logger.debug("Navigating to client list")
+    driver.get("https://hub.wpspublish.com/clients")
+
+    maybe_later_xpath = "//button[h4[contains(text(), 'Maybe Later')]]"
+    if find_element_exists(driver, By.XPATH, maybe_later_xpath, timeout=2):
+        logger.info("Found 'Maybe Later' tour button, clicking it.")
+        click_element(driver, By.XPATH, maybe_later_xpath)
+
+    click_element(driver, By.CSS_SELECTOR, '[data-testid="clients-search-button"]')
+    search = find_element(driver, By.CSS_SELECTOR, '[name="clients-search-input"]')
+
+    logger.debug("Searching for client")
+    search.send_keys(f"{firstname} {lastname}")
+
+    sleep(2)
+
+    logger.debug("Selecting client")
+    click_element(
+        driver, By.XPATH, f"//a[.//h4[contains(text(), '{firstname} {lastname}')]]"
+    )
+
+    skip_xpath = "//button[h4[contains(text(), 'Skip')]]"
+    if find_element_exists(driver, By.XPATH, skip_xpath, timeout=2):
+        logger.info("Found 'Skip' tour button, clicking it.")
+        click_element(driver, By.XPATH, skip_xpath)
+
+
+def delete_client_from_wps(driver: WebDriver, client: pd.Series) -> None:
+    """Navigate to a client's WPS profile and wait for a human to delete them.
+
+    WPS doesn't expose a verified, stable selector for its delete-client
+    action, so this only automates getting to the right profile and then
+    hands off to a human for the actual deletion.
+    """
+    firstname = client["TA First Name"]
+    lastname = client["TA Last Name"]
+    logger.info(f"Navigating to WPS profile for {firstname} {lastname} to delete")
+    find_and_select_client_wps(driver, firstname, lastname)
+    input(
+        f"WPS: please delete client {firstname} {lastname} "
+        f"({client['Human Friendly ID']}) and press enter..."
+    )
+
+
 def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
     """Generates a DP-4 assessment for the given client and returns the link."""
     logger.info(
@@ -133,31 +181,7 @@ def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
     # Give time to save client
     sleep(5)
 
-    logger.debug("Navigating to client list")
-    driver.get("https://hub.wpspublish.com/clients")
-
-    maybe_later_xpath = "//button[h4[contains(text(), 'Maybe Later')]]"
-    if find_element_exists(driver, By.XPATH, maybe_later_xpath, timeout=2):
-        logger.info("Found 'Maybe Later' tour button, clicking it.")
-        click_element(driver, By.XPATH, maybe_later_xpath)
-
-    click_element(driver, By.CSS_SELECTOR, '[data-testid="clients-search-button"]')
-    search = find_element(driver, By.CSS_SELECTOR, '[name="clients-search-input"]')
-
-    logger.debug("Searching for client")
-    search.send_keys(f"{firstname} {lastname}")
-
-    sleep(2)
-
-    logger.debug("Selecting client")
-    click_element(
-        driver, By.XPATH, f"//a[.//h4[contains(text(), '{firstname} {lastname}')]]"
-    )
-
-    skip_xpath = "//button[h4[contains(text(), 'Skip')]]"
-    if find_element_exists(driver, By.XPATH, skip_xpath, timeout=2):
-        logger.info("Found 'Skip' tour button, clicking it.")
-        click_element(driver, By.XPATH, skip_xpath)
+    find_and_select_client_wps(driver, firstname, lastname)
 
     logger.debug("Creating new administration")
     try:
