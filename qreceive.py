@@ -70,6 +70,14 @@ PENDING_EMAIL_PATH = Path("logs/pending_email.json")
 
 
 def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
+    """Turn an AdminEmailInfo (holding live pydantic client objects) into plain JSON.
+
+    Used to persist a run's results to PENDING_EMAIL_PATH between cron invocations,
+    since qreceive runs multiple times a day but only emails admins once (see
+    _save_pending_email). Each client is tagged with "_type" so
+    _deserialize_email_info knows which pydantic model to rebuild it as.
+    """
+
     def serialize_client(
         client: ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB,
     ) -> dict:
@@ -92,6 +100,8 @@ def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
 
 
 def _deserialize_email_info(data: dict) -> AdminEmailInfo:
+    """Inverse of _serialize_email_info — rebuilds pydantic clients from the "_type" tag."""
+
     def deserialize_call_client(
         d: dict,
     ) -> ClientWithQuestionnaires | FailedClientFromDB:
@@ -129,6 +139,12 @@ def _deserialize_email_info(data: dict) -> AdminEmailInfo:
 
 
 def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
+    """Combine the accumulated non-1pm runs' results with the 1pm run's before emailing.
+
+    De-dupes by client ID (a client could show up in multiple runs' results) and drops
+    anyone who ended up "completed" from the "call" list, since a later run may have
+    resolved what an earlier run flagged.
+    """
     merged: AdminEmailInfo = {
         "ignoring": [],
         "completed": [],
@@ -171,6 +187,7 @@ def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
 
 
 def _save_pending_email(email_info: AdminEmailInfo) -> None:
+    """Append this run's results to the on-disk queue, to be emailed at the next 1pm run."""
     existing = _load_pending_email()
     runs = [*existing, email_info]
     PENDING_EMAIL_PATH.write_text(
@@ -180,6 +197,7 @@ def _save_pending_email(email_info: AdminEmailInfo) -> None:
 
 
 def _load_pending_email() -> list[AdminEmailInfo]:
+    """Load the queued results from prior non-1pm runs since the last successful email."""
     if not PENDING_EMAIL_PATH.exists():
         return []
     try:
@@ -227,6 +245,8 @@ def check_failures(
 ):
     """Checks the failures of clients and updates them in the database."""
     logger.debug("Checking on failures for clients")
+    # Matches the "too young for asd"/"too young for adhd" failure reasons below:
+    # ASD questionnaires require the client to be at least 2, ADHD at least 5.
     two_years_ago = date.today() - relativedelta(years=2)
     five_years_ago = date.today() - relativedelta(years=5)
 
@@ -364,6 +384,9 @@ def main(
             logger.info(f"  client {cid}: {col} = {val}")
         return
 
+    # qreceive is cron-run multiple times a day, but texts/admin emails should
+    # only go out once daily — the 1pm run is the designated send window.
+    # Other runs still check/update status, just without notifying anyone.
     start_hour = datetime.now().hour
     is_send_time = start_hour == 13
     send_texts = (is_send_time or force_send) and not dry_run
@@ -394,7 +417,6 @@ def main(
     }
 
     try:
-        # Check on questionnaires and update DB
         clients, failed_clients = get_previous_clients(config, True)
         if clients is None:
             logger.critical("Failed to get previous clients")
@@ -408,13 +430,11 @@ def main(
             config, clients, services, dry_run=dry_run
         )
 
-        # Check failures and update in DB
         driver = None
         if not skip_failures:
             driver = initialize_selenium()
             check_failures(config, services, driver, failed_clients)
 
-        # Send reminders for failures and questionnaires
         clients, failed_clients = get_previous_clients(config, failed=True)
         all_clients_raw = dict(clients)
 
@@ -481,9 +501,11 @@ def main(
                             f"Already messaged {client.fullName} at {client.phoneNumber} today"
                         )
 
+                    # 3 reminders sent and 3+ days of silence since the last one: hand
+                    # off to a human to call instead of texting a 4th time.
                     if (
                         reminded_count == 3
-                        and last_reminded_distance > 3
+                        and last_reminded_distance >= 3
                         and client.id not in completed_ids
                     ):
                         email_info["call"].append(client)
@@ -744,7 +766,6 @@ def main(
                         f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                     )
 
-        # Send referral messages to new clients
         referral_msg = "This is Driftwood Evaluation Center. We have received your referral. We are managing a very large amount of patients and will reach out to you as soon as we can. Thank you!"
         referral_messages_sent: list[tuple[ClientFromDB, str]] = []
 
@@ -759,7 +780,7 @@ def main(
                 and c.id not in sent_referral_ids
                 and not c.autismStop
                 and not c.pause
-                and len(str(c.id)) != 5
+                and len(str(c.id)) != 5  # excludes shell clients (5-digit IDs)
             ]
             logger.info(
                 f"Found {len(new_clients)} new client(s) to send referral message"
@@ -817,7 +838,6 @@ def main(
                         f"[DRY RUN] Would send referral msg to {client.fullName} ({client.phoneNumber}):\n{referral_msg}"
                     )
 
-        # Check message status
         logger.info(f"Starting status check for {len(messages_sent)} messages.")
 
         clients_to_update_db = []
@@ -864,7 +884,6 @@ def main(
                                 q["status"] == "PENDING"
                                 or q["status"] == "POSTDA_PENDING"
                                 or q["status"] == "POSTEVAL_PENDING"
-                                # or q["status"] == "SPANISH"
                             ):
                                 q["reminded"] += 1
                                 q["lastReminded"] = date.today()
@@ -884,7 +903,6 @@ def main(
                     f"Error checking message status for {client.fullName}: {e}"
                 )
 
-        # Update DB
         for client in clients_to_update_db:
             if isinstance(client, ClientWithQuestionnaires):
                 update_questionnaires_in_db(config, [client])
@@ -898,7 +916,6 @@ def main(
                     last_reminded=last_reminded,
                 )
 
-        # Check referral message delivery
         logger.info(
             f"Starting status check for {len(referral_messages_sent)} referral message(s)."
         )

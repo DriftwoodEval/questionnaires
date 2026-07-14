@@ -276,12 +276,14 @@ def get_punch_list(config: Config):
             # Drop any rows where the "Client ID" column is empty
             df = df[df["Client ID"].notna() & df["Client ID"].str.len().astype(bool)]
 
-            # Convert "Human friendly" IDs to proper IDs
+            # The may have IDs as "C" + zero-padded 9 digits (e.g. C000012345);
+            # strip that down to the bare numeric ID used everywhere else in the codebase.
             df["Client ID"] = df["Client ID"].apply(
                 lambda client_id: re.sub(r"^C?0*", "", client_id)
             )
 
-            # Create a "Human Friendly ID" column
+            # Rebuild the "Human Friendly ID" — this is how TherapyAppointment displays
+            # client IDs, and other platforms (qglobal, mhs, wps) are searched using it.
             df["Human Friendly ID"] = df["Client ID"].apply(
                 lambda client_id: f"C{client_id.zfill(9)}"
             )
@@ -295,11 +297,11 @@ def col_index_to_a1(col_index):
     """Converts a zero-based column index to A1 notation."""
     column_letter = ""
     while col_index >= 0:
-        # Find the character for the current place
         remainder = col_index % 26
         column_letter = chr(ord("A") + remainder) + column_letter
 
-        # Move to the next place (like carrying over in division)
+        # Spreadsheet columns are base-26 with no zero digit (A, B, ... Z, AA, ...),
+        # so the extra -1 corrects for the standard divmod carry assuming a zero digit.
         col_index = (col_index // 26) - 1
 
     return column_letter
@@ -334,14 +336,12 @@ def update_punch_list(
         )
         values = result.get("values", [])
 
-        # Find the row containing the client ID
         row_number = None
         for i, row in enumerate(values):
             if row and row[1] == id_for_search:
                 row_number = i + 1  # Spreadsheets are 1-indexed
                 break
 
-        # Find the column containing the header
         update_column = None
         for i, header in enumerate(values[0]):
             if header == update_header:
@@ -562,11 +562,9 @@ def upload_file_to_drive(
 
 def move_file_in_drive(service, file_id: str, dest_folder_id: str):
     """Move a file from one folder to another in Google Drive."""
-    # Retrieve the existing parents to remove
     file = service.files().get(fileId=file_id, fields="parents").execute()
     previous_parents = ",".join(file.get("parents"))
 
-    # Move the file by updating its parents
     file = (
         service.files()
         .update(

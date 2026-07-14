@@ -222,6 +222,7 @@ def search_select_qglobal(
     services: Services,
     client: pd.Series,
 ):
+    """Log in, search for the client by their Human Friendly ID, and open their detail page."""
     check_and_login_qglobal(driver, services)
     search_qglobal(driver, client)
     sleep(3)
@@ -471,6 +472,7 @@ def _gen_basc(
     variant: str,
     just_created: bool = False,
 ) -> str:
+    """Generate and return a link for one variant of the BASC questionnaire in QGlobal."""
     logger.info(
         f"Generating BASC {variant} for {client['TA First Name']} {client['TA Last Name']}"
     )

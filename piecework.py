@@ -364,7 +364,6 @@ def prepare_summary_data(
     summary_rows = []
 
     for worker_name, app_counts in sorted(work_counts.items()):
-        # Add name row with no type/count
         summary_rows.append(
             {
                 "NAME": worker_name,
@@ -376,7 +375,6 @@ def prepare_summary_data(
             }
         )
 
-        # Add type/count rows with no name
         sorted_app_types = sorted(app_counts.keys())
         evaluator_total = 0.00
 
@@ -522,7 +520,6 @@ def generate_main_report(
             df_summary.to_excel(writer, sheet_name="Summary Counts", index=False)
             df_detail.to_excel(writer, sheet_name="Details", index=False)
 
-            workbook = writer.book  # noqa: F841 just how excel works
             summary_sheet = writer.sheets["Summary Counts"]
 
             currency_format = '"$"#,##0.00'
@@ -545,7 +542,6 @@ def generate_main_report(
                         row=row_idx, column=6
                     ).number_format = currency_format
 
-            # Find the last row with data
             last_row = len(df_summary) + 1  # +1 for header row
 
             summary_sheet.cell(row=last_row + 2, column=1, value="GRAND TOTAL")

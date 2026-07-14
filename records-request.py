@@ -97,6 +97,8 @@ def download_consent_forms(
     sending_school = sending_school.lower().strip()
     receiving_school = receiving_school.lower().strip()
 
+    # "Your relationship to client" is the next line on the form — its
+    # presence here means the school field was left blank on the consent form.
     if "your relationship to client" in sending_school:
         raise (Exception("No school found on consent to send"))
 
@@ -258,7 +260,6 @@ def save_document_as_pdf(
     logger.info(f"Opening {link_text}...")
     wait = WebDriverWait(driver, WAIT_TIMEOUT)
 
-    # Default values
     stream = io.BytesIO()
     stream_name = ""
     school = "Not Found"

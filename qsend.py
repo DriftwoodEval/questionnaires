@@ -102,7 +102,6 @@ def get_clients_to_send(
         logger.critical("Punch list is empty")
         return None
 
-    # Filter the punch list to only include clients who need to receive the DA and/or EVAL questionnaires.
     # ADHD clients ignore EVAL qs entirely, only DA qs determine whether they're included.
     is_adhd = punch_list["For"] == "ADHD"
     da_needed = (punch_list["DA Qs Needed"] == "TRUE") & (
@@ -118,7 +117,6 @@ def get_clients_to_send(
 
     record_statuses = get_record_ready_client_ids(config)
 
-    # Remove extra whitespace from the "Client Name" column
     punch_list["Client Name"] = (
         punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
     )
@@ -164,7 +162,6 @@ def get_clients_to_send(
                     keep_clients.append(should_continue)
             punch_list = punch_list[keep_clients]
 
-    # Add the "daeval" column to the DataFrame
     punch_list["daeval"] = punch_list.apply(
         lambda client: (
             "DA"
@@ -618,6 +615,9 @@ def main(
         check_and_login_qglobal,
         check_and_login_mhs,
     ]:
+        # Retry indefinitely: a login failure here is almost always a transient
+        # page/network hiccup on the third-party platform, and there's no client
+        # loop to fall back to yet, so giving up isn't an option.
         while True:
             try:
                 login(driver, services, first_time=True)

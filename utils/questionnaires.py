@@ -403,6 +403,7 @@ def get_most_recent_not_done(
 
 
 def normalize_q_name(name: str) -> str:
+    """Strip the " Self" suffix some questionnaire types use to mark the self-report variant."""
     return name.removesuffix(" Self")
 
 

@@ -53,7 +53,6 @@ def get_previous_clients(
         cursor.execute(sql)
         questionnaires = cursor.fetchall()
         for client in clients:
-            # Add the questionnaires to each client
             client["questionnaires"] = [
                 questionnaire
                 for questionnaire in questionnaires
@@ -141,7 +140,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND (err.hold_until IS NULL OR err.hold_until <= CURDATE())
             AND c.status IS NOT FALSE
             AND c.language = "English"
-            AND LENGTH(c.id) != 5
+            AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -347,27 +346,15 @@ def insert_basic_client(
     gender: str,
     phone_number,
 ):
-    """Insert a client into the database, using only the data from sending a questionnaire.
-
-    Args:
-        config (Config): The configuration object.
-        client_id (str): The client ID.
-        dob: The date of birth of the client.
-        first_name (str): The first name of the client.
-        last_name (str): The last name of the client.
-        asd_adhd (str): The type of condition the client has (ASD, ADHD, or ASD+ADHD).
-        gender (str): The gender of the client.
-        phone_number: The phone number of the client.
-
-    Returns:
-        None
-    """
+    """Insert a client into the database, using only the data from sending a questionnaire."""
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
             sql = """
                 INSERT INTO `emr_client` (id, hash, dob, firstName, lastName, fullName, asdAdhd, gender, phoneNumber)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                -- Client may already exist from a prior run; only asdAdhd is refreshed
+                -- on conflict, everything else here is left as previously stored.
                 ON DUPLICATE KEY UPDATE id=id, asdAdhd=VALUES(asdAdhd)
             """
 
@@ -439,12 +426,7 @@ def update_questionnaire_in_db(
 def update_questionnaires_in_db(
     config: Config, clients: list[ClientWithQuestionnaires]
 ):
-    """Update questionnaires in the database, setting status, reminded count, and last reminded date.
-
-    Args:
-        config (Config): The configuration object.
-        clients (list[ClientWithQuestionnaires]): A list of ClientWithQuestionnaires objects.
-    """
+    """Update questionnaires in the database, setting status, reminded count, and last reminded date."""
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
@@ -516,6 +498,8 @@ def update_failure_in_db(
             values += (failed_date,)
 
         if resolved is True:
+            # +100 marks a failure as resolved while preserving its reminder count.
+            # Readers filter on `reminded < 100` to find unresolved failures.
             updates.append("reminded=reminded + 100")
         elif reminded is not None:
             updates.append("reminded=%s")

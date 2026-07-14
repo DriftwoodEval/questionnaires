@@ -24,6 +24,8 @@ from utils.selenium import (
 def login_wps(driver: WebDriver, services: Services) -> None:
     """Log in to WPS."""
     actions = ActionChains(driver)
+    # Pre-seed WPS's onboarding tour state as already-completed so it doesn't pop
+    # up and block the page on first login.
     set_local_storage_item(
         driver,
         "savedTours",

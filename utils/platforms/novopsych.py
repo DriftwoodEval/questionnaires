@@ -12,6 +12,7 @@ NOVOPSYCH_LOGIN_URL = f"{NOVOPSYCH_URL}/login"
 
 
 def login_novopsych(driver: WebDriver, services: Services) -> None:
+    """Log in to NovoPsych, the platform used for the CAT-Q questionnaire."""
     driver.get(NOVOPSYCH_LOGIN_URL)
     wait_for_page_load(driver)
 
