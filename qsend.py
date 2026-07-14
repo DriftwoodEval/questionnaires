@@ -245,6 +245,27 @@ def get_questionnaires(
     return "Unknown"
 
 
+def _ensure_qglobal_account(
+    driver: WebDriver,
+    services: Services,
+    client: pd.Series,
+    accounts_created: dict[str, bool],
+) -> bool:
+    """Create the client's QGlobal account if needed.
+
+    Returns whether the account was just created (as opposed to already
+    existing), which QGlobal's gen_* functions use to skip a redundant
+    search.
+    """
+    if accounts_created.get("qglobal"):
+        return False
+    if check_for_qglobal_account(driver, services, client):
+        accounts_created["qglobal"] = True
+        return False
+    accounts_created["qglobal"] = add_client_to_qglobal(driver, services, client)
+    return accounts_created["qglobal"]
+
+
 def assign_questionnaire(
     driver: WebDriver,
     config: Config,
@@ -271,28 +292,31 @@ def assign_questionnaire(
         )
     if questionnaire == "BASC Preschool":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, client):
-                accounts_created["qglobal"] = True
-            else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
-        return gen_basc_preschool(driver, config, client), accounts_created
+        just_created = _ensure_qglobal_account(
+            driver, services, client, accounts_created
+        )
+        return (
+            gen_basc_preschool(driver, services, config, client, just_created),
+            accounts_created,
+        )
     if questionnaire == "BASC Child":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, client):
-                accounts_created["qglobal"] = True
-            else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
-        return gen_basc_child(driver, config, client), accounts_created
+        just_created = _ensure_qglobal_account(
+            driver, services, client, accounts_created
+        )
+        return (
+            gen_basc_child(driver, services, config, client, just_created),
+            accounts_created,
+        )
     if questionnaire == "BASC Adolescent":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, client):
-                accounts_created["qglobal"] = True
-            else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
-        return gen_basc_adolescent(driver, config, client), accounts_created
+        just_created = _ensure_qglobal_account(
+            driver, services, client, accounts_created
+        )
+        return (
+            gen_basc_adolescent(driver, services, config, client, just_created),
+            accounts_created,
+        )
     if questionnaire == "ASRS (2-5 Years)":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_asrs_2_5(driver, services, client, accounts_created)
@@ -301,12 +325,13 @@ def assign_questionnaire(
         return gen_asrs_6_18(driver, services, client, accounts_created)
     if questionnaire == "Vineland":
         logger.debug(f"Navigating to QGlobal for {questionnaire}")
-        if not accounts_created.get("qglobal"):
-            if check_for_qglobal_account(driver, client):
-                accounts_created["qglobal"] = True
-            else:
-                accounts_created["qglobal"] = add_client_to_qglobal(driver, client)
-        return gen_vineland(driver, config, client), accounts_created
+        just_created = _ensure_qglobal_account(
+            driver, services, client, accounts_created
+        )
+        return (
+            gen_vineland(driver, services, config, client, just_created),
+            accounts_created,
+        )
     if questionnaire == "CAARS 2":
         logger.debug(f"Navigating to MHS for {questionnaire}")
         return gen_caars_2(driver, services, client, accounts_created)

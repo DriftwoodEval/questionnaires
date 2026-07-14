@@ -1069,6 +1069,7 @@ dependencies = [
     { name = "selenium" },
     { name = "tenacity" },
     { name = "typer" },
+    { name = "urllib3" },
 ]
 
 [package.dev-dependencies]
@@ -1103,6 +1104,7 @@ requires-dist = [
     { name = "selenium", specifier = ">=4.28.1" },
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "typer", specifier = ">=0.21.1" },
+    { name = "urllib3", specifier = ">=2.7.0" },
 ]
 
 [package.metadata.requires-dev]

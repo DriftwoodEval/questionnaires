@@ -28,12 +28,14 @@ from datetime import date
 import pandas as pd
 import pytest
 from dateutil.relativedelta import relativedelta
+from loguru import logger
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from utils.custom_types import Config, Services
 from utils.database import get_assessment_types
 from utils.misc import load_config
 from utils.platforms.mhs import delete_client_from_mhs, empty_mhs_deleted_items
+from utils.platforms.qglobal import search_by_name_qglobal
 from utils.selenium import initialize_selenium
 
 FAKE_CLIENT_FIELDS = {
@@ -50,6 +52,15 @@ _id_counter = itertools.count(1)
 # site name -> list of clients created during this run, for the end-of-run
 # cleanup summary.
 _pending_cleanup: dict[str, list[pd.Series]] = defaultdict(list)
+
+
+@pytest.fixture(autouse=True)
+def _log_test_start(request: pytest.FixtureRequest) -> None:
+    """Logs which test is starting, so it's visible in the streamed
+    per-step logs from the platform modules instead of only showing up in
+    pytest's own summary at the end.
+    """
+    logger.info(f"Starting {request.node.name}")
 
 
 @pytest.fixture(scope="session")
@@ -99,6 +110,37 @@ def mhs_cleanup(
     pending[:] = remaining
     if deleted_any:
         empty_mhs_deleted_items(driver, services)
+
+
+@pytest.fixture(scope="module")
+def qglobal_cleanup(
+    driver: WebDriver, real_config: tuple[Services, Config]
+) -> Iterator[None]:
+    """After QGlobal integration tests finish, surface every test client
+    created during this run for a human to delete in one pass.
+
+    QGlobal has no verified, stable selector for its delete-examinee action
+    (see delete_client_from_qglobal), so unlike MHS this can't be automated
+    end to end. Searching by the shared "ZZZTEST" username instead of one
+    search per client ID brings every test client from this run into the
+    same results grid at once, so a human deletes from a single page
+    instead of navigating to each client individually.
+    """
+    yield
+    services, _config = real_config
+    pending = _pending_cleanup["qglobal"]
+    if not pending:
+        return
+    search_by_name_qglobal(driver, services, "zzz")
+    listing = "\n".join(
+        f"  - {c['TA First Name']} {c['TA Last Name']} ({c['Human Friendly ID']})"
+        for c in pending
+    )
+    input(
+        "QGlobal: please delete the following examinees from the search "
+        f"results and press enter...\n{listing}\n"
+    )
+    pending.clear()
 
 
 @pytest.fixture(scope="session")

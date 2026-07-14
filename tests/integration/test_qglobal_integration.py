@@ -8,12 +8,20 @@ before calling any gen_basc_*/gen_vineland function):
   - "existing": client already has a QGlobal account, so generation should
     go straight to search-and-select.
 
-Each case uses its own fake client; see the end-of-run summary for which
-clients need deleting from QGlobal.
+A real "existing" QGlobal client is one that got an account on an earlier
+visit - so the "existing" case for a questionnaire reuses the exact client
+the "new" case for that same questionnaire already created, rather than a
+fresh one that's never actually been added to QGlobal. This relies on
+pytest running every "new" case before any "existing" one (state is the
+outer parametrize), so each "new" case's client exists by the time its
+"existing" counterpart runs.
+
+See the end-of-run summary for which clients need deleting from QGlobal.
 """
 
 from collections.abc import Callable
 
+import pandas as pd
 import pytest
 
 from utils.platforms.qglobal import (
@@ -36,10 +44,15 @@ GEN_FUNCS: dict[str, Callable] = {
     "Vineland": gen_vineland,
 }
 
+# questionnaire -> the client the "new" case created for it, so the
+# "existing" case for the same questionnaire can reuse it.
+_new_state_clients: dict[str, pd.Series] = {}
+
 
 @pytest.fixture(scope="module")
-def logged_in_qglobal(driver):
-    check_and_login_qglobal(driver, first_time=True)
+def logged_in_qglobal(driver, real_config, qglobal_cleanup):  # noqa: ARG001
+    services, _config = real_config
+    check_and_login_qglobal(driver, services, first_time=True)
     return driver
 
 
@@ -54,21 +67,29 @@ def test_gen_assessment(
     state,
     questionnaire,
 ):
-    _services, config = real_config
-    client = fake_client_factory(
-        "qglobal",
-        {"Date of Birth": dob_for_age(age_for_questionnaire(questionnaire))},
-    )
+    services, config = real_config
     gen_func = GEN_FUNCS[questionnaire]
 
     if state == "existing":
-        # Pre-create the account, same as qsend.py does before generating
-        # for a client it already knows about.
-        assert add_client_to_qglobal(logged_in_qglobal, client)
+        # Reuse the client the "new" case for this questionnaire already
+        # created and added to QGlobal - a real existing client, not a
+        # fresh ID that's never been added at all.
+        client = _new_state_clients[questionnaire]
+        assert check_for_qglobal_account(logged_in_qglobal, services, client)
+        just_created = False
     else:
-        assert not check_for_qglobal_account(logged_in_qglobal, client)
+        client = fake_client_factory(
+            "qglobal",
+            {"Date of Birth": dob_for_age(age_for_questionnaire(questionnaire))},
+        )
+        _new_state_clients[questionnaire] = client
+        # qsend.py always adds the account once it's confirmed missing,
+        # regardless of whether the client is "new" or "existing" to us.
+        assert not check_for_qglobal_account(logged_in_qglobal, services, client)
+        assert add_client_to_qglobal(logged_in_qglobal, services, client)
+        just_created = True
 
-    link = gen_func(logged_in_qglobal, config, client)
+    link = gen_func(logged_in_qglobal, services, config, client, just_created)
 
     assert link
     assert link.startswith("http")
