@@ -51,10 +51,6 @@ logger.add(
 
 logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB")
 
-log_host = load_local_settings().log_host
-network_sink = NetworkSink(log_host, 9999, app_name="records-request")
-logger.add(network_sink.write, format=json_log_format, enqueue=True)
-
 WAIT_TIMEOUT = 15  # seconds
 
 
@@ -449,4 +445,7 @@ def main():
 
 
 if __name__ == "__main__":
+    log_host = load_local_settings().log_host
+    network_sink = NetworkSink(log_host, 9999, app_name="records-request")
+    logger.add(network_sink.write, format=json_log_format, enqueue=True)
     main()

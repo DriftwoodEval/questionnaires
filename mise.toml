@@ -26,6 +26,10 @@ description = "Run the test suite"
 raw_args = true
 run = "uv run pytest"
 
+[tasks."test-docker"]
+description = "Build the Docker image's test stage from scratch (no cache, matching CI) and run pytest inside it"
+run = "docker build --pull --no-cache --target test -t questionnaires-test . && docker run --rm -e HEADLESS=true questionnaires-test"
+
 [tasks."test-integration"]
 description = "Run all integration tests against real third-party sites (never run in CI; prints a cleanup list of clients to delete at the end)"
 raw_args = true

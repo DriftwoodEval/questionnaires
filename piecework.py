@@ -35,10 +35,6 @@ logger.add("logs/piecework.log", format=json_log_format, rotation="500 MB")
 
 app = typer.Typer()
 
-log_host = load_local_settings().log_host
-network_sink = NetworkSink(log_host, 9999, app_name="piecework")
-logger.add(network_sink.write, format=json_log_format, enqueue=True)
-
 
 def get_report_clients(config: Config) -> pd.DataFrame | None:
     """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
@@ -675,4 +671,7 @@ def main(
 
 
 if __name__ == "__main__":
+    log_host = load_local_settings().log_host
+    network_sink = NetworkSink(log_host, 9999, app_name="piecework")
+    logger.add(network_sink.write, format=json_log_format, enqueue=True)
     app()
