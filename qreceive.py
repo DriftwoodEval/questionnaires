@@ -55,6 +55,7 @@ from utils.questionnaires import (
 from utils.selenium import (
     initialize_selenium,
 )
+from utils.task_tracker import start_task
 
 logger.remove()
 logger.add(
@@ -405,6 +406,14 @@ def main(
         logger.warning("SKIP FAILURES - failure checks and reminders will be skipped.")
 
     services, config = load_config()
+
+    task = start_task(config, "questionnaire_reminders", "Questionnaire reminders")
+    if task is None:
+        logger.info(
+            "Skipping run: a previous questionnaire reminders run is still in progress."
+        )
+        return
+
     openphone = OpenPhone(config, services)
     rules = get_questionnaire_rules(config)
     eval_dates = get_most_recent_eval_appointment_dates(config)
@@ -420,6 +429,7 @@ def main(
         clients, failed_clients = get_previous_clients(config, True)
         if clients is None:
             logger.critical("Failed to get previous clients")
+            task.fail("Failed to get previous clients")
             return
 
         clients = validate_questionnaires(clients)
@@ -429,11 +439,13 @@ def main(
         email_info["completed"], email_info["errors"] = check_questionnaires(
             config, clients, services, dry_run=dry_run
         )
+        task.progress(1, 3, detail="checked questionnaire completions")
 
         driver = None
         if not skip_failures:
             driver = initialize_selenium()
             check_failures(config, services, driver, failed_clients)
+        task.progress(2, 3, detail="checked failures")
 
         clients, failed_clients = get_previous_clients(config, failed=True)
         all_clients_raw = dict(clients)
@@ -987,7 +999,10 @@ def main(
         error_message = f"An unhandled exception occurred during the run: {e}"
         logger.exception("Unhandled exception occurred during the run")
         email_info["errors"].append(error_message)
+        task.fail(error_message)
         raise
+    else:
+        task.complete(detail=f"{len(email_info['completed'])} completed")
 
     finally:
         if is_send_time or force_send:
