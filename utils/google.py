@@ -201,11 +201,19 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             if most_recent:
                 call_clients_data.append((client, most_recent))
 
+        def _post_eval_note(client: Any, most_recent: Any) -> str:
+            if (
+                isinstance(client, ClientWithQuestionnaires)
+                and most_recent["status"] == "POSTEVAL_PENDING"
+            ):
+                return ", post-eval"
+            return ""
+
         email_text += (
             "Call:\n"
             + "\n".join(
                 [
-                    f"- {client.fullName} (sent on {(most_recent['sent'] and most_recent['sent'].strftime('%m/%d')) or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
+                    f"- {client.fullName} (sent on {(most_recent['sent'] and most_recent['sent'].strftime('%m/%d')) or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'}{_post_eval_note(client, most_recent)})"
                     if isinstance(client, ClientWithQuestionnaires)
                     else f"- {client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
                     for client, most_recent in call_clients_data
@@ -216,7 +224,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_html += (
             "<h2>Call</h2><ul><li>"
             + "</li><li>".join(
-                f"{client.fullName} (sent on {(most_recent['sent'] and most_recent['sent'].strftime('%m/%d')) or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'})"
+                f"{client.fullName} (sent on {(most_recent['sent'] and most_recent['sent'].strftime('%m/%d')) or 'unknown date'}, reminded {str(most_recent['reminded']) + ' times' if most_recent else 'unknown number of times'}{_post_eval_note(client, most_recent)})"
                 if isinstance(client, ClientWithQuestionnaires)
                 else f"{client.fullName} ({most_recent['reason'].capitalize()} on {most_recent['failedDate'].strftime('%m/%d')}, reminded {str(most_recent['reminded']) + ' times'})"
                 for client, most_recent in call_clients_data
