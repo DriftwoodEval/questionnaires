@@ -460,6 +460,106 @@ class TestCheckBatteryCompleteness:
         assert (da_done, eval_done) == (True, True)
 
 
+# Two rules in the same (DA, ASD) group whose questionnaire types overlap
+# (both require "Vineland") but neither is a subset of the other, used to
+# test that rule selection disambiguates by what's actually been sent
+# instead of unioning every rule that shares a type.
+DA_ASD_YOUNG_RULE = {
+    "minAge": 0,
+    "maxAge": 5,
+    "daeval": "DA",
+    "diagnosis": "ASD",
+    "questionnaires": ["Vineland", "BASC Preschool"],
+}
+DA_ASD_OLDER_RULE = {
+    "minAge": 6,
+    "maxAge": 17,
+    "daeval": "DA",
+    "diagnosis": "ASD",
+    "questionnaires": ["Vineland", "BASC Child"],
+}
+OVERLAPPING_RULES = [DA_ASD_YOUNG_RULE, DA_ASD_OLDER_RULE]
+
+
+class TestCheckBatterySentOverlappingRules:
+    def test_full_match_uses_only_the_matched_rule(
+        self, client_factory, questionnaire_factory
+    ):
+        # Vineland + BASC Child fully satisfy the older rule. If the
+        # shared "Vineland" type pulled in the younger rule too, BASC
+        # Preschool (never sent) would incorrectly count as missing.
+        client = client_factory(
+            dob=date(2015, 1, 1),
+            asd_adhd="ASD",
+            questionnaires=[
+                questionnaire_factory(q_type="Vineland", status="PENDING"),
+                questionnaire_factory(q_type="BASC Child", status="PENDING"),
+            ],
+        )
+        da_sent, _ = check_battery_sent(client, OVERLAPPING_RULES)
+        assert da_sent is True
+
+    def test_partial_shared_type_falls_back_to_age(
+        self, client_factory, questionnaire_factory
+    ):
+        # Only the shared "Vineland" type was sent, not enough to fully
+        # match either rule, so selection falls back to age. dob makes
+        # the client 9 at the eval date, so the older rule applies, and
+        # BASC Child (never sent) is still missing.
+        client = client_factory(
+            dob=date(2015, 1, 1),
+            asd_adhd="ASD",
+            questionnaires=[
+                questionnaire_factory(q_type="Vineland", status="PENDING"),
+            ],
+        )
+        da_sent, _ = check_battery_sent(
+            client, OVERLAPPING_RULES, most_recent_eval_date=date(2024, 1, 1)
+        )
+        assert da_sent is False
+
+
+class TestCheckBatteryCompletenessOverlappingRules:
+    def test_matched_rule_selection_uses_sent_not_completion_status(
+        self, client_factory, questionnaire_factory
+    ):
+        # Vineland + BASC Child are both sent (fully matching the older
+        # rule), but only Vineland is completed. Rule selection should
+        # still pick the older rule (not fall back to the younger rule's
+        # smaller requirement), so completeness correctly reports False.
+        client = client_factory(
+            dob=date(2015, 1, 1),
+            asd_adhd="ASD",
+            questionnaires=[
+                questionnaire_factory(q_type="Vineland", status="COMPLETED"),
+                questionnaire_factory(q_type="BASC Child", status="PENDING"),
+            ],
+        )
+        da_done, _ = check_battery_completeness(client, OVERLAPPING_RULES)
+        assert da_done is False
+
+
+class TestGroupFallbackIndependence:
+    def test_matched_group_does_not_affect_unmatched_group_fallback(
+        self, client_factory, questionnaire_factory
+    ):
+        # DA-Q1 has been sent, fully matching the DA group via the
+        # sent-type path. EVAL-ASD-Q1 has not been sent, so the EVAL
+        # group should independently fall back to age-based selection
+        # rather than being affected by the DA group's match.
+        client = client_factory(
+            dob=date(2010, 1, 1),
+            asd_adhd="ASD",
+            questionnaires=[
+                questionnaire_factory(q_type="DA-Q1", status="PENDING"),
+            ],
+        )
+        da_sent, eval_sent = check_battery_sent(
+            client, RULES, most_recent_eval_date=date(2024, 1, 1)
+        )
+        assert (da_sent, eval_sent) == (True, False)
+
+
 def make_failed_client(client_id: int = 1, failure: list[dict] | None = None):
     return FailedClientFromDB.model_validate(
         {

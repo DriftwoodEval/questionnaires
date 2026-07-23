@@ -498,6 +498,75 @@ def _resolve_wanted_diagnoses(asd_adhd: str | None) -> set[str]:
     return diagnoses or {"ASD", "ADHD"}
 
 
+def _resolve_applicable_rules(
+    client: ClientWithQuestionnaires,
+    rules: list[dict],
+    most_recent_eval_date: date | None = None,
+) -> tuple[list[dict], int | None]:
+    """Pick the questionnaire rules applicable to a client, grouped by
+    (daeval, diagnosis).
+
+    Within each group, a rule is considered applicable if every
+    questionnaire type it requires has already been sent to the client
+    (status not JUST_ADDED or ARCHIVED); when multiple rules in a group
+    fully match because their questionnaire types overlap (e.g. shared
+    across age bands), the rule requiring the most types is preferred as
+    the closest match to what was actually sent. If no rule in a group
+    fully matches yet, that group falls back to filtering by the client's
+    age at their most recent eval appointment.
+
+    Returns (applicable_rules, age_in_years). age_in_years is None if no
+    group needed the age fallback.
+    """
+    wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
+
+    diagnosis_filtered = [
+        r
+        for r in rules
+        if (r["daeval"] == "DAEVAL" and r.get("diagnosis") is None)
+        or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
+    ]
+
+    unsent_statuses = {"JUST_ADDED", "ARCHIVED"}
+    active_sent_types = {
+        q["questionnaireType"]
+        for q in client.questionnaires
+        if q.get("status") not in unsent_statuses and _in_current_session(client, q)
+    }
+
+    groups: dict[tuple[str, str | None], list[dict]] = {}
+    for rule in diagnosis_filtered:
+        key = (rule["daeval"], rule.get("diagnosis"))
+        groups.setdefault(key, []).append(rule)
+
+    age_in_years: int | None = None
+    applicable: list[dict] = []
+
+    for group_rules in groups.values():
+        fully_matched = [
+            r
+            for r in group_rules
+            if r.get("questionnaires")
+            and set(r["questionnaires"]).issubset(active_sent_types)
+        ]
+
+        if fully_matched:
+            best = max(fully_matched, key=lambda r: len(r["questionnaires"]))
+            applicable.append(best)
+            continue
+
+        if age_in_years is None:
+            age_in_years = relativedelta(
+                most_recent_eval_date or date.today(), client.dob
+            ).years
+
+        applicable.extend(
+            r for r in group_rules if r["minAge"] <= age_in_years <= r["maxAge"]
+        )
+
+    return applicable, age_in_years
+
+
 def check_battery_sent(
     client: ClientWithQuestionnaires,
     rules: list[dict],
@@ -511,24 +580,13 @@ def check_battery_sent(
       False — any required type is missing, JUST_ADDED, or ARCHIVED
       None  — no applicable rules for this battery (don't update the column)
 
-    `most_recent_eval_date`, if given, is the start date of the client's most
-    recent eval appointment. Age is computed as of that date rather than today,
-    since eligibility for a battery is determined by the client's age at eval.
+    Rule selection prefers matching against questionnaires already sent to
+    the client (see `_resolve_applicable_rules`); `most_recent_eval_date`,
+    if given, is only used as an age fallback when nothing's been sent yet.
     """
-    age_in_years = relativedelta(
-        most_recent_eval_date or date.today(), client.dob
-    ).years
-
-    age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
-
-    wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
-
-    applicable = [
-        r
-        for r in age_filtered
-        if (r["daeval"] == "DAEVAL" and r.get("diagnosis") is None)
-        or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
-    ]
+    applicable, age_in_years = _resolve_applicable_rules(
+        client, rules, most_recent_eval_date
+    )
 
     da_only_types: set[str] = set()
     eval_only_types: set[str] = set()
@@ -573,7 +631,7 @@ def check_battery_sent(
         }
         logger.debug(
             f"[battery-sent] {client.fullName} (ID:{client.id}) "
-            f"asdAdhd={client.asdAdhd!r} age={age_in_years} wanted={wanted_diagnoses}"
+            f"asdAdhd={client.asdAdhd!r} age={age_in_years}"
         )
         logger.debug(
             f"  applicable rules ({len(applicable)}): "
@@ -613,24 +671,13 @@ def check_battery_completeness(
       False — at least one required type is not done
       None  — no applicable rules for this battery (don't update the column)
 
-    `most_recent_eval_date`, if given, is the start date of the client's most
-    recent eval appointment. Age is computed as of that date rather than today,
-    since eligibility for a battery is determined by the client's age at eval.
+    Rule selection prefers matching against questionnaires already sent to
+    the client (see `_resolve_applicable_rules`); `most_recent_eval_date`,
+    if given, is only used as an age fallback when nothing's been sent yet.
     """
-    age_in_years = relativedelta(
-        most_recent_eval_date or date.today(), client.dob
-    ).years
-
-    age_filtered = [r for r in rules if r["minAge"] <= age_in_years <= r["maxAge"]]
-
-    wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
-
-    applicable = [
-        r
-        for r in age_filtered
-        if (r["daeval"] == "DAEVAL" and r.get("diagnosis") is None)
-        or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
-    ]
+    applicable, age_in_years = _resolve_applicable_rules(
+        client, rules, most_recent_eval_date
+    )
 
     da_only_types: set[str] = set()
     eval_only_types: set[str] = set()
@@ -672,7 +719,7 @@ def check_battery_completeness(
     if verbose:
         logger.debug(
             f"[battery-done] {client.fullName} (ID:{client.id}) "
-            f"asdAdhd={client.asdAdhd!r} age={age_in_years} wanted={wanted_diagnoses}"
+            f"asdAdhd={client.asdAdhd!r} age={age_in_years}"
         )
         logger.debug(
             f"  da_only={da_only_types} eval_only={eval_only_types} daeval={daeval_types}"
