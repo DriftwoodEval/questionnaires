@@ -1,5 +1,3 @@
-from time import sleep
-
 import pandas as pd
 from loguru import logger
 from selenium.common.exceptions import (
@@ -19,6 +17,24 @@ from utils.selenium import (
     find_element_exists,
     set_local_storage_item,
 )
+
+
+def _present_with_text(locator):
+    """An expected_conditions-style condition for find_element: waits for
+    the element to be present *and* have non-empty text, not just present.
+
+    Needed for the form-link span, which exists in the DOM before the link
+    itself has actually rendered into it.
+    """
+
+    def _predicate(driver: WebDriver):
+        try:
+            element = driver.find_element(*locator)
+        except NoSuchElementException:
+            return False
+        return element if element.text.strip() else False
+
+    return _predicate
 
 
 def login_wps(driver: WebDriver, services: Services) -> None:
@@ -104,11 +120,12 @@ def find_and_select_client_wps(
     logger.debug("Searching for client")
     search.send_keys(f"{firstname} {lastname}")
 
-    sleep(2)
-
     logger.debug("Selecting client")
     click_element(
-        driver, By.XPATH, f"//a[.//h4[contains(text(), '{firstname} {lastname}')]]"
+        driver,
+        By.XPATH,
+        f"//a[.//h4[contains(text(), '{firstname} {lastname}')]]",
+        timeout=10,
     )
 
     skip_xpath = "//button[h4[contains(text(), 'Skip')]]"
@@ -170,13 +187,13 @@ def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
         '[data-testid="clientform-pi-gender-dropdown"]',
         scroll=True,
     )
-    sleep(1)
     if gender == "Male":
         click_element(
             driver,
             By.CSS_SELECTOR,
             '[data-testid="clientform-pi-gender-0-button"]',
             scroll=True,
+            timeout=10,
         )
     else:
         click_element(
@@ -184,18 +201,19 @@ def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
             By.CSS_SELECTOR,
             '[data-testid="clientform-pi-gender-1-button"]',
             scroll=True,
+            timeout=10,
         )
 
     logger.debug("Saving new client")
     click_element(driver, By.CSS_SELECTOR, '[data-testid="clientform-submit-button"]')
 
-    # Give time to save client
-    sleep(5)
-
     logger.debug("Creating new administration")
     try:
         click_element(
-            driver, By.XPATH, "//button[h5[contains(text(), 'New Administration')]]"
+            driver,
+            By.XPATH,
+            "//button[h5[contains(text(), 'New Administration')]]",
+            timeout=15,
         )
     except (NoSuchElementException, TimeoutException, ElementClickInterceptedException):
         logger.error("Failed to create new administration. ")
@@ -258,10 +276,14 @@ def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
         driver, By.CSS_SELECTOR, '[data-testid="cases-table-form-action-button"]'
     )
 
-    sleep(2)
-
     logger.debug("Grabbing form link")
-    link_span = find_element(driver, By.XPATH, "//span[contains(text(), 'https://')]")
+    link_span = find_element(
+        driver,
+        By.XPATH,
+        "//span[contains(text(), 'https://')]",
+        timeout=10,
+        condition=_present_with_text,
+    )
     link = link_span.text.split()[-1]
 
     logger.success(f"Returning link {link}")
