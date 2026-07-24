@@ -407,7 +407,12 @@ def main(
 
     services, config = load_config()
 
-    task = start_task(config, "questionnaire_reminders", "Questionnaire reminders")
+    task_label = (
+        "Questionnaire reminders"
+        if is_send_time or force_send
+        else "Checking questionnaires"
+    )
+    task = start_task(config, "questionnaire_reminders", task_label)
     if task is None:
         logger.info(
             "Skipping run: a previous questionnaire reminders run is still in progress."
