@@ -57,6 +57,15 @@ def check_and_login_wps(
         logger.debug("First time login to WPS, logging in now.")
         driver.get(wps_url)
         login_wps(driver, services)
+        # Wait for the post-login redirect to actually land before letting
+        # callers navigate away - otherwise the first navigation after
+        # login can race the redirect and hit a half-loaded page.
+        find_element(
+            driver,
+            By.CSS_SELECTOR,
+            '[data-testid="clients-create-client-button"]',
+            timeout=15,
+        )
         return
     try:
         logger.debug("Checking if logged in to WPS")
@@ -183,12 +192,10 @@ def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
     # Give time to save client
     sleep(5)
 
-    find_and_select_client_wps(driver, firstname, lastname)
-
     logger.debug("Creating new administration")
     try:
         click_element(
-            driver, By.CSS_SELECTOR, '[data-testid="casedetails-buildbattery-button"]'
+            driver, By.XPATH, "//button[h5[contains(text(), 'New Administration')]]"
         )
     except (NoSuchElementException, TimeoutException, ElementClickInterceptedException):
         logger.error("Failed to create new administration. ")

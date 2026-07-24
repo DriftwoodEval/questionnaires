@@ -40,7 +40,6 @@ from utils.selenium import initialize_selenium
 
 FAKE_CLIENT_FIELDS = {
     "TA First Name": "ZZZTEST",
-    "TA Last Name": "ZZZTEST",
     "Gender": "Male",
     "Language": "English",
 }
@@ -197,6 +196,9 @@ def fake_client_factory() -> Callable[[str, dict[str, object]], pd.Series]:
         client_id = f"9999{n:05d}"
         fields = {
             **FAKE_CLIENT_FIELDS,
+            # WPS rejects duplicate first+last name combos, so give each
+            # fake client a unique last name instead of sharing "ZZZTEST".
+            "TA Last Name": f"ZZZTEST{n}",
             "Client ID": client_id,
             "Human Friendly ID": f"C{client_id}",
             **overrides,
