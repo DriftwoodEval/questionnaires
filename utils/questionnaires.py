@@ -508,15 +508,17 @@ def _resolve_applicable_rules(
 
     Within each group, a rule is considered applicable if every
     questionnaire type it requires has already been sent to the client
-    (status not JUST_ADDED or ARCHIVED); when multiple rules in a group
-    fully match because their questionnaire types overlap (e.g. shared
-    across age bands), the rule requiring the most types is preferred as
-    the closest match to what was actually sent. If no rule in a group
-    fully matches yet, that group falls back to filtering by the client's
-    age at their most recent eval appointment.
+    (status not JUST_ADDED or ARCHIVED) and the rule's band is not older
+    than the client's current age (younger or accurate bands only, since
+    an older band's questionnaires shouldn't be treated as satisfied
+    before the client has grown into them); when multiple such rules in a
+    group fully match because their questionnaire types overlap (e.g.
+    shared across age bands), the rule requiring the most types is
+    preferred as the closest match to what was actually sent. If no rule
+    in a group fully matches yet, that group falls back to filtering by
+    the client's age at their most recent eval appointment.
 
-    Returns (applicable_rules, age_in_years). age_in_years is None if no
-    group needed the age fallback.
+    Returns (applicable_rules, age_in_years).
     """
     wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
 
@@ -539,7 +541,9 @@ def _resolve_applicable_rules(
         key = (rule["daeval"], rule.get("diagnosis"))
         groups.setdefault(key, []).append(rule)
 
-    age_in_years: int | None = None
+    age_in_years = relativedelta(
+        most_recent_eval_date or date.today(), client.dob
+    ).years
     applicable: list[dict] = []
 
     for group_rules in groups.values():
@@ -548,17 +552,13 @@ def _resolve_applicable_rules(
             for r in group_rules
             if r.get("questionnaires")
             and set(r["questionnaires"]).issubset(active_sent_types)
+            and r["minAge"] <= age_in_years
         ]
 
         if fully_matched:
             best = max(fully_matched, key=lambda r: len(r["questionnaires"]))
             applicable.append(best)
             continue
-
-        if age_in_years is None:
-            age_in_years = relativedelta(
-                most_recent_eval_date or date.today(), client.dob
-            ).years
 
         applicable.extend(
             r for r in group_rules if r["minAge"] <= age_in_years <= r["maxAge"]
