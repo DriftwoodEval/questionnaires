@@ -31,6 +31,7 @@ def make_record(message: str) -> "loguru.Record":
             "function": "some_function",
             "line": 42,
             "message": message,
+            "exception": None,
         },
     )
 

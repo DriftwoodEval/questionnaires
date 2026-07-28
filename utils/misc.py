@@ -1,6 +1,7 @@
 import json as _json
 import socket
 import sys
+import traceback
 from datetime import date
 from functools import cache
 from pathlib import Path
@@ -112,6 +113,7 @@ def stderr_log_format(record: "loguru.Record") -> str:
         f"[<dim>{{time:YY-MM-DD HH:mm:ss}}</dim>] "
         f"<level>{{level: <8}}</level> | "
         f"<level>{safe_msg}</level>\n"
+        "{exception}"
     )
 
 
@@ -119,20 +121,18 @@ def json_log_format(record: "loguru.Record") -> str:
     # Escape braces so loguru's format_map treats this as a literal string, not a template.
     # Escape < so loguru's markup parser doesn't choke on tags in exception messages.
     # Both transformations are undone by loguru's post-processing step.
+    payload = {
+        "time": record["time"].isoformat(),
+        "level": record["level"].name,
+        "module": record["name"],
+        "function": record["function"],
+        "line": record["line"],
+        "message": record["message"],
+    }
+    if record["exception"] is not None:
+        payload["exception"] = "".join(traceback.format_exception(*record["exception"]))
     return (
-        (
-            _json.dumps(
-                {
-                    "time": record["time"].isoformat(),
-                    "level": record["level"].name,
-                    "module": record["name"],
-                    "function": record["function"],
-                    "line": record["line"],
-                    "message": record["message"],
-                }
-            )
-            + "\n"
-        )
+        (_json.dumps(payload) + "\n")
         .replace("{", "{{")
         .replace("}", "}}")
         .replace("<", r"\<")
