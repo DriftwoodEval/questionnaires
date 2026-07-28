@@ -1,25 +1,36 @@
 import socket
 import sys
+from pathlib import Path
 
 from loguru import logger
 
 HOST = "0.0.0.0"
 PORT = 9999
 
+# (handler_id, inode) per app, so we can detect if the file was deleted or
+# replaced out from under us (e.g. external cleanup) and reopen it instead
+# of silently writing to an unlinked file until the process is restarted.
 app_handlers = {}
 
 
 def log_to_app(app_name, message):
     """Logs a message to an app-specific file."""
-    if app_name not in app_handlers:
-        log_file = f"logs/remote_{app_name}.log"
-        app_handlers[app_name] = logger.add(
+    log_file = Path(f"logs/remote_{app_name}.log")
+    handler_id, inode = app_handlers.get(app_name, (None, None))
+    current_inode = log_file.stat().st_ino if log_file.exists() else None
+
+    if handler_id is None or current_inode != inode:
+        if handler_id is not None:
+            logger.remove(handler_id)
+        handler_id = logger.add(
             log_file,
             rotation="500 MB",
             filter=lambda record: record["extra"].get("app") == app_name,
             format="{message}",
         )
+        app_handlers[app_name] = (handler_id, log_file.stat().st_ino)
         logger.info(f"Created new log handler for app: {app_name}")
+
     logger.bind(app=app_name).info(message)
 
 
