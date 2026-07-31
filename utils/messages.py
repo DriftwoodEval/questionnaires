@@ -17,14 +17,19 @@ from utils.custom_types import (
 DD4_SCHOOL_DISTRICT = "Dorchester School District 4"
 
 
-def is_potential_private_pay(client: ClientFromDB) -> bool:
-    """Whether a client has no insurance on file and isn't already private pay."""
-    return (
+def is_potential_private_pay(client: ClientFromDB, has_matched_evaluator: bool) -> bool:
+    """Whether the client is a potential private pay candidate.
+
+    True if they have no insurance on file and aren't already confirmed
+    private pay, or if they have no evaluator eligible to take them.
+    """
+    no_insurance_on_file = (
         not client.primaryInsurance
         and not client.secondaryInsurance
         and not client.privatePay
         and client.schoolDistrict != DD4_SCHOOL_DISTRICT
     )
+    return no_insurance_on_file or not has_matched_evaluator
 
 
 def format_ta_message(questionnaires: list[dict]) -> str:
@@ -40,14 +45,16 @@ def format_ta_message(questionnaires: list[dict]) -> str:
     return message
 
 
-def build_referral_message(config: Config, client: ClientFromDB) -> str:
+def build_referral_message(
+    config: Config, client: ClientFromDB, has_matched_evaluator: bool
+) -> str:
     """Builds the referral-received message to send to a newly added client.
 
-    Clients with no insurance on file are potential private pay clients and get
-    an outreach message asking for insurance information or private pay intent.
+    Potential private pay clients (see is_potential_private_pay) get an
+    outreach message asking for insurance information or private pay intent.
     Clients under 3 also get asked about BabyNet/Early Intervention involvement.
     """
-    if not is_potential_private_pay(client):
+    if not is_potential_private_pay(client, has_matched_evaluator):
         return (
             "This is Driftwood Evaluation Center. We have received your referral. "
             "We are managing a very large amount of patients and will reach out to "

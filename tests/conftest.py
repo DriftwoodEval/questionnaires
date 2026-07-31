@@ -66,6 +66,7 @@ def make_client(
 
 
 def make_referral_client(
+    *,
     client_id: int = 1,
     dob: date = date(2015, 1, 1),
     primary_insurance: str | None = None,
