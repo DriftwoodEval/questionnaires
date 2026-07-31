@@ -1,11 +1,15 @@
 """
 Tracks background job runs in emr_task (shared with the winnonah app's
 MySQL database) so the frontend can show a live "tasks in progress"
-indicator, and guards each job type against overlapping runs using a MySQL
-named lock.
+indicator, and guards each job type against overlapping runs (e.g. a cron
+firing again before a slow Selenium check finishes) using a MySQL named
+lock.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from loguru import logger
 
@@ -14,9 +18,8 @@ from utils.database import get_db
 
 
 class TaskHandle:
-    def __init__(self, connection, lock_name: str, task_id: int) -> None:
+    def __init__(self, connection, task_id: int) -> None:
         self._connection = connection
-        self._lock_name = lock_name
         self.task_id = task_id
 
     def progress(
@@ -33,44 +36,19 @@ class TaskHandle:
             )
         self._connection.commit()
 
-    def complete(self, detail: str | None = None) -> None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE emr_task
-                SET status = 'completed', completed_at = NOW(), detail = COALESCE(%s, detail)
-                WHERE id = %s
-                """,
-                (detail, self.task_id),
-            )
-        self._connection.commit()
-        self._release()
 
-    def fail(self, error: str) -> None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE emr_task
-                SET status = 'failed', completed_at = NOW(), error = %s
-                WHERE id = %s
-                """,
-                (error[:2000], self.task_id),
-            )
-        self._connection.commit()
-        self._release()
-
-    def _release(self) -> None:
-        with self._connection.cursor() as cursor:
-            cursor.execute("SELECT RELEASE_LOCK(%s)", (self._lock_name,))
-        self._connection.close()
-
-
-def start_task(config: Config, task_type: str, label: str) -> TaskHandle | None:
+@contextmanager
+def track_task(
+    config: Config, task_type: str, label: str
+) -> Iterator[TaskHandle | None]:
     """Records a job run as a row in emr_task and holds a MySQL named lock
-    for the task type. Returns None if another run of this task type
-    already holds the lock, in which case the caller should skip the run.
-    The caller must call complete() or fail() on the returned handle when
-    the job finishes.
+    for the task type so a second cron-triggered run of the same job can't
+    start while one is still in progress.
+
+    Yields None (and does not create a row) if another run of this task
+    type already holds the lock, in which case the caller should return
+    without doing any work. Otherwise yields a TaskHandle for reporting
+    progress; the row is marked completed or failed automatically.
     """
     connection = get_db(config)
     lock_name = f"task:{task_type}"
@@ -83,17 +61,47 @@ def start_task(config: Config, task_type: str, label: str) -> TaskHandle | None:
     if not acquired:
         logger.info(f"Skipping {task_type} run: a previous run is still in progress.")
         connection.close()
-        return None
+        yield None
+        return
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO emr_task (type, status, label, started_at)
-            VALUES (%s, 'running', %s, NOW())
-            """,
-            (task_type, label),
-        )
-        task_id = cursor.lastrowid
-    connection.commit()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO emr_task (type, status, label, started_at)
+                VALUES (%s, 'running', %s, NOW())
+                """,
+                (task_type, label),
+            )
+            task_id = cursor.lastrowid
+        connection.commit()
 
-    return TaskHandle(connection, lock_name, task_id)
+        try:
+            yield TaskHandle(connection, task_id)
+        except Exception as e:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE emr_task
+                    SET status = 'failed', completed_at = NOW(), error = %s
+                    WHERE id = %s
+                    """,
+                    (str(e)[:2000], task_id),
+                )
+            connection.commit()
+            raise
+        else:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE emr_task
+                    SET status = 'completed', completed_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (task_id,),
+                )
+            connection.commit()
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+        connection.close()

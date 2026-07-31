@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Literal, cast
 from urllib.parse import urlparse
 
@@ -141,6 +141,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.status IS NOT FALSE
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
+            AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -175,8 +176,11 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 c.recordsNeeded,
                 c.asdAdhd,
                 er.content,
-                COUNT(CASE WHEN err.requestedDate IS NOT NULL THEN 1 END) AS sentCount,
-                MAX(err.requestedDate) AS lastSentDate
+                COUNT(CASE WHEN err.requestedDate IS NOT NULL
+                    AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
+                    THEN 1 END) AS sentCount,
+                MAX(CASE WHEN c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt
+                    THEN err.requestedDate END) AS lastSentDate
             FROM emr_client c
             LEFT JOIN emr_external_record er ON c.id = er.clientId
             LEFT JOIN emr_external_record_request err ON c.id = err.clientId
@@ -213,17 +217,20 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
     return statuses
 
 
-def has_requested_records_date(config: Config, client_id: int) -> bool:
-    """Check whether any record request for this client has a requestedDate set."""
+def has_requested_records_date(
+    config: Config, client_id: int, session_started_at: datetime | None
+) -> bool:
+    """Check whether this client's current session has a record request with a requestedDate set."""
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         sql = """
             SELECT 1
             FROM emr_external_record_request
             WHERE clientId=%s AND requestedDate IS NOT NULL
+            AND (%s IS NULL OR createdAt >= %s)
             LIMIT 1
         """
-        cursor.execute(sql, (client_id,))
+        cursor.execute(sql, (client_id, session_started_at, session_started_at))
         return cursor.fetchone() is not None
 
 

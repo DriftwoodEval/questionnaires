@@ -1,5 +1,6 @@
 import re
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
 from typing import cast
@@ -230,6 +231,7 @@ def check_questionnaires(
     clients: dict[int, ClientWithQuestionnaires],
     services: Services,
     dry_run: bool = False,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[
     list[ClientWithQuestionnaires],
     list[str],
@@ -358,8 +360,14 @@ def check_questionnaires(
         raise RuntimeError("unreachable")
 
     workers = 1 if dry_run else MAX_WORKERS
+    total = len(tasks)
+    results = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        results = list(executor.map(_check_single_q, tasks))
+        futures = [executor.submit(_check_single_q, task) for task in tasks]
+        for done, future in enumerate(as_completed(futures), start=1):
+            results.append(future.result())
+            if progress_callback:
+                progress_callback(done, total)
 
     for client_id, result in results:
         if isinstance(result, bool):

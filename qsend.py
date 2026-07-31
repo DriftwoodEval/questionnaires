@@ -70,6 +70,7 @@ from utils.selenium import (
     find_element,
     initialize_selenium,
 )
+from utils.task_tracker import track_task
 
 app = typer.Typer()
 
@@ -605,375 +606,426 @@ def main(
         logger.critical("No clients marked to send, exiting")
         return
 
-    for login in [
-        check_and_login_ta,
-        check_and_login_wps,
-        check_and_login_qglobal,
-        check_and_login_mhs,
-    ]:
-        # Retry indefinitely: a login failure here is almost always a transient
-        # page/network hiccup on the third-party platform, and there's no client
-        # loop to fall back to yet, so giving up isn't an option.
-        while True:
-            try:
-                login(driver, services, first_time=True)
-                sleep(1)
-                break
-            except Exception as e:
-                logger.error(f"Login failed, trying again: {e}")
-                sleep(1)
-
-    today = date.today()
-    today_str = today.strftime("%Y-%m-%d")
-
-    for _, client in clients.iterrows():
-        logger.info(f"Starting loop for {client['Client Name']}")
-
-        if prev_failed_clients:
-            previously_failed, error = check_client_failed(prev_failed_clients, client)
-            if previously_failed and error is not None:
-                client["Previous Error"] = error
-                if error not in [
-                    "too young",
-                    "portal not opened",
-                    "docs not signed",
-                    "not in db",
-                    "no dob",
-                    "unable to find client",
-                    "unknown questionnaire needs",
-                ]:
-                    logger.log(
-                        "NOTICE", f"{client['Client Name']} has already failed to send"
-                    )
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error=error.lower(),
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                    )
-
-                    continue
-                logger.info(
-                    f"{client['Client Name']} has already failed to send because {error}, retrying"
-                )
-
-        if client["Language"] not in ["", "English", "Spanish"]:
-            logger.log("NOTICE", f"{client['Client Name']} speaks {client['Language']}")
-            add_failure(
-                config=config,
-                client_id=client["Client ID"],
-                error=client["Language"].lower(),
-                failed_date=today,
-                full_name=client["Client Name"],
-                asd_adhd=client["For"],
-                daeval=client["daeval"],
+    with track_task(config, "questionnaire_send", "Sending questionnaires") as task:
+        if task is None:
+            logger.info(
+                "Skipping run: a previous questionnaire send run is still in progress."
             )
-            continue
+            return
 
-        try:
-            client_from_db = prev_clients.get(int(client["Client ID"]))
-            if not client_from_db:
-                logger.error(
-                    f"{client['Client Name']} not found in DB, do they exist in TherapyAppointment?"
+        for login in [
+            check_and_login_ta,
+            check_and_login_wps,
+            check_and_login_qglobal,
+            check_and_login_mhs,
+        ]:
+            # Retry indefinitely: a login failure here is almost always a transient
+            # page/network hiccup on the third-party platform, and there's no client
+            # loop to fall back to yet, so giving up isn't an option.
+            while True:
+                try:
+                    login(driver, services, first_time=True)
+                    sleep(1)
+                    break
+                except Exception as e:
+                    logger.error(f"Login failed, trying again: {e}")
+                    sleep(1)
+
+        today = date.today()
+        today_str = today.strftime("%Y-%m-%d")
+
+        total_clients = len(clients)
+        for i, (_, client) in enumerate(clients.iterrows(), start=1):
+            task.progress(i, total_clients)
+            logger.info(f"Starting loop for {client['Client Name']}")
+
+            if prev_failed_clients:
+                previously_failed, error = check_client_failed(
+                    prev_failed_clients, client
                 )
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="not in db or doesn't exist in therapyappointment",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    add_to_db=False,
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
-
-            client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
-            eval_date = eval_dates.get(client_from_db.id)
-            client["Age"] = relativedelta(
-                eval_date or datetime.now(), client_from_db.dob
-            ).years
-            client["Gender"] = client_from_db.gender
-            client["Phone Number"] = client_from_db.phoneNumber
-            if (
-                client_from_db.preferredName is not None
-                and client_from_db.preferredName != ""
-            ):
-                client["TA First Name"] = client_from_db.preferredName
-            else:
-                client["TA First Name"] = client_from_db.firstName
-            client["TA Last Name"] = client_from_db.lastName
-
-            if client_from_db.autismStop:
-                logger.log("NOTICE", f"{client['Client Name']} has autism stop")
-                continue
-
-            if client_from_db.pause:
-                logger.log("NOTICE", f"{client['Client Name']} has been paused")
-                continue
-
-            client_url = ""
-            if client["Language"] != "Spanish":
-                # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
-                client_url = go_to_client(driver, services, client["Client ID"])
-                if not client_url:
-                    logger.error("Client URL not found")
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error="unable to find client",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                    )
-                    continue
-                if client.get("Previous Error") == "unable to find client":
-                    update_failure_in_db(
-                        config=config,
-                        client_id=client["Client ID"],
-                        reason="unable to find client",
-                        da_eval=client["daeval"],
-                        resolved=True,
-                    )
-                if not check_if_opened_portal(driver):
-                    logger.log(
-                        "NOTICE", f"{client['Client Name']} has not opened portal"
-                    )
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error="portal not opened",
-                        failed_date=today,
-                        add_to_sheet=False,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                    )
-                    continue
-                if client.get("Previous Error") == "portal not opened":
-                    update_failure_in_db(
-                        config=config,
-                        client_id=client["Client ID"],
-                        reason=client["Previous Error"],
-                        da_eval=client["daeval"],
-                        resolved=True,
-                    )
-
-                if not check_if_docs_signed(driver):
-                    logger.log("NOTICE", f"{client['Client Name']} has not signed docs")
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error="docs not signed",
-                        failed_date=today,
-                        add_to_sheet=False,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                    )
-                    continue
-                if client.get("Previous Error") == "docs not signed":
-                    update_failure_in_db(
-                        config=config,
-                        client_id=client["Client ID"],
-                        reason=client["Previous Error"],
-                        da_eval=client["daeval"],
-                        resolved=True,
-                    )
-
-        except (NoSuchElementException, TimeoutException) as e:
-            logger.error(f"Element not found: {e}")
-            add_failure(
-                config=config,
-                client_id=client["Client ID"],
-                error="unable to find client",
-                failed_date=today,
-                full_name=client["Client Name"],
-                asd_adhd=client["For"],
-                daeval=client["daeval"],
-            )
-            continue
-
-        try:
-            accounts_created = {}
-
-            questionnaires_needed = get_questionnaires(
-                client["Age"],
-                client["For"],
-                client["daeval"],
-                questionnaire_rules,
-            )
-
-            if str(questionnaires_needed) == "Too young":
-                logger.log("NOTICE", f"{client['Client Name']} is too young")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="too young",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
-
-            if isinstance(questionnaires_needed, str):
-                logger.error(f"{client['Client Name']} has unknown questionnaire needs")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error="unknown questionnaire needs",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
-                continue
-
-            just_added_questionnaires = []
-
-            if prev_clients:
-                previous_questionnaires = check_client_previous(prev_clients, client)
-                previous_questionnaire_info = {}
-
-                if previous_questionnaires:
-                    for q in previous_questionnaires:
-                        if q["status"] == "JUST_ADDED":
-                            logger.info(
-                                f"Found existing JUST_ADDED questionnaire: {q['questionnaireType']}"
-                            )
-                            just_added_questionnaires.append(
-                                {"link": q["link"], "type": q["questionnaireType"]}
-                            )
-
-                    previous_questionnaire_info = {
-                        q["questionnaireType"]: q["status"]
-                        for q in previous_questionnaires
-                    }
-
-                if client["daeval"] == "EVAL":
-                    theoretical_da_qs = get_questionnaires(
-                        client["Age"],
-                        client["For"],
-                        "DA",
-                        questionnaire_rules,
-                    )
-
-                    if isinstance(theoretical_da_qs, list):
-                        normalized_previous = {
-                            normalize_q_name(q) for q in previous_questionnaire_info
-                        }
-                        missing_da_qs = [
-                            q
-                            for q in theoretical_da_qs
-                            if normalize_q_name(q) not in normalized_previous
-                        ]
-
-                        if missing_da_qs:
-                            rich_print(
-                                f"\n[red]{client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}[/red]"
-                            )
-                            should_add = typer.confirm(
-                                "Do you want to add these to the list?"
-                            )
-
-                            if should_add:
-                                questionnaires_needed.extend(missing_da_qs)
-                                questionnaires_needed = list(set(questionnaires_needed))
-
-                if previous_questionnaires:
-                    questionnaires_to_remove = [
-                        q_type
-                        for q_type, status in previous_questionnaire_info.items()
-                        if q_type in questionnaires_needed
-                        and status in ["COMPLETED", "EXTERNAL"]
-                    ]
-
-                    questionnaires_needed = list(
-                        set(questionnaires_needed) - set(questionnaires_to_remove)
-                    )
-
-                    remaining_overlaps = []
-                    for q_type in questionnaires_needed:
-                        if q_type in previous_questionnaire_info:
-                            status = previous_questionnaire_info[q_type]
-                            if status not in [
-                                "COMPLETED",
-                                "EXTERNAL",
-                                "ARCHIVED",
-                                "JUST_ADDED",
-                            ]:
-                                remaining_overlaps.append(f"{q_type} - {status}")
-
-                    if remaining_overlaps:
-                        logger.error(
-                            f"{client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
+                if previously_failed and error is not None:
+                    client["Previous Error"] = error
+                    if error not in [
+                        "too young",
+                        "portal not opened",
+                        "docs not signed",
+                        "not in db",
+                        "no dob",
+                        "unable to find client",
+                        "unknown questionnaire needs",
+                    ]:
+                        logger.log(
+                            "NOTICE",
+                            f"{client['Client Name']} has already failed to send",
                         )
                         add_failure(
                             config=config,
                             client_id=client["Client ID"],
-                            error=f"Overlapping questionnaires: {', '.join(remaining_overlaps)}",
+                            error=error.lower(),
                             failed_date=today,
                             full_name=client["Client Name"],
                             asd_adhd=client["For"],
                             daeval=client["daeval"],
-                            questionnaires_needed=questionnaires_needed,
                         )
+
                         continue
+                    logger.info(
+                        f"{client['Client Name']} has already failed to send because {error}, retrying"
+                    )
 
-            logger.info(
-                f"{client['Client Name']} needs questionnaires for {client['Language']}{' ' if client['Language'] != '' else ''}{client['For']} {client['daeval']}: {questionnaires_needed}"
-            )
-
-            questionnaires = []
-            questionnaires_to_generate = []
-            if len(just_added_questionnaires) > 0:
-                questionnaires.extend(just_added_questionnaires)
-                questionnaires_to_generate = [
-                    q
-                    for q in questionnaires_needed
-                    if q not in [item["type"] for item in just_added_questionnaires]
-                ]
-            else:
-                questionnaires_to_generate = questionnaires_needed
-
-            if len(questionnaires_to_generate) == 0:
+            if client["Language"] not in ["", "English", "Spanish"]:
+                logger.log(
+                    "NOTICE", f"{client['Client Name']} speaks {client['Language']}"
+                )
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
-                    error="All questionnaires have already been sent, but sent box not checked",
+                    error=client["Language"].lower(),
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
                     daeval=client["daeval"],
-                    questionnaires_needed=questionnaires_needed,
-                    add_to_db=False,
                 )
                 continue
 
-            send = True
-            for questionnaire in questionnaires_to_generate:
-                logger.debug(f"Questionnaires so far: {questionnaires}")
-                try:
-                    link, accounts_created = assign_questionnaire(
-                        driver,
-                        config,
-                        services,
-                        client,
-                        questionnaire,
-                        accounts_created,
+            try:
+                client_from_db = prev_clients.get(int(client["Client ID"]))
+                if not client_from_db:
+                    logger.error(
+                        f"{client['Client Name']} not found in DB, do they exist in TherapyAppointment?"
                     )
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="not in db or doesn't exist in therapyappointment",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        add_to_db=False,
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
 
-                    if link is None or link == "":
-                        logger.error(f"No link grabbed for {questionnaire}")
+                client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
+                eval_date = eval_dates.get(client_from_db.id)
+                client["Age"] = relativedelta(
+                    eval_date or datetime.now(), client_from_db.dob
+                ).years
+                client["Gender"] = client_from_db.gender
+                client["Phone Number"] = client_from_db.phoneNumber
+                if (
+                    client_from_db.preferredName is not None
+                    and client_from_db.preferredName != ""
+                ):
+                    client["TA First Name"] = client_from_db.preferredName
+                else:
+                    client["TA First Name"] = client_from_db.firstName
+                client["TA Last Name"] = client_from_db.lastName
+
+                if client_from_db.autismStop:
+                    logger.log("NOTICE", f"{client['Client Name']} has autism stop")
+                    continue
+
+                if client_from_db.pause:
+                    logger.log("NOTICE", f"{client['Client Name']} has been paused")
+                    continue
+
+                client_url = ""
+                if client["Language"] != "Spanish":
+                    # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
+                    client_url = go_to_client(driver, services, client["Client ID"])
+                    if not client_url:
+                        logger.error("Client URL not found")
                         add_failure(
                             config=config,
                             client_id=client["Client ID"],
-                            error=f"No link grabbed for {questionnaire}",
+                            error="unable to find client",
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            daeval=client["daeval"],
+                        )
+                        continue
+                    if client.get("Previous Error") == "unable to find client":
+                        update_failure_in_db(
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason="unable to find client",
+                            da_eval=client["daeval"],
+                            resolved=True,
+                        )
+                    if not check_if_opened_portal(driver):
+                        logger.log(
+                            "NOTICE", f"{client['Client Name']} has not opened portal"
+                        )
+                        add_failure(
+                            config=config,
+                            client_id=client["Client ID"],
+                            error="portal not opened",
+                            failed_date=today,
+                            add_to_sheet=False,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            daeval=client["daeval"],
+                        )
+                        continue
+                    if client.get("Previous Error") == "portal not opened":
+                        update_failure_in_db(
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason=client["Previous Error"],
+                            da_eval=client["daeval"],
+                            resolved=True,
+                        )
+
+                    if not check_if_docs_signed(driver):
+                        logger.log(
+                            "NOTICE", f"{client['Client Name']} has not signed docs"
+                        )
+                        add_failure(
+                            config=config,
+                            client_id=client["Client ID"],
+                            error="docs not signed",
+                            failed_date=today,
+                            add_to_sheet=False,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            daeval=client["daeval"],
+                        )
+                        continue
+                    if client.get("Previous Error") == "docs not signed":
+                        update_failure_in_db(
+                            config=config,
+                            client_id=client["Client ID"],
+                            reason=client["Previous Error"],
+                            da_eval=client["daeval"],
+                            resolved=True,
+                        )
+
+            except (NoSuchElementException, TimeoutException) as e:
+                logger.error(f"Element not found: {e}")
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error="unable to find client",
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
+                )
+                continue
+
+            try:
+                accounts_created = {}
+
+                questionnaires_needed = get_questionnaires(
+                    client["Age"],
+                    client["For"],
+                    client["daeval"],
+                    questionnaire_rules,
+                )
+
+                if str(questionnaires_needed) == "Too young":
+                    logger.log("NOTICE", f"{client['Client Name']} is too young")
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="too young",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
+
+                if isinstance(questionnaires_needed, str):
+                    logger.error(
+                        f"{client['Client Name']} has unknown questionnaire needs"
+                    )
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="unknown questionnaire needs",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
+
+                just_added_questionnaires = []
+
+                if prev_clients:
+                    previous_questionnaires = check_client_previous(
+                        prev_clients, client
+                    )
+                    previous_questionnaire_info = {}
+
+                    if previous_questionnaires:
+                        for q in previous_questionnaires:
+                            if q["status"] == "JUST_ADDED":
+                                logger.info(
+                                    f"Found existing JUST_ADDED questionnaire: {q['questionnaireType']}"
+                                )
+                                just_added_questionnaires.append(
+                                    {"link": q["link"], "type": q["questionnaireType"]}
+                                )
+
+                        previous_questionnaire_info = {
+                            q["questionnaireType"]: q["status"]
+                            for q in previous_questionnaires
+                        }
+
+                    if client["daeval"] == "EVAL":
+                        theoretical_da_qs = get_questionnaires(
+                            client["Age"],
+                            client["For"],
+                            "DA",
+                            questionnaire_rules,
+                        )
+
+                        if isinstance(theoretical_da_qs, list):
+                            normalized_previous = {
+                                normalize_q_name(q) for q in previous_questionnaire_info
+                            }
+                            missing_da_qs = [
+                                q
+                                for q in theoretical_da_qs
+                                if normalize_q_name(q) not in normalized_previous
+                            ]
+
+                            if missing_da_qs:
+                                rich_print(
+                                    f"\n[red]{client['Client Name']} is getting an EVAL but has never been sent these DA questionnaires: {', '.join(missing_da_qs)}[/red]"
+                                )
+                                should_add = typer.confirm(
+                                    "Do you want to add these to the list?"
+                                )
+
+                                if should_add:
+                                    questionnaires_needed.extend(missing_da_qs)
+                                    questionnaires_needed = list(
+                                        set(questionnaires_needed)
+                                    )
+
+                    if previous_questionnaires:
+                        questionnaires_to_remove = [
+                            q_type
+                            for q_type, status in previous_questionnaire_info.items()
+                            if q_type in questionnaires_needed
+                            and status in ["COMPLETED", "EXTERNAL"]
+                        ]
+
+                        questionnaires_needed = list(
+                            set(questionnaires_needed) - set(questionnaires_to_remove)
+                        )
+
+                        remaining_overlaps = []
+                        for q_type in questionnaires_needed:
+                            if q_type in previous_questionnaire_info:
+                                status = previous_questionnaire_info[q_type]
+                                if status not in [
+                                    "COMPLETED",
+                                    "EXTERNAL",
+                                    "ARCHIVED",
+                                    "JUST_ADDED",
+                                ]:
+                                    remaining_overlaps.append(f"{q_type} - {status}")
+
+                        if remaining_overlaps:
+                            logger.error(
+                                f"{client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
+                            )
+                            add_failure(
+                                config=config,
+                                client_id=client["Client ID"],
+                                error=f"Overlapping questionnaires: {', '.join(remaining_overlaps)}",
+                                failed_date=today,
+                                full_name=client["Client Name"],
+                                asd_adhd=client["For"],
+                                daeval=client["daeval"],
+                                questionnaires_needed=questionnaires_needed,
+                            )
+                            continue
+
+                logger.info(
+                    f"{client['Client Name']} needs questionnaires for {client['Language']}{' ' if client['Language'] != '' else ''}{client['For']} {client['daeval']}: {questionnaires_needed}"
+                )
+
+                questionnaires = []
+                questionnaires_to_generate = []
+                if len(just_added_questionnaires) > 0:
+                    questionnaires.extend(just_added_questionnaires)
+                    questionnaires_to_generate = [
+                        q
+                        for q in questionnaires_needed
+                        if q not in [item["type"] for item in just_added_questionnaires]
+                    ]
+                else:
+                    questionnaires_to_generate = questionnaires_needed
+
+                if len(questionnaires_to_generate) == 0:
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="All questionnaires have already been sent, but sent box not checked",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                        questionnaires_needed=questionnaires_needed,
+                        add_to_db=False,
+                    )
+                    continue
+
+                send = True
+                for questionnaire in questionnaires_to_generate:
+                    logger.debug(f"Questionnaires so far: {questionnaires}")
+                    try:
+                        link, accounts_created = assign_questionnaire(
+                            driver,
+                            config,
+                            services,
+                            client,
+                            questionnaire,
+                            accounts_created,
+                        )
+
+                        if link is None or link == "":
+                            logger.error(f"No link grabbed for {questionnaire}")
+                            add_failure(
+                                config=config,
+                                client_id=client["Client ID"],
+                                error=f"No link grabbed for {questionnaire}",
+                                failed_date=today,
+                                full_name=client["Client Name"],
+                                asd_adhd=client["For"],
+                                daeval=client["daeval"],
+                                questionnaires_needed=questionnaires_needed
+                                if isinstance(questionnaires_needed, list)
+                                else [],
+                                questionnaires_generated=questionnaires,
+                            )
+                            send = False
+                            continue
+
+                        questionnaires.append({"link": link, "type": questionnaire})
+                        put_questionnaire_in_db(
+                            config,
+                            client["Client ID"],
+                            link,
+                            questionnaire,
+                            today_str,
+                            "JUST_ADDED",
+                        )
+
+                    except Exception as e:
+                        logger.error(f"Error assigning {questionnaire}: {e}")
+
+                        add_failure(
+                            config=config,
+                            client_id=client["Client ID"],
+                            error=f"Error assigning {questionnaire}",
                             failed_date=today,
                             full_name=client["Client Name"],
                             asd_adhd=client["For"],
@@ -986,110 +1038,81 @@ def main(
                         send = False
                         continue
 
-                    questionnaires.append({"link": link, "type": questionnaire})
-                    put_questionnaire_in_db(
+                if send:
+                    insert_basic_client(
                         config,
                         client["Client ID"],
-                        link,
-                        questionnaire,
-                        today_str,
-                        "JUST_ADDED",
+                        client["Date of Birth"],
+                        client["TA First Name"],
+                        client["TA Last Name"],
+                        client["For"],
+                        client["Gender"],
+                        client["Phone Number"],
                     )
+                    daeval = client["daeval"]
+                    client_id = client["Client ID"]
+                    if daeval == "DA":
+                        update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+                    elif daeval == "EVAL":
+                        update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+                    elif daeval == "DAEVAL":
+                        update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+                        update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
 
-                except Exception as e:
-                    logger.error(f"Error assigning {questionnaire}: {e}")
+                    if client["Language"] != "Spanish":
+                        for questionnaire in questionnaires:
+                            update_questionnaire_in_db(
+                                config,
+                                client["Client ID"],
+                                questionnaire["type"],
+                                today_str,
+                                "PENDING",
+                            )
 
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error=f"Error assigning {questionnaire}",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                        questionnaires_needed=questionnaires_needed
-                        if isinstance(questionnaires_needed, list)
-                        else [],
-                        questionnaires_generated=questionnaires,
-                    )
-                    send = False
-                    continue
+                    message = format_ta_message(questionnaires)
 
-            if send:
-                insert_basic_client(
-                    config,
-                    client["Client ID"],
-                    client["Date of Birth"],
-                    client["TA First Name"],
-                    client["TA Last Name"],
-                    client["For"],
-                    client["Gender"],
-                    client["Phone Number"],
-                )
-                daeval = client["daeval"]
-                client_id = client["Client ID"]
-                if daeval == "DA":
-                    update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
-                elif daeval == "EVAL":
-                    update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
-                elif daeval == "DAEVAL":
-                    update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
-                    update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
-
-                if client["Language"] != "Spanish":
-                    for questionnaire in questionnaires:
-                        update_questionnaire_in_db(
-                            config,
-                            client["Client ID"],
-                            questionnaire["type"],
-                            today_str,
-                            "PENDING",
+                    if client["Language"] == "Spanish":
+                        rich_print(
+                            f"{client['TA First Name']} {client['TA Last Name']} speaks Spanish, not sending a TA message, pretending they failed."
+                        )
+                        add_failure(
+                            config=config,
+                            client_id=client["Client ID"],
+                            error="Spanish Qs generated to send",
+                            failed_date=today,
+                            full_name=client["Client Name"],
+                            asd_adhd=client["For"],
+                            daeval=client["daeval"],
+                            questionnaires_generated=questionnaires,
+                            questionnaires_needed=questionnaires_needed
+                            if isinstance(questionnaires_needed, list)
+                            else [],
+                            add_to_db=False,
+                            add_to_sheet=True,
                         )
 
-                message = format_ta_message(questionnaires)
-
-                if client["Language"] == "Spanish":
-                    rich_print(
-                        f"{client['TA First Name']} {client['TA Last Name']} speaks Spanish, not sending a TA message, pretending they failed."
-                    )
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error="Spanish Qs generated to send",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                        questionnaires_generated=questionnaires,
-                        questionnaires_needed=questionnaires_needed
-                        if isinstance(questionnaires_needed, list)
-                        else [],
-                        add_to_db=False,
-                        add_to_sheet=True,
+                    if client["Language"] != "Spanish":
+                        send_message_ta(driver, client_url, message)
+                if not send and questionnaires:
+                    logger.warning(
+                        f"Questionnaires were generated, but no message was sent: {questionnaires}"
                     )
 
-                if client["Language"] != "Spanish":
-                    send_message_ta(driver, client_url, message)
-            if not send and questionnaires:
-                logger.warning(
-                    f"Questionnaires were generated, but no message was sent: {questionnaires}"
+            except Exception as e:
+                logger.error(f"Error for {client['Client Name']}: {e}")
+                add_failure(
+                    config=config,
+                    client_id=client["Client ID"],
+                    error=str(e),
+                    failed_date=today,
+                    full_name=client["Client Name"],
+                    asd_adhd=client["For"],
+                    daeval=client["daeval"],
                 )
 
-        except Exception as e:
-            logger.error(f"Error for {client['Client Name']}: {e}")
-            add_failure(
-                config=config,
-                client_id=client["Client ID"],
-                error=str(e),
-                failed_date=today,
-                full_name=client["Client Name"],
-                asd_adhd=client["For"],
-                daeval=client["daeval"],
-            )
-
-    logger.info(f"Finished loop for {len(clients)} clients")
-    # Final newline for preventing overwriting last line on windows
-    rich_print()
+        logger.info(f"Finished loop for {len(clients)} clients")
+        # Final newline for preventing overwriting last line on windows
+        rich_print()
 
 
 if __name__ == "__main__":

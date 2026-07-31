@@ -1,6 +1,7 @@
 import re
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from utils.database import (
 from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import NetworkSink, json_log_format, load_config, load_local_settings
 from utils.piecework import extract_writer_initials
+from utils.task_tracker import track_task
 
 logger.remove()
 logger.add(
@@ -574,12 +576,16 @@ def generate_individual_detail_reports(
     end_date: date,
     config: Config,
     dev_mode: bool = False,
+    progress_callback: Callable[[int, int], None] | None = None,
 ):
     """Generates a separate Excel file for each worker's detail data."""
     base_output_folder = Path("piecework_output")
     worker_details.pop("__COMBINED_DETAIL_DATA__", [])
 
-    for worker_name, detail_data in worker_details.items():
+    total_workers = len(worker_details)
+    for done, (worker_name, detail_data) in enumerate(worker_details.items(), start=1):
+        if progress_callback:
+            progress_callback(done, total_workers)
         if not detail_data:
             continue
 
@@ -662,12 +668,24 @@ def main(
         logger.info("No valid appointments found to include in the report.")
         return
 
-    generate_main_report(
-        summary_data, combined_detail_data, start_date, end_date, config, dev_mode
-    )
-    generate_individual_detail_reports(
-        worker_details, start_date, end_date, config, dev_mode
-    )
+    with track_task(config, "piecework_report", "Generating piecework report") as task:
+        if task is None:
+            logger.info(
+                "Skipping run: a previous piecework report run is still in progress."
+            )
+            return
+
+        generate_main_report(
+            summary_data, combined_detail_data, start_date, end_date, config, dev_mode
+        )
+        generate_individual_detail_reports(
+            worker_details,
+            start_date,
+            end_date,
+            config,
+            dev_mode,
+            progress_callback=task.progress,
+        )
 
 
 if __name__ == "__main__":

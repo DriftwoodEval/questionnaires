@@ -42,6 +42,7 @@ from utils.records import normalize_district, resolve_school_contact
 from utils.selenium import (
     initialize_selenium,
 )
+from utils.task_tracker import track_task
 
 logger.remove()
 logger.add(
@@ -370,78 +371,87 @@ def main():
 
     logger.info(f"Found {len(clients_to_process)} new clients to process.")
 
-    today = date.today()
-    new_success_count = 0
-    new_failure_count = 0
+    with track_task(config, "records_request", "Processing records requests") as task:
+        if task is None:
+            logger.info(
+                "Skipping run: a previous records request run is still in progress."
+            )
+            return
 
-    driver = initialize_selenium()
-    driver.maximize_window()
+        today = date.today()
+        new_success_count = 0
+        new_failure_count = 0
+        total_clients = len(clients_to_process)
 
-    try:
-        check_and_login_ta(driver, services, first_time=True)
-        for client in clients_to_process:
-            asd_adhd = client.asdAdhd or "Unknown"
-            client_name = client.fullName
+        driver = initialize_selenium()
+        driver.maximize_window()
 
-            if go_to_client(driver, services, str(client.id)):
-                update_failure_in_db(
-                    config=config,
-                    client_id=client.id,
-                    reason="unable to find client",
-                    da_eval="Records",
-                    resolved=True,
-                )
-                try:
-                    if not check_if_opened_portal(driver):
-                        raise Exception("portal not opened")
-                    if not check_if_docs_signed(driver):
-                        raise Exception("docs not signed")
+        try:
+            check_and_login_ta(driver, services, first_time=True)
+            for i, client in enumerate(clients_to_process, start=1):
+                task.progress(i, total_clients)
+                asd_adhd = client.asdAdhd or "Unknown"
+                client_name = client.fullName
 
-                    skipped = download_consent_forms(
-                        driver, client, school_contacts, config
+                if go_to_client(driver, services, str(client.id)):
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client.id,
+                        reason="unable to find client",
+                        da_eval="Records",
+                        resolved=True,
                     )
-                    if not skipped:
-                        new_success_count += 1
+                    try:
+                        if not check_if_opened_portal(driver):
+                            raise Exception("portal not opened")
+                        if not check_if_docs_signed(driver):
+                            raise Exception("docs not signed")
 
-                except Exception as e:
-                    logger.error(
-                        f"An error occurred while processing {client_name}: {e}"
-                    )
-                    add_to_sheet = True
+                        skipped = download_consent_forms(
+                            driver, client, school_contacts, config
+                        )
+                        if not skipped:
+                            new_success_count += 1
 
-                    if str(e) in ["portal not opened", "docs not signed"]:
-                        add_to_sheet = False
+                    except Exception as e:
+                        logger.error(
+                            f"An error occurred while processing {client_name}: {e}"
+                        )
+                        add_to_sheet = True
 
+                        if str(e) in ["portal not opened", "docs not signed"]:
+                            add_to_sheet = False
+
+                        add_failure(
+                            config=config,
+                            client_id=client.id,
+                            error=str(e),
+                            failed_date=today,
+                            add_to_sheet=add_to_sheet,
+                            full_name=client_name,
+                            asd_adhd=asd_adhd,
+                            daeval="Records",
+                        )
+                        new_failure_count += 1
+
+                else:
                     add_failure(
                         config=config,
                         client_id=client.id,
-                        error=str(e),
+                        error="unable to find client",
                         failed_date=today,
-                        add_to_sheet=add_to_sheet,
                         full_name=client_name,
                         asd_adhd=asd_adhd,
                         daeval="Records",
                     )
                     new_failure_count += 1
+        finally:
+            logger.debug("Closing WebDriver.")
+            driver.quit()
 
-            else:
-                add_failure(
-                    config=config,
-                    client_id=client.id,
-                    error="unable to find client",
-                    failed_date=today,
-                    full_name=client_name,
-                    asd_adhd=asd_adhd,
-                    daeval="Records",
-                )
-                new_failure_count += 1
-    finally:
-        logger.debug("Closing WebDriver.")
-        driver.quit()
-
-    logger.info(
-        f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
-    )
+        logger.info(
+            f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
+        )
 
 
 if __name__ == "__main__":
