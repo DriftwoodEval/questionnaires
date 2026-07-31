@@ -3,6 +3,7 @@ from datetime import date, datetime
 import pytest
 
 from utils.custom_types import (
+    ClientFromDB,
     ClientWithQuestionnaires,
     Config,
     PieceworkConfig,
@@ -64,6 +65,31 @@ def make_client(
     )
 
 
+def make_referral_client(
+    client_id: int = 1,
+    dob: date = date(2015, 1, 1),
+    primary_insurance: str | None = None,
+    private_pay: bool = False,
+) -> ClientFromDB:
+    return ClientFromDB.model_validate(
+        {
+            "id": client_id,
+            "dob": dob,
+            "firstName": "Test",
+            "lastName": "Client",
+            "fullName": "Test Client",
+            "status": True,
+            "autismStop": False,
+            "pause": False,
+            "babyNetERNeeded": False,
+            "babyNetERDownloaded": False,
+            "language": "English",
+            "primaryInsurance": primary_insurance,
+            "privatePay": private_pay,
+        }
+    )
+
+
 def make_config(**overrides) -> Config:
     fields = {
         "initials": "TC",
@@ -94,6 +120,11 @@ def questionnaire_factory():
 @pytest.fixture
 def client_factory():
     return make_client
+
+
+@pytest.fixture
+def referral_client_factory():
+    return make_referral_client
 
 
 @pytest.fixture
