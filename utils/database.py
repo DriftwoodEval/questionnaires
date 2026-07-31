@@ -667,6 +667,21 @@ def get_sent_referral_client_ids(config: Config) -> set[int]:
     return {row["clientId"] for row in rows}
 
 
+def get_matched_client_ids(config: Config) -> set[int]:
+    """Return the set of client IDs with at least one eligible evaluator.
+
+    Backed by emr_client_eval, which winnonah's client-evaluator matching job
+    keeps up to date for every client based on insurance and location. A
+    client absent from this set has no eligible evaluator, same as the
+    "possible private pay" check on the winnonah client dashboard.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute("SELECT DISTINCT clientId FROM emr_client_eval")
+        rows = cursor.fetchall()
+    return {row["clientId"] for row in rows}
+
+
 def log_referral_msg(config: Config, client_id: int, openphone_message_id: str) -> None:
     """Log that a referral message was delivered to a client."""
     db_connection = get_db(config)
