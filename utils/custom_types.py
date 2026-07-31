@@ -252,6 +252,7 @@ class _SharedClientFromDB(_ClientBase):
     recordsNeeded: str | None = None  # noqa: N815
     pendingRequestMessage: str | None = None  # noqa: N815
     primaryInsurance: str | None = None  # noqa: N815
+    secondaryInsurance: list[str] | None = None  # noqa: N815
     privatePay: bool = False  # noqa: N815
 
 
