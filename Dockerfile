@@ -37,7 +37,7 @@ RUN curl -fsSLO "$SUPERCRONIC_URL" \
 
 COPY --chmod=555 ./docker/scripts/*.sh .
 
-ENV CRON_SCHEDULE="0 7,9,10,11,13,15,17,19 * * *"
+ENV CRON_SCHEDULE="0 7,10,13,16,19 * * *"
 
 ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
 
