@@ -40,7 +40,7 @@ class TestIsPotentialPrivatePay:
             (None, None, False, DD4_SCHOOL_DISTRICT),
         ],
     )
-    def test_excluded_cases(
+    def test_excluded_when_matched_and_no_private_pay_indicator(
         self,
         referral_client_factory,
         primary_insurance,
@@ -54,7 +54,7 @@ class TestIsPotentialPrivatePay:
             private_pay=private_pay,
             school_district=school_district,
         )
-        assert is_potential_private_pay(client) is False
+        assert is_potential_private_pay(client, has_matched_evaluator=True) is False
 
     def test_no_insurance_not_private_pay_not_dd4_is_potential_private_pay(
         self, referral_client_factory
@@ -65,7 +65,13 @@ class TestIsPotentialPrivatePay:
             private_pay=False,
             school_district="Some Other District",
         )
-        assert is_potential_private_pay(client) is True
+        assert is_potential_private_pay(client, has_matched_evaluator=True) is True
+
+    def test_no_matched_evaluator_is_potential_private_pay_even_with_insurance(
+        self, referral_client_factory
+    ):
+        client = referral_client_factory(primary_insurance="Blue Cross")
+        assert is_potential_private_pay(client, has_matched_evaluator=False) is True
 
 
 class TestBuildReferralMessage:
@@ -78,7 +84,7 @@ class TestBuildReferralMessage:
             (None, None, False, DD4_SCHOOL_DISTRICT),
         ],
     )
-    def test_non_potential_private_pay_gets_generic_message(
+    def test_matched_non_potential_private_pay_gets_generic_message(
         self,
         config_factory,
         referral_client_factory,
@@ -94,7 +100,7 @@ class TestBuildReferralMessage:
             private_pay=private_pay,
             school_district=school_district,
         )
-        message = build_referral_message(config, client)
+        message = build_referral_message(config, client, has_matched_evaluator=True)
         assert "We have received your referral" in message
         assert "insurance" not in message.lower()
 
@@ -107,11 +113,22 @@ class TestBuildReferralMessage:
             private_pay=False,
             dob=date.today() - relativedelta(years=10),
         )
-        message = build_referral_message(config, client)
+        message = build_referral_message(config, client, has_matched_evaluator=True)
         assert "Melissa" in message
         assert "not showing insurance on file" in message
         assert "private pay options" in message
         assert "Babynet" not in message
+
+    def test_no_matched_evaluator_gets_private_pay_outreach_despite_insurance(
+        self, config_factory, referral_client_factory
+    ):
+        config = config_factory(name="Melissa")
+        client = referral_client_factory(
+            primary_insurance="Blue Cross",
+            dob=date.today() - relativedelta(years=10),
+        )
+        message = build_referral_message(config, client, has_matched_evaluator=False)
+        assert "private pay options" in message
 
     def test_under_three_gets_babynet_question(
         self, config_factory, referral_client_factory
@@ -121,7 +138,7 @@ class TestBuildReferralMessage:
             primary_insurance=None,
             dob=date.today() - relativedelta(years=2),
         )
-        message = build_referral_message(config, client)
+        message = build_referral_message(config, client, has_matched_evaluator=True)
         assert "Babynet or Early Intervention" in message
 
     def test_three_or_older_does_not_get_babynet_question(
@@ -132,7 +149,7 @@ class TestBuildReferralMessage:
             primary_insurance=None,
             dob=date.today() - relativedelta(years=3),
         )
-        message = build_referral_message(config, client)
+        message = build_referral_message(config, client, has_matched_evaluator=True)
         assert "Babynet" not in message
 
 

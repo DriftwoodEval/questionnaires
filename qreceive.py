@@ -18,6 +18,7 @@ from utils.custom_types import (
     validate_questionnaires,
 )
 from utils.database import (
+    get_matched_client_ids,
     get_most_recent_eval_appointment_dates,
     get_most_recent_failure,
     get_previous_clients,
@@ -796,6 +797,7 @@ def main(
         if send_referral_texts or dry_run:
             cutoff_date = date.today() - timedelta(days=1)
             sent_referral_ids = get_sent_referral_client_ids(config)
+            matched_client_ids = get_matched_client_ids(config)
             new_clients = [
                 c
                 for c in all_clients_raw.values()
@@ -826,7 +828,9 @@ def main(
                 logger.info(
                     f"Sending referral message to new client {client.fullName} (added {client.addedDate})"
                 )
-                referral_msg = build_referral_message(config, client)
+                referral_msg = build_referral_message(
+                    config, client, client.id in matched_client_ids
+                )
                 if send_referral_texts:
                     try:
                         attempt_text = openphone.send_text(
