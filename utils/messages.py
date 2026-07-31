@@ -10,6 +10,22 @@ from utils.custom_types import (
     Questionnaire,
 )
 
+# Matches the "possible private pay" criteria used by winnonah's client
+# dashboard (getPossiblePrivatePay in src/server/api/routers/client.ts):
+# no insurance on file, not already confirmed private pay, and not in a
+# district we can't work with regardless of payment.
+DD4_SCHOOL_DISTRICT = "Dorchester School District 4"
+
+
+def is_potential_private_pay(client: ClientFromDB) -> bool:
+    """Whether a client has no insurance on file and isn't already private pay."""
+    return (
+        not client.primaryInsurance
+        and not client.secondaryInsurance
+        and not client.privatePay
+        and client.schoolDistrict != DD4_SCHOOL_DISTRICT
+    )
+
 
 def format_ta_message(questionnaires: list[dict]) -> str:
     """Formats the message to be sent in TA."""
@@ -31,9 +47,7 @@ def build_referral_message(config: Config, client: ClientFromDB) -> str:
     an outreach message asking for insurance information or private pay intent.
     Clients under 3 also get asked about BabyNet/Early Intervention involvement.
     """
-    is_potential_private_pay = not client.privatePay and not client.primaryInsurance
-
-    if not is_potential_private_pay:
+    if not is_potential_private_pay(client):
         return (
             "This is Driftwood Evaluation Center. We have received your referral. "
             "We are managing a very large amount of patients and will reach out to "

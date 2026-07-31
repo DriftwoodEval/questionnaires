@@ -67,7 +67,9 @@ def make_referral_client(
     client_id: int = 1,
     dob: date = date(2015, 1, 1),
     primary_insurance: str | None = None,
+    secondary_insurance: list[str] | None = None,
     private_pay: bool = False,
+    school_district: str | None = None,
 ) -> ClientFromDB:
     return ClientFromDB.model_validate(
         {
@@ -83,7 +85,9 @@ def make_referral_client(
             "babyNetERDownloaded": False,
             "language": "English",
             "primaryInsurance": primary_insurance,
+            "secondaryInsurance": secondary_insurance,
             "privatePay": private_pay,
+            "schoolDistrict": school_district,
         }
     )
 
