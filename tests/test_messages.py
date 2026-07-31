@@ -3,7 +3,13 @@ from datetime import date
 import pytest
 from dateutil.relativedelta import relativedelta
 
-from utils.messages import build_q_message, build_referral_message, format_ta_message
+from utils.messages import (
+    DD4_SCHOOL_DISTRICT,
+    build_q_message,
+    build_referral_message,
+    format_ta_message,
+    is_potential_private_pay,
+)
 
 
 class TestFormatTaMessage:
@@ -24,20 +30,69 @@ class TestFormatTaMessage:
         assert format_ta_message([]) == ""
 
 
+class TestIsPotentialPrivatePay:
+    @pytest.mark.parametrize(
+        ("primary_insurance", "secondary_insurance", "private_pay", "school_district"),
+        [
+            ("Blue Cross", None, False, None),
+            (None, ["Molina"], False, None),
+            (None, None, True, None),
+            (None, None, False, DD4_SCHOOL_DISTRICT),
+        ],
+    )
+    def test_excluded_cases(
+        self,
+        referral_client_factory,
+        primary_insurance,
+        secondary_insurance,
+        private_pay,
+        school_district,
+    ):
+        client = referral_client_factory(
+            primary_insurance=primary_insurance,
+            secondary_insurance=secondary_insurance,
+            private_pay=private_pay,
+            school_district=school_district,
+        )
+        assert is_potential_private_pay(client) is False
+
+    def test_no_insurance_not_private_pay_not_dd4_is_potential_private_pay(
+        self, referral_client_factory
+    ):
+        client = referral_client_factory(
+            primary_insurance=None,
+            secondary_insurance=None,
+            private_pay=False,
+            school_district="Some Other District",
+        )
+        assert is_potential_private_pay(client) is True
+
+
 class TestBuildReferralMessage:
     @pytest.mark.parametrize(
-        ("primary_insurance", "private_pay"),
+        ("primary_insurance", "secondary_insurance", "private_pay", "school_district"),
         [
-            ("Blue Cross", False),
-            (None, True),
+            ("Blue Cross", None, False, None),
+            (None, ["Molina"], False, None),
+            (None, None, True, None),
+            (None, None, False, DD4_SCHOOL_DISTRICT),
         ],
     )
     def test_non_potential_private_pay_gets_generic_message(
-        self, config_factory, referral_client_factory, primary_insurance, private_pay
+        self,
+        config_factory,
+        referral_client_factory,
+        primary_insurance,
+        secondary_insurance,
+        private_pay,
+        school_district,
     ):
         config = config_factory()
         client = referral_client_factory(
-            primary_insurance=primary_insurance, private_pay=private_pay
+            primary_insurance=primary_insurance,
+            secondary_insurance=secondary_insurance,
+            private_pay=private_pay,
+            school_district=school_district,
         )
         message = build_referral_message(config, client)
         assert "We have received your referral" in message
