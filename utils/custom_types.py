@@ -250,6 +250,8 @@ class _SharedClientFromDB(_ClientBase):
     schoolDistrict: str | None = None  # noqa: N815
     recordsNeeded: str | None = None  # noqa: N815
     pendingRequestMessage: str | None = None  # noqa: N815
+    primaryInsurance: str | None = None  # noqa: N815
+    privatePay: bool = False  # noqa: N815
 
 
 class ClientFromDB(_SharedClientFromDB):

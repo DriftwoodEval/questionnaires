@@ -1,8 +1,9 @@
 from datetime import date
 
 import pytest
+from dateutil.relativedelta import relativedelta
 
-from utils.messages import build_q_message, format_ta_message
+from utils.messages import build_q_message, build_referral_message, format_ta_message
 
 
 class TestFormatTaMessage:
@@ -21,6 +22,63 @@ class TestFormatTaMessage:
 
     def test_empty_list_is_empty_string(self):
         assert format_ta_message([]) == ""
+
+
+class TestBuildReferralMessage:
+    @pytest.mark.parametrize(
+        ("primary_insurance", "private_pay"),
+        [
+            ("Blue Cross", False),
+            (None, True),
+        ],
+    )
+    def test_non_potential_private_pay_gets_generic_message(
+        self, config_factory, referral_client_factory, primary_insurance, private_pay
+    ):
+        config = config_factory()
+        client = referral_client_factory(
+            primary_insurance=primary_insurance, private_pay=private_pay
+        )
+        message = build_referral_message(config, client)
+        assert "We have received your referral" in message
+        assert "insurance" not in message.lower()
+
+    def test_no_insurance_on_file_gets_private_pay_outreach(
+        self, config_factory, referral_client_factory
+    ):
+        config = config_factory(name="Melissa")
+        client = referral_client_factory(
+            primary_insurance=None,
+            private_pay=False,
+            dob=date.today() - relativedelta(years=10),
+        )
+        message = build_referral_message(config, client)
+        assert "Melissa" in message
+        assert "not showing insurance on file" in message
+        assert "private pay options" in message
+        assert "Babynet" not in message
+
+    def test_under_three_gets_babynet_question(
+        self, config_factory, referral_client_factory
+    ):
+        config = config_factory()
+        client = referral_client_factory(
+            primary_insurance=None,
+            dob=date.today() - relativedelta(years=2),
+        )
+        message = build_referral_message(config, client)
+        assert "Babynet or Early Intervention" in message
+
+    def test_three_or_older_does_not_get_babynet_question(
+        self, config_factory, referral_client_factory
+    ):
+        config = config_factory()
+        client = referral_client_factory(
+            primary_insurance=None,
+            dob=date.today() - relativedelta(years=3),
+        )
+        message = build_referral_message(config, client)
+        assert "Babynet" not in message
 
 
 class TestBuildQMessage:

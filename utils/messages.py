@@ -1,8 +1,14 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
+from dateutil.relativedelta import relativedelta
 from loguru import logger
 
-from utils.custom_types import ClientWithQuestionnaires, Config, Questionnaire
+from utils.custom_types import (
+    ClientFromDB,
+    ClientWithQuestionnaires,
+    Config,
+    Questionnaire,
+)
 
 
 def format_ta_message(questionnaires: list[dict]) -> str:
@@ -15,6 +21,37 @@ def format_ta_message(questionnaires: list[dict]) -> str:
             notes = " - For client being tested"
         message += f"{q_id}) {questionnaire['link']}{notes}\n"
     logger.success("Formatted TA message")
+    return message
+
+
+def build_referral_message(config: Config, client: ClientFromDB) -> str:
+    """Builds the referral-received message to send to a newly added client.
+
+    Clients with no insurance on file are potential private pay clients and get
+    an outreach message asking for insurance information or private pay intent.
+    Clients under 3 also get asked about BabyNet/Early Intervention involvement.
+    """
+    is_potential_private_pay = not client.privatePay and not client.primaryInsurance
+
+    if not is_potential_private_pay:
+        return (
+            "This is Driftwood Evaluation Center. We have received your referral. "
+            "We are managing a very large amount of patients and will reach out to "
+            "you as soon as we can. Thank you!"
+        )
+
+    message = (
+        f"Hello, this is {config.name} from Driftwood Evaluation Center. I'm "
+        "reaching out regarding a referral we received for an evaluation. We are "
+        "not showing insurance on file, can you share your insurance information "
+        "with us? We also offer private pay options. Please reply on how you "
+        "would like to proceed."
+    )
+
+    age_in_years = relativedelta(date.today(), client.dob).years
+    if age_in_years < 3:
+        message += " Are you working with anyone from Babynet or Early Intervention?"
+
     return message
 
 

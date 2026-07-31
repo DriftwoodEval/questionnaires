@@ -34,7 +34,7 @@ from utils.google import (
     build_admin_email,
     send_gmail,
 )
-from utils.messages import build_q_message
+from utils.messages import build_q_message, build_referral_message
 from utils.misc import check_distance, json_log_format, load_config
 from utils.openphone import InvalidPhoneNumberError, NotEnoughCreditsError, OpenPhone
 from utils.platforms.therapyappointment import (
@@ -387,10 +387,14 @@ def main(
 
     # qreceive is cron-run multiple times a day, but texts/admin emails should
     # only go out once daily — the 1pm run is the designated send window.
+    # Referral messages instead go out Monday-Thursday at 10am.
     # Other runs still check/update status, just without notifying anyone.
-    start_hour = datetime.now().hour
+    now = datetime.now()
+    start_hour = now.hour
     is_send_time = start_hour == 13
+    is_referral_send_time = now.weekday() in (0, 1, 2, 3) and start_hour == 10
     send_texts = (is_send_time or force_send) and not dry_run
+    send_referral_texts = (is_referral_send_time or force_send) and not dry_run
 
     if dry_run:
         logger.warning(
@@ -399,6 +403,10 @@ def main(
     if not is_send_time and not force_send and not dry_run:
         logger.info(
             f"Current hour is {datetime.now().hour} — texts will not be sent outside the 1pm window. Use --force-send to override."
+        )
+    if not is_referral_send_time and not force_send and not dry_run:
+        logger.info(
+            "Not a Monday-Thursday 10am run — referral messages will not be sent. Use --force-send to override."
         )
     if force_send:
         logger.warning("--force-send active — sending texts regardless of time.")
@@ -783,10 +791,9 @@ def main(
                         f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                     )
 
-        referral_msg = "This is Driftwood Evaluation Center. We have received your referral. We are managing a very large amount of patients and will reach out to you as soon as we can. Thank you!"
         referral_messages_sent: list[tuple[ClientFromDB, str]] = []
 
-        if send_texts or dry_run:
+        if send_referral_texts or dry_run:
             cutoff_date = date.today() - timedelta(days=1)
             sent_referral_ids = get_sent_referral_client_ids(config)
             new_clients = [
@@ -819,7 +826,8 @@ def main(
                 logger.info(
                     f"Sending referral message to new client {client.fullName} (added {client.addedDate})"
                 )
-                if send_texts:
+                referral_msg = build_referral_message(config, client)
+                if send_referral_texts:
                     try:
                         attempt_text = openphone.send_text(
                             referral_msg, client.phoneNumber, mark_done=True
