@@ -146,6 +146,7 @@ class Config(BaseModel):
         StringConstraints(strip_whitespace=True, to_upper=True, max_length=4),
     ]
     name: str
+    referral_sender_name: str
     email: EmailStr
     automated_email: EmailStr
     qreceive_emails: list[EmailStr]
