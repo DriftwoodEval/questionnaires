@@ -82,6 +82,9 @@ class OpenPhone:
         self.config = config
         self.main_number = services.openphone.main_number
         self.default_user = self._resolve_user_id(config.name, services.openphone.users)
+        self.referral_user = self._resolve_user_id(
+            config.referral_sender_name, services.openphone.users
+        )
 
         self.session = requests.Session()
         self.session.headers.update(

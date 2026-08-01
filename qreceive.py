@@ -834,7 +834,10 @@ def main(
                 if send_referral_texts:
                     try:
                         attempt_text = openphone.send_text(
-                            referral_msg, client.phoneNumber, mark_done=True
+                            referral_msg,
+                            client.phoneNumber,
+                            user_blame=openphone.referral_user,
+                            mark_done=True,
                         )
                         if attempt_text and "id" in attempt_text:
                             numbers_sent.append(client.phoneNumber)
