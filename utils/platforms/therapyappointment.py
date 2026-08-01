@@ -1,3 +1,5 @@
+import re
+from datetime import datetime
 from time import sleep
 
 from loguru import logger
@@ -9,6 +11,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
 
 from utils.custom_types import Services
 from utils.selenium import (
@@ -182,6 +185,61 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
         logger.info(f"Docs not fully signed. Unsigned statuses: {unsigned}")
         return False
     return True
+
+
+_COMPLETED_STATUS_RE = re.compile(
+    r"Completed on (\d{1,2}/\d{1,2}/\d{2,4}) at (\d{1,2}:\d{2}\s*[AP]M)"
+)
+
+
+def find_form_link_for_session(
+    driver: WebDriver, link_text: str, session_started_at: datetime | None
+) -> WebElement:
+    """Find the Docs & Forms link matching `link_text`, from the current session.
+
+    Clients can go through more than one session over time, and TA keeps every
+    prior copy of a form (e.g. "Receiving Consent to Release of Information")
+    in the same Docs & Forms list. Matching on link text alone can grab a
+    stale form from a previous session instead of the one filled out for this
+    one, so pick the form whose Status cell shows it was completed after
+    session_started_at (the "Assigned" date is just when it was sent, not
+    when the client actually filled it out).
+    """
+    rows = driver.find_elements(By.XPATH, f"//a[text()='{link_text}']/ancestor::tr[1]")
+    if not rows:
+        raise NoSuchElementException(f"No form found with link text: {link_text}")
+
+    if session_started_at is None:
+        return rows[0].find_element(By.LINK_TEXT, link_text)
+
+    completed_rows = []
+    for row in rows:
+        try:
+            status_cell = row.find_element(By.XPATH, ".//td[@aria-label='Status']")
+        except NoSuchElementException:
+            continue
+        match = _COMPLETED_STATUS_RE.search(status_cell.text)
+        if not match:
+            continue
+        date_str, time_str = match.groups()
+        year_fmt = "%y" if len(date_str.rsplit("/", maxsplit=1)[-1]) == 2 else "%Y"
+        try:
+            completed_at = datetime.strptime(
+                f"{date_str} {time_str}", f"%m/%d/{year_fmt} %I:%M %p"
+            )
+        except ValueError:
+            continue
+        if completed_at >= session_started_at:
+            completed_rows.append((completed_at, row))
+
+    if not completed_rows:
+        raise NoSuchElementException(
+            f"No completed '{link_text}' form found after session start ({session_started_at})"
+        )
+
+    completed_rows.sort(key=lambda pair: pair[0])
+    latest_row = completed_rows[-1][1]
+    return latest_row.find_element(By.LINK_TEXT, link_text)
 
 
 def resend_portal_invite(driver: WebDriver, services: Services, client_id: str) -> None:

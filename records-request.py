@@ -36,6 +36,7 @@ from utils.platforms.therapyappointment import (
     check_and_login_ta,
     check_if_docs_signed,
     check_if_opened_portal,
+    find_form_link_for_session,
     go_to_client,
 )
 from utils.records import normalize_district, resolve_school_contact
@@ -268,8 +269,11 @@ def save_document_as_pdf(
         )
         docs_button.click()
 
-        document_link = wait.until(
-            ec.element_to_be_clickable((By.LINK_TEXT, link_text))
+        wait.until(
+            ec.presence_of_element_located((By.XPATH, f"//a[text()='{link_text}']"))
+        )
+        document_link = find_form_link_for_session(
+            driver, link_text, client.sessionStartedAt
         )
         document_link.click()
 
