@@ -141,7 +141,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.status IS NOT FALSE
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
-            AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
+            AND (c.session_started_at IS NULL OR err.created_at >= c.session_started_at)
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -177,9 +177,9 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 c.asdAdhd,
                 er.content,
                 COUNT(CASE WHEN err.requestedDate IS NOT NULL
-                    AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
+                    AND (c.session_started_at IS NULL OR err.created_at >= c.session_started_at)
                     THEN 1 END) AS sentCount,
-                MAX(CASE WHEN c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt
+                MAX(CASE WHEN c.session_started_at IS NULL OR err.created_at >= c.session_started_at
                     THEN err.requestedDate END) AS lastSentDate
             FROM emr_client c
             LEFT JOIN emr_external_record er ON c.id = er.clientId
@@ -227,7 +227,7 @@ def has_requested_records_date(
             SELECT 1
             FROM emr_external_record_request
             WHERE clientId=%s AND requestedDate IS NOT NULL
-            AND (%s IS NULL OR createdAt >= %s)
+            AND (%s IS NULL OR created_at >= %s)
             LIMIT 1
         """
         cursor.execute(sql, (client_id, session_started_at, session_started_at))
