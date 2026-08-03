@@ -93,7 +93,7 @@ def go_to_client(driver: WebDriver, services: Services, client_id: str) -> str |
         client_id_field.send_keys(client_id)
 
         logger.debug("Clicking search")
-        click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
+        click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search']")
 
     def _go_to_client_loop(
         driver: WebDriver, services: Services, client_id: str
@@ -121,7 +121,7 @@ def go_to_client(driver: WebDriver, services: Services, client_id: str) -> str |
         click_element(
             driver,
             By.CSS_SELECTOR,
-            "a[aria-description*='Press Enter to view the profile of",
+            "a[aria-description*='Press Enter to view the profile of']",
             max_attempts=1,
         )
 
