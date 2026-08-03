@@ -93,7 +93,7 @@ def go_to_client(driver: WebDriver, services: Services, client_id: str) -> str |
         client_id_field.send_keys(client_id)
 
         logger.debug("Clicking search")
-        click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search'")
+        click_element(driver, By.CSS_SELECTOR, "button[aria-label='Search']")
 
     def _go_to_client_loop(
         driver: WebDriver, services: Services, client_id: str
@@ -118,11 +118,17 @@ def go_to_client(driver: WebDriver, services: Services, client_id: str) -> str |
 
         logger.debug("Selecting client profile")
 
+        # The client list table is present (populated with all clients) even
+        # before a search runs, and Vuetify may keep already-visible rows
+        # mounted while search results are still loading. Scoping to the row
+        # whose Account Number cell matches client_id - rather than any row
+        # with the generic "Press Enter to view the profile of" link - avoids
+        # both clicking a stale/wrong row and racing the search's AJAX filter.
         click_element(
             driver,
-            By.CSS_SELECTOR,
-            "a[aria-description*='Press Enter to view the profile of",
-            max_attempts=1,
+            By.XPATH,
+            f"//tr[.//td[normalize-space(text())='{client_id}']]"
+            "//a[contains(@aria-description, 'Press Enter to view the profile of')]",
         )
 
         current_url = driver.current_url
