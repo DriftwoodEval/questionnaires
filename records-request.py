@@ -375,7 +375,9 @@ def main():
 
     logger.info(f"Found {len(clients_to_process)} new clients to process.")
 
-    with track_task(config, "records_request", "Processing records requests") as task:
+    with track_task(
+        config, "records_request", "Processing records requests", exclusive=False
+    ) as task:
         if task is None:
             logger.info(
                 "Skipping run: a previous records request run is still in progress."
