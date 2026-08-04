@@ -606,13 +606,11 @@ def main(
         logger.critical("No clients marked to send, exiting")
         return
 
-    with track_task(config, "questionnaire_send", "Sending questionnaires") as task:
-        if task is None:
-            logger.info(
-                "Skipping run: a previous questionnaire send run is still in progress."
-            )
-            return
-
+    with track_task(
+        config, "questionnaire_send", "Sending questionnaires", exclusive=False
+    ) as task:
+        # exclusive=False means track_task always yields a handle, never None.
+        assert task is not None
         for login in [
             check_and_login_ta,
             check_and_login_wps,

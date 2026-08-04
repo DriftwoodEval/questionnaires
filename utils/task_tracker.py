@@ -39,30 +39,38 @@ class TaskHandle:
 
 @contextmanager
 def track_task(
-    config: Config, task_type: str, label: str
+    config: Config, task_type: str, label: str, exclusive: bool = True
 ) -> Iterator[TaskHandle | None]:
-    """Records a job run as a row in emr_task and holds a MySQL named lock
-    for the task type so a second cron-triggered run of the same job can't
-    start while one is still in progress.
+    """Records a job run as a row in emr_task.
 
-    Yields None (and does not create a row) if another run of this task
-    type already holds the lock, in which case the caller should return
-    without doing any work. Otherwise yields a TaskHandle for reporting
-    progress; the row is marked completed or failed automatically.
+    If exclusive is True (the default), also holds a MySQL named lock for
+    the task type so a second cron-triggered run of the same job can't
+    start while one is still in progress. Yields None (and does not create
+    a row) if another run of this task type already holds the lock, in
+    which case the caller should return without doing any work.
+
+    If exclusive is False, no lock is taken and overlapping runs are
+    allowed to proceed concurrently, each getting its own row.
+
+    Otherwise yields a TaskHandle for reporting progress; the row is
+    marked completed or failed automatically.
     """
     connection = get_db(config)
     lock_name = f"task:{task_type}"
 
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT GET_LOCK(%s, 0) AS acquired", (lock_name,))
-        row = cursor.fetchone()
-        acquired = row is not None and row["acquired"] == 1
+    if exclusive:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT GET_LOCK(%s, 0) AS acquired", (lock_name,))
+            row = cursor.fetchone()
+            acquired = row is not None and row["acquired"] == 1
 
-    if not acquired:
-        logger.info(f"Skipping {task_type} run: a previous run is still in progress.")
-        connection.close()
-        yield None
-        return
+        if not acquired:
+            logger.info(
+                f"Skipping {task_type} run: a previous run is still in progress."
+            )
+            connection.close()
+            yield None
+            return
 
     try:
         with connection.cursor() as cursor:
@@ -102,6 +110,7 @@ def track_task(
                 )
             connection.commit()
     finally:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+        if exclusive:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
         connection.close()
