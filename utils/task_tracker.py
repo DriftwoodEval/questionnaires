@@ -16,6 +16,38 @@ from loguru import logger
 from utils.custom_types import Config
 from utils.database import get_db
 
+# How long a non-exclusive task run may take before we assume the process
+# that owns it died without closing its row (kill -9, OOM, host crash).
+STALE_TASK_HOURS = 4
+
+
+def _clear_orphaned_rows(
+    connection, task_type: str, older_than_hours: int | None = None
+) -> None:
+    """Mark leftover 'running' rows for this task type as failed.
+
+    For exclusive tasks this runs right after acquiring the named lock,
+    which guarantees no other process is genuinely running this task type
+    (MySQL releases the lock when its owning connection dies), so any
+    'running' row left over is provably orphaned. For non-exclusive tasks
+    there's no lock to prove that, so we only sweep rows old enough that a
+    real run would have finished by now.
+    """
+    query = """
+        UPDATE emr_task
+        SET status = 'failed', completed_at = NOW(),
+            error = 'Orphaned: previous process died without closing this task'
+        WHERE type = %s AND status = 'running'
+    """
+    params: tuple = (task_type,)
+    if older_than_hours is not None:
+        query += " AND started_at < NOW() - INTERVAL %s HOUR"
+        params = (task_type, older_than_hours)
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+    connection.commit()
+
 
 class TaskHandle:
     def __init__(self, connection, task_id: int) -> None:
@@ -71,6 +103,10 @@ def track_task(
             connection.close()
             yield None
             return
+
+        _clear_orphaned_rows(connection, task_type)
+    else:
+        _clear_orphaned_rows(connection, task_type, older_than_hours=STALE_TASK_HOURS)
 
     try:
         with connection.cursor() as cursor:
