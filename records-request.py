@@ -5,6 +5,7 @@ from base64 import b64decode
 from datetime import date
 
 import pymupdf
+import typer
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
@@ -55,12 +56,15 @@ logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB"
 
 WAIT_TIMEOUT = 15  # seconds
 
+app = typer.Typer()
+
 
 def download_consent_forms(
     driver: WebDriver,
     client: ClientFromDB,
     school_contacts: dict[str, RecordsContact],
     config: Config,
+    dry_run: bool = False,
 ) -> bool:
     """Navigates to Docs & Forms and saves consent forms as PDFs."""
     creds = google_authenticate()
@@ -83,12 +87,20 @@ def download_consent_forms(
 
     receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
         save_document_as_pdf(
-            driver, "Receiving Consent to Release of Information", client, config
+            driver,
+            "Receiving Consent to Release of Information",
+            client,
+            config,
+            dry_run,
         )
     )
     sending_stream, sending_filename, sending_school, sending_drive_file = (
         save_document_as_pdf(
-            driver, "Sending Consent to Release of Information", client, config
+            driver,
+            "Sending Consent to Release of Information",
+            client,
+            config,
+            dry_run,
         )
     )
 
@@ -154,6 +166,16 @@ def download_consent_forms(
                 {"stream": fax_cover_stream, "filename": fax_cover_filename},
             )
 
+    if dry_run:
+        logger.info(
+            f"[DRY RUN] Would email {school_contact.email}: {message_text}\n"
+            f"Attachments: {[a['filename'] for a in attachments]}"
+        )
+        logger.info(
+            "[DRY RUN] Would move uploaded files to sent folder and mark record as requested."
+        )
+        return False
+
     send_gmail(
         message_text=message_text,
         subject=f"Re: Student: {client.firstName} {client.lastName}",
@@ -183,7 +205,7 @@ def download_consent_forms(
 
 
 def upload_pdf_from_driver(
-    driver: WebDriver, filename: str, folder_id: str
+    driver: WebDriver, filename: str, folder_id: str, dry_run: bool = False
 ) -> tuple[io.BytesIO, str, str, dict]:
     """Prints page as PDF (in memory) and uploads to Drive."""
     pdf_options = PrintOptions()
@@ -195,6 +217,10 @@ def upload_pdf_from_driver(
     pdf_stream = io.BytesIO(pdf_bytes)
 
     school = extract_school_district_name(pdf_stream)
+
+    if dry_run:
+        logger.info(f"[DRY RUN] Would upload {filename} to Drive folder {folder_id}")
+        return pdf_stream, filename, school, {}
 
     creds = google_authenticate()
 
@@ -252,7 +278,11 @@ def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
 
 
 def save_document_as_pdf(
-    driver: WebDriver, link_text: str, client: ClientFromDB, config: Config
+    driver: WebDriver,
+    link_text: str,
+    client: ClientFromDB,
+    config: Config,
+    dry_run: bool = False,
 ) -> tuple[io.BytesIO, str, str, dict]:
     """Helper function to find, print, and save a single document."""
     logger.info(f"Opening {link_text}...")
@@ -289,11 +319,11 @@ def save_document_as_pdf(
 
         logger.info(f"Saving {filename}...")
         stream, stream_name, school, drive_file = upload_pdf_from_driver(
-            driver, filename, config.records_folder_id
+            driver, filename, config.records_folder_id, dry_run
         )
 
     except Exception as e:
-        logger.error(f"Could not find or load document: {link_text}")
+        logger.error(f"Could not find or load document: {link_text} ({e})")
         raise Exception("docs not signed") from e
     finally:
         # Go back to the Docs & Forms list
@@ -360,7 +390,17 @@ def create_fax_cover_sheet(
         return None, None
 
 
-def main():
+@app.command()
+def main(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Go through matching and downloading without sending emails or saving to Drive.",
+    ),
+    client_filter: str = typer.Option(
+        None, "--client", help="Process only this client, by ID or full name"
+    ),
+):
     """Main function to run the automation script."""
     services, config = load_config()
 
@@ -368,6 +408,21 @@ def main():
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}
 
     clients_to_process = get_clients_needing_records(config)
+
+    if client_filter:
+        if client_filter.isdigit():
+            clients_to_process = [
+                c for c in clients_to_process if str(c.id) == client_filter
+            ]
+        else:
+            clients_to_process = [
+                c
+                for c in clients_to_process
+                if c.fullName.lower() == client_filter.lower()
+            ]
+        if not clients_to_process:
+            logger.critical(f"No client matching '{client_filter}' needs records.")
+            return
 
     if not clients_to_process:
         logger.critical("No clients found.")
@@ -414,7 +469,7 @@ def main():
                             raise Exception("docs not signed")
 
                         skipped = download_consent_forms(
-                            driver, client, school_contacts, config
+                            driver, client, school_contacts, config, dry_run
                         )
                         if not skipped:
                             new_success_count += 1
@@ -464,4 +519,4 @@ if __name__ == "__main__":
     log_host = load_local_settings().log_host
     network_sink = NetworkSink(log_host, 9999, app_name="records-request")
     logger.add(network_sink.write, format=json_log_format, enqueue=True)
-    main()
+    app()
