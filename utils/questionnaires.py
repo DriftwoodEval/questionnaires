@@ -496,14 +496,16 @@ def check_client_previous(
 def _resolve_wanted_diagnoses(asd_adhd: str | None) -> set[str]:
     """Convert a client's asdAdhd field to a set of diagnosis strings for rule matching."""
     if not asd_adhd:
-        return {"ASD", "ADHD"}
+        return {"ASD", "ADHD", "LD"}
     normalized = "ASD+ADHD" if asd_adhd == "Both" else asd_adhd
     diagnoses: set[str] = set()
     if "ASD" in normalized:
         diagnoses.add("ASD")
     if "ADHD" in normalized:
         diagnoses.add("ADHD")
-    return diagnoses or {"ASD", "ADHD"}
+    if "LD" in normalized:
+        diagnoses.add("LD")
+    return diagnoses or {"ASD", "ADHD", "LD"}
 
 
 def _resolve_applicable_rules(
@@ -530,12 +532,7 @@ def _resolve_applicable_rules(
     """
     wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
 
-    diagnosis_filtered = [
-        r
-        for r in rules
-        if (r["daeval"] == "DAEVAL" and r.get("diagnosis") is None)
-        or (r["daeval"] != "DAEVAL" and r.get("diagnosis") in wanted_diagnoses)
-    ]
+    diagnosis_filtered = [r for r in rules if r.get("diagnosis") in wanted_diagnoses]
 
     unsent_statuses = {"JUST_ADDED", "ARCHIVED"}
     active_sent_types = {
