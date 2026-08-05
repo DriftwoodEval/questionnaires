@@ -216,7 +216,9 @@ def find_form_link_for_session(
     session_started_at (the "Assigned" date is just when it was sent, not
     when the client actually filled it out).
     """
-    rows = driver.find_elements(By.XPATH, f"//a[text()='{link_text}']/ancestor::tr[1]")
+    rows = driver.find_elements(
+        By.XPATH, f"//a[normalize-space(text())='{link_text}']/ancestor::tr[1]"
+    )
     if not rows:
         raise NoSuchElementException(f"No form found with link text: {link_text}")
 

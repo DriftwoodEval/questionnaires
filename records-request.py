@@ -294,13 +294,13 @@ def save_document_as_pdf(
     drive_file = {}
 
     try:
-        docs_button = wait.until(
-            ec.element_to_be_clickable((By.LINK_TEXT, "Docs & Forms"))
-        )
-        docs_button.click()
-
+        # check_if_docs_signed already navigated into Docs & Forms (and, for
+        # the second document in a pair, driver.back() below lands us back on
+        # the same table), so no need to click into it again here.
         wait.until(
-            ec.presence_of_element_located((By.XPATH, f"//a[text()='{link_text}']"))
+            ec.presence_of_element_located(
+                (By.XPATH, f"//a[normalize-space(text())='{link_text}']")
+            )
         )
         document_link = find_form_link_for_session(
             driver, link_text, client.sessionStartedAt
