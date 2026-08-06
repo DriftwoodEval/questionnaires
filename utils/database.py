@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import pymysql.cursors
 from loguru import logger
 
+from utils.constants import TEST_NAMES_LOWER
 from utils.custom_types import (
     Appointment,
     ClientFromDB,
@@ -65,6 +66,9 @@ def get_previous_clients(
         for client_data in clients:
             try:
                 pydantic_client = ClientFromDB(**client_data)
+                if pydantic_client.fullName.lower() in TEST_NAMES_LOWER:
+                    logger.debug(f"Skipping test client {pydantic_client.fullName}")
+                    continue
                 prev_clients[pydantic_client.id] = pydantic_client
             except Exception:
                 logger.exception(
