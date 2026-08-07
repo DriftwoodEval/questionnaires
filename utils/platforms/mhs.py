@@ -353,10 +353,11 @@ def add_client_to_mhs(
             age_error = find_element(
                 driver,
                 By.ID,
-                "agerr",
+                "errorBanner",
             )
             age_error_style = age_error.get_attribute("style")
-            error = age_error_style != "display: none;"
+            visible = age_error_style != "display: none;"
+            error = visible and "does not match the age" in age_error.text.lower()
         except (
             NoSuchElementException,
             StaleElementReferenceException,
