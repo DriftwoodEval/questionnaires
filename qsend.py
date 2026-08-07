@@ -836,6 +836,15 @@ def main(
                     )
                     continue
 
+                if client.get("Previous Error") == "too young":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason=client["Previous Error"],
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
+
                 if isinstance(questionnaires_needed, str):
                     logger.error(
                         f"{client['Client Name']} has unknown questionnaire needs"
