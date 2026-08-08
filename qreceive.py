@@ -37,7 +37,6 @@ from utils.google import (
 )
 from utils.messages import build_q_message
 from utils.misc import check_distance, json_log_format, load_config
-from utils.openphone import InvalidPhoneNumberError, NotEnoughCreditsError, OpenPhone
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
     check_if_opened_portal,
@@ -53,6 +52,7 @@ from utils.questionnaires import (
     filter_inactive_and_not_pending,
     get_most_recent_not_done,
 )
+from utils.quo import InvalidPhoneNumberError, NotEnoughCreditsError, Quo
 from utils.selenium import (
     initialize_selenium,
 )
@@ -427,7 +427,7 @@ def main(
             )
             return
 
-        openphone = OpenPhone(config, services)
+        quo = Quo(config, services)
         rules = get_questionnaire_rules(config)
         eval_dates = get_most_recent_eval_appointment_dates(config)
         email_info: AdminEmailInfo = {
@@ -595,7 +595,7 @@ def main(
 
                                 if send_texts:
                                     try:
-                                        attempt_text = openphone.send_text(
+                                        attempt_text = quo.send_text(
                                             message, client.phoneNumber, mark_done=True
                                         )
 
@@ -639,7 +639,7 @@ def main(
                                             "Aborting all further message sends due to insufficient credits."
                                         )
                                         email_info["errors"].append(
-                                            "OpenPhone API needs more credits to send messages."
+                                            "Quo API needs more credits to send messages."
                                         )
                                         break
                                 elif dry_run:
@@ -717,7 +717,7 @@ def main(
                                 most_recent_q["reminded"] == 2
                                 and most_recent_q["sent"] is not None
                             ):
-                                has_replied = openphone.has_client_replied(
+                                has_replied = quo.has_client_replied(
                                     client.phoneNumber, since=most_recent_q["sent"]
                                 )
                                 if has_replied:
@@ -753,7 +753,7 @@ def main(
 
                             if send_texts:
                                 try:
-                                    attempt_text = openphone.send_text(
+                                    attempt_text = quo.send_text(
                                         message, client.phoneNumber, mark_done=True
                                     )
 
@@ -795,7 +795,7 @@ def main(
                                         "Aborting all further message sends due to insufficient credits."
                                     )
                                     email_info["errors"].append(
-                                        "OpenPhone API needs more credits to send messages."
+                                        "Quo API needs more credits to send messages."
                                     )
                                     break
                             elif dry_run:
@@ -845,7 +845,7 @@ def main(
                     )
                     if send_texts:
                         try:
-                            attempt_text = openphone.send_text(
+                            attempt_text = quo.send_text(
                                 referral_msg, client.phoneNumber, mark_done=True
                             )
                             if attempt_text and "id" in attempt_text:
@@ -878,7 +878,7 @@ def main(
                                 "Aborting referral messages due to insufficient credits."
                             )
                             email_info["errors"].append(
-                                "OpenPhone API needs more credits to send messages."
+                                "Quo API needs more credits to send messages."
                             )
                             break
                     elif dry_run:
@@ -892,7 +892,7 @@ def main(
 
             for client, message_id, failure_reason in messages_sent:
                 try:
-                    delivered = openphone.check_text_delivered(message_id)
+                    delivered = quo.check_text_delivered(message_id)
 
                     if delivered:
                         logger.success(
@@ -969,7 +969,7 @@ def main(
             )
             for client, message_id in referral_messages_sent:
                 try:
-                    delivered = openphone.check_text_delivered(message_id)
+                    delivered = quo.check_text_delivered(message_id)
                     if delivered:
                         logger.success(
                             f"Delivered referral msg to {client.fullName} ({message_id})"

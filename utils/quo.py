@@ -14,7 +14,7 @@ from tenacity import (
 
 from utils.custom_types import Config, Services
 
-API_BASE = "https://api.openphone.com/v1/"
+API_BASE = "https://api.quo.com/v1/"
 RATE_LIMIT_CALLS = 10
 RATE_LIMIT_PERIOD = 1
 
@@ -75,8 +75,8 @@ def is_transient_error(exception: Exception) -> bool:
     return isinstance(exception, (requests.ConnectionError, RateLimitException))
 
 
-class OpenPhone:
-    """Custom class for interacting with the OpenPhone API."""
+class Quo:
+    """Custom class for interacting with the Quo API."""
 
     def __init__(self, config: Config, services: Services):
         self.config = config
@@ -92,12 +92,12 @@ class OpenPhone:
         )
 
     def _resolve_user_id(self, config_name: str, users: dict) -> str | None:
-        """Matches config name to OpenPhone user ID by first name."""
+        """Matches config name to Quo user ID by first name."""
         target_name = config_name.lower()
         for name, user in users.items():
             if name.lower().split()[0] == target_name:
                 return user.id
-        logger.error(f"User '{config_name} not found in OpenPhone. Using number owner.")
+        logger.error(f"User '{config_name} not found in Quo. Using number owner.")
         return None
 
     _retry_network = retry(
@@ -153,7 +153,7 @@ class OpenPhone:
     @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
     @_retry_network
     def _fetch_phone_number_id(self) -> str | None:
-        """Fetch the OpenPhone phone number ID for the main number."""
+        """Fetch the Quo phone number ID for the main number."""
         url = f"{API_BASE}phone-numbers"
         response = self.session.get(url)
         response.raise_for_status()
@@ -188,7 +188,7 @@ class OpenPhone:
             url = f"{API_BASE}messages"
             params: list[tuple[str, str]] = [
                 ("phoneNumberId", phone_number_id),
-                ("participants[]", clean_phone),
+                ("participants", clean_phone),
                 ("direction", "incoming"),
                 ("maxResults", "25"),
             ]
@@ -277,7 +277,7 @@ class OpenPhone:
                 raise NotEnoughCreditsError
 
             if response.status_code == 400:
-                logger.error(f"Bad Request to OpenPhone: {response.text}")
+                logger.error(f"Bad Request to Quo: {response.text}")
 
             response.raise_for_status()
             return response.json().get("data")

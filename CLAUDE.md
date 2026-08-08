@@ -14,7 +14,7 @@ Automation for Driftwood Evaluation Center's client questionnaire workflow: send
 ### Entry-point scripts (repo root)
 Each is a standalone Typer/argparse CLI, independently invoked (`qreceive` is also independently containerized/cron-scheduled):
 - `qsend.py` - finds clients needing questionnaires (via the Google Sheets "prioritization list"), logs into each third-party platform, sends/generates the links.
-- `qreceive.py` - checks in-progress questionnaires for completion, sends reminders via OpenPhone/Quo, syncs status back to the prioritization list and DB, emails admins a summary.
+- `qreceive.py` - checks in-progress questionnaires for completion, sends reminders via Quo, syncs status back to the prioritization list and DB, emails admins a summary.
 - `piecework.py` - computes evaluator billing from completed reports and the punch list, writes Excel to `piecework_output/`, uploads to Drive.
 - `records-request.py` - automates downloading/requesting external records.
 - `log-server.py` - plain TCP socket server; other scripts' loggers stream to it (`NetworkSink` in `utils/misc.py`), landing in per-app files under `logs/remote_<app>.log` on the remote server.

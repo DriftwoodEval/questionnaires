@@ -2,7 +2,7 @@ import pytest
 import requests
 from ratelimit import RateLimitException
 
-from utils.openphone import is_transient_error, should_continue_polling
+from utils.quo import is_transient_error, should_continue_polling
 
 
 class TestShouldContinuePolling:
