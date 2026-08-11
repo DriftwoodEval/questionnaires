@@ -17,6 +17,7 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.common.selenium_manager import SeleniumManager
 from selenium.webdriver.remote.remote_connection import RemoteConnection
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
@@ -50,12 +51,28 @@ def initialize_selenium() -> WebDriver:
             "safebrowsing.enabled": True,
         },
     )
+    # A chromedriver on PATH (e.g. from an unrelated global npm install) can
+    # be an incompatible version for whatever Chrome build Selenium Manager
+    # picks, which fails session creation with SessionNotCreatedException.
+    # --skip-driver-in-path forces Selenium Manager to always resolve (and
+    # download if needed) a chromedriver matching the selected browser,
+    # instead of preferring whatever happens to already be on PATH. Setting
+    # the driver path directly on the Service skips Selenium Manager's own
+    # browser lookup too, so the browser path has to be passed through
+    # explicitly as well or Chrome won't be found.
+    binary_paths = SeleniumManager().binary_paths(
+        ["--browser", "chrome", "--skip-driver-in-path"]
+    )
+    chrome_options.binary_location = binary_paths["browser_path"]
     # Starts chromedriver as its own process group leader (rather than
     # inheriting ours) so restart_selenium can kill the whole group -
     # chromedriver plus the Chrome browser and renderer processes it spawns
     # - in one shot instead of just chromedriver, which would otherwise
     # orphan Chrome to keep running (and accumulating across restarts).
-    service = ChromeService(popen_kw={"start_new_session": True})
+    service = ChromeService(
+        executable_path=binary_paths["driver_path"],
+        popen_kw={"start_new_session": True},
+    )
     driver = webdriver.Chrome(options=chrome_options, service=service)
     driver.implicitly_wait(5)
     # Selenium's HTTP connection to chromedriver has no socket timeout by

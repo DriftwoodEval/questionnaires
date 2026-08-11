@@ -293,9 +293,24 @@ def send_message_ta(
     driver.get(client_url)
 
     logger.debug("Accessing Messages section")
-    click_element(
-        driver, By.XPATH, "//a[contains(normalize-space(text()), 'Messages')]"
-    )
+    messages_tab_attempts = 3
+    for attempt in range(messages_tab_attempts):
+        try:
+            click_element(
+                driver, By.XPATH, "//a[contains(normalize-space(text()), 'Messages')]"
+            )
+            break
+        except TimeoutException:
+            if attempt == messages_tab_attempts - 1:
+                raise
+            # click_element already retries against the same DOM without
+            # reloading, so if that's still timing out the page itself
+            # likely never finished loading. Re-navigating gives it a fresh
+            # chance instead of repeatedly polling a stuck page.
+            logger.warning(
+                f"Timed out finding Messages tab, reloading and retrying ({attempt + 1}/{messages_tab_attempts})."
+            )
+            driver.get(client_url)
 
     logger.debug("Initiating new message")
     click_element(
