@@ -150,5 +150,7 @@ piecework_output/*
 *.yaml
 *.yml
 !.lefthook.yml
+!.github/workflows/*.yaml
+!.github/workflows/*.yml
 *.csv
 *.txt
