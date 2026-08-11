@@ -13,11 +13,13 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
+from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Services
 from utils.selenium import (
     click_element,
     find_element,
 )
+from utils.timezone import business_to_utc
 
 
 def login_ta(
@@ -237,9 +239,14 @@ def find_form_link_for_session(
         date_str, time_str = match.groups()
         year_fmt = "%y" if len(date_str.rsplit("/", maxsplit=1)[-1]) == 2 else "%Y"
         try:
-            completed_at = datetime.strptime(
+            # TherapyAppointment renders this timestamp in business-local
+            # time; session_started_at (from the DB) is a true UTC instant.
+            completed_at_business = datetime.strptime(
                 f"{date_str} {time_str}", f"%m/%d/{year_fmt} %I:%M %p"
             )
+            completed_at = business_to_utc(
+                completed_at_business, BUSINESS_TIMEZONE
+            ).replace(tzinfo=None)
         except ValueError:
             continue
         if completed_at >= session_started_at:

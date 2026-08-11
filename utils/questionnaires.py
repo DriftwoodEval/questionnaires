@@ -19,6 +19,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
+from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import (
     ClientFromDB,
     ClientWithQuestionnaires,
@@ -36,6 +37,7 @@ from utils.selenium import (
     wait_for_page_load,
     wait_for_url_stability,
 )
+from utils.timezone import business_date_to_utc
 
 MAX_WORKERS = 5
 
@@ -54,7 +56,9 @@ def _in_current_session(client: ClientWithQuestionnaires, q: Questionnaire) -> b
     if not q_date:
         return True
     if isinstance(q_date, date) and not isinstance(q_date, datetime):
-        q_date = datetime.combine(q_date, datetime.min.time())
+        # sent is a business-local calendar date (no time component);
+        # sessionStartedAt is a true UTC instant, so convert to compare.
+        q_date = business_date_to_utc(q_date, BUSINESS_TIMEZONE).replace(tzinfo=None)
     return q_date >= client.sessionStartedAt
 
 

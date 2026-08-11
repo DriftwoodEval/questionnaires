@@ -13,6 +13,7 @@ from tenacity import (
 )
 
 from utils.custom_types import Config, Services
+from utils.timezone import business_date_to_utc
 
 API_BASE = "https://api.quo.com/v1/"
 RATE_LIMIT_CALLS = 10
@@ -192,21 +193,22 @@ class Quo:
                 ("direction", "incoming"),
                 ("maxResults", "25"),
             ]
-            if since is not None:
-                since_dt = datetime.combine(since, datetime.min.time()).replace(
-                    tzinfo=UTC
-                )
+            since_dt = (
+                business_date_to_utc(since, self.config.business_timezone)
+                if since is not None
+                else None
+            )
+            if since_dt is not None:
                 params.append(("createdAfter", since_dt.isoformat()))
 
             response = self.session.get(url, params=params)
             response.raise_for_status()
             data = response.json().get("data", [])
 
-            if since is None:
+            if since_dt is None:
                 return len(data) > 0
 
             # Client-side filter as a fallback in case the API ignores createdAfter
-            since_dt = datetime.combine(since, datetime.min.time()).replace(tzinfo=UTC)
             for msg in data:
                 created_at = msg.get("createdAt") or msg.get("createdAtMs")
                 if created_at is None:

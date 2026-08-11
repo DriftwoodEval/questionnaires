@@ -23,6 +23,9 @@ Each is a standalone Typer/argparse CLI, independently invoked (`qreceive` is al
 - Real config (DB connection, per-service credentials, business rules like questionnaire batteries) comes from the remote API at startup and is validated against `FullConfig` - don't hardcode business rules that likely belong there.
 - Each script logs to stdout, a local rotating file in `logs/`, and (for `qsend`/`piecework`) to `NetworkSink`. Use `NOTICE` for client-state skips, `ERROR` for real program/data issues.
 
+### Timezone handling
+This repo shares the `../winnonah` MySQL DB. `emr_appointment.startTime`/`endTime`, `sessionStartedAt`, and similar timestamp columns are genuine UTC instants; date-only columns (`sent`, `failedDate`, `dob`, etc.) are business-local calendar dates with no time component. Never combine a date-only value with midnight and compare it against a UTC instant without converting: use `utils/timezone.py`'s `business_to_utc`/`business_date_to_utc` (naive business-local → UTC), `utc_to_business` (UTC → naive business-local), and `now_utc`/`now_business` for "now" in either domain. The practice's timezone is `config.business_timezone` (from `load_config()`) where a `Config` is in scope, otherwise the `BUSINESS_TIMEZONE` fallback constant in `utils/constants.py` - both are kept in sync with `BUSINESS_TIMEZONE` in `../winnonah` (`src/lib/constants.ts`, `python/utils/constants.py`). Never hardcode a timezone string or rely on the container's ambient `TZ` env var for correctness.
+
 ## Restrictions
 - Never read git-ignored files (via any tool, including grep/rg/cat) - treat them as off-limits.
 - Never query or output sensitive data (PII, credentials, patient records) from the DB or API, even for debugging.

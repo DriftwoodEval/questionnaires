@@ -1,6 +1,6 @@
 import re
 import sys
-from datetime import date, datetime
+from datetime import datetime
 from time import sleep, strftime, strptime
 
 import pandas as pd
@@ -15,6 +15,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 
+from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Config, Services
 from utils.database import (
     get_most_recent_eval_appointment_dates,
@@ -71,6 +72,7 @@ from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
+from utils.timezone import now_business
 
 app = typer.Typer()
 
@@ -399,7 +401,10 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     sleep(0.5)
     gender = gender_element.text.split(" ")[0]
 
-    age = relativedelta(datetime.now(), datetime.strptime(birthdate, "%Y/%m/%d")).years
+    age = relativedelta(
+        now_business(BUSINESS_TIMEZONE).replace(tzinfo=None),
+        datetime.strptime(birthdate, "%Y/%m/%d"),
+    ).years
     logger.success("Returned client data")
     return {
         "firstname": firstname,
@@ -629,7 +634,7 @@ def main(
                     logger.error(f"Login failed, trying again: {e}")
                     sleep(1)
 
-        today = date.today()
+        today = now_business(config.business_timezone).date()
         today_str = today.strftime("%Y-%m-%d")
 
         total_clients = len(clients)
@@ -707,7 +712,8 @@ def main(
                 client["Date of Birth"] = client_from_db.dob.strftime("%Y/%m/%d")
                 eval_date = eval_dates.get(client_from_db.id)
                 client["Age"] = relativedelta(
-                    eval_date or datetime.now(), client_from_db.dob
+                    eval_date or now_business(config.business_timezone).date(),
+                    client_from_db.dob,
                 ).years
                 client["Gender"] = client_from_db.gender
                 client["Phone Number"] = client_from_db.phoneNumber

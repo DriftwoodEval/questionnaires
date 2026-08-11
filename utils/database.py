@@ -29,6 +29,7 @@ def get_db(config: Config):
         password=db_url.password or "",
         database=db_url.path[1:],
         cursorclass=pymysql.cursors.DictCursor,
+        init_command="SET time_zone = '+00:00'",
     )
 
 

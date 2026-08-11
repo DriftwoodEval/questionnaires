@@ -2,7 +2,6 @@ import io
 import re
 import sys
 from base64 import b64decode
-from datetime import date
 
 import pymupdf
 import typer
@@ -45,6 +44,7 @@ from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
+from utils.timezone import now_business
 
 logger.remove()
 logger.add(
@@ -199,7 +199,9 @@ def download_consent_forms(
         logger.exception("Error moving files to sent folder")
         return False
 
-    update_external_record_in_db(config, client.id, date.today())
+    update_external_record_in_db(
+        config, client.id, now_business(config.business_timezone).date()
+    )
 
     return False
 
@@ -439,7 +441,7 @@ def main(
             )
             return
 
-        today = date.today()
+        today = now_business(config.business_timezone).date()
         new_success_count = 0
         new_failure_count = 0
         total_clients = len(clients_to_process)

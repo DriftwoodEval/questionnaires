@@ -59,6 +59,19 @@ class TestInCurrentSession:
         q["updatedAt"] = date(2024, 1, 1)
         assert _in_current_session(client, q) is False
 
+    def test_converts_business_local_calendar_date_before_comparing(
+        self, client_factory, questionnaire_factory
+    ):
+        # session_started_at is a true UTC instant: 2024-06-01 22:00 EDT
+        # (business-local), i.e. 2024-06-02 02:00 UTC. sent is the business
+        # calendar date June 2, which is 2024-06-02 04:00 UTC (EDT). Naively
+        # comparing sent's midnight (00:00) against session_started_at
+        # (02:00 UTC) would wrongly exclude it; converting sent to its
+        # correct UTC instant (04:00) correctly includes it.
+        client = client_factory(session_started_at=datetime(2024, 6, 2, 2, 0))
+        q = questionnaire_factory(sent=date(2024, 6, 2))
+        assert _in_current_session(client, q) is True
+
 
 class TestAllQuestionnairesDone:
     def test_all_completed(self, client_factory, questionnaire_factory):

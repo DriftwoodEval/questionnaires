@@ -57,6 +57,7 @@ from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
+from utils.timezone import now_business
 
 logger.remove()
 logger.add(
@@ -393,10 +394,13 @@ def main(
             logger.info(f"  client {cid}: {col} = {val}")
         return
 
+    services, config = load_config()
+
     # qreceive is cron-run multiple times a day, but texts/admin emails should
-    # only go out once daily — the 1pm run is the designated send window.
-    # Other runs still check/update status, just without notifying anyone.
-    start_hour = datetime.now().hour
+    # only go out once daily — the 1pm business-local run is the designated
+    # send window. Other runs still check/update status, just without
+    # notifying anyone.
+    start_hour = now_business(config.business_timezone).hour
     is_send_time = start_hour == 13
     send_texts = (is_send_time or force_send) and not dry_run
 
@@ -406,14 +410,12 @@ def main(
         )
     if not is_send_time and not force_send and not dry_run:
         logger.info(
-            f"Current hour is {datetime.now().hour} — texts will not be sent outside the 1pm window. Use --force-send to override."
+            f"Current hour is {start_hour} — texts will not be sent outside the 1pm window. Use --force-send to override."
         )
     if force_send:
         logger.warning("--force-send active — sending texts regardless of time.")
     if skip_failures:
         logger.warning("SKIP FAILURES - failure checks and reminders will be skipped.")
-
-    services, config = load_config()
 
     task_label = (
         "Questionnaire reminders"

@@ -12,6 +12,7 @@ import typer
 from loguru import logger
 from openpyxl.styles import Alignment, Font
 
+from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Appointment, Config
 from utils.database import (
     get_all_evaluators_info,
@@ -25,6 +26,7 @@ from utils.google import get_punch_list, upload_file_to_drive
 from utils.misc import NetworkSink, json_log_format, load_config, load_local_settings
 from utils.piecework import extract_writer_initials
 from utils.task_tracker import track_task
+from utils.timezone import now_business
 
 logger.remove()
 logger.add(
@@ -95,7 +97,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
         logger.debug(report_done)
 
         tracked_reports = load_tracked_reports(config)
-        today_str = date.today().strftime("%Y-%m-%d")
+        today_str = now_business(config.business_timezone).strftime("%Y-%m-%d")
 
         logger.info(f"Loaded report history: {len(tracked_reports)}")
 
@@ -250,7 +252,7 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
 
 def get_date_range() -> tuple[date, date] | None:
     """Prompt the user to select a date range (last week or week before)."""
-    today = date.today()
+    today = now_business(BUSINESS_TIMEZONE).date()
     days_since_last_sunday = (today.weekday() + 1) % 7
     most_recent_sunday = today - timedelta(days=days_since_last_sunday)
     last_full_week_sunday = most_recent_sunday - timedelta(days=7)

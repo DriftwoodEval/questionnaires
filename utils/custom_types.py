@@ -157,6 +157,7 @@ class Config(BaseModel):
     failed_sheet_id: str
     payroll_folder_id: str
     database_url: str
+    business_timezone: str = "America/New_York"
     excluded_ta: list[str]
     records_folder_id: str
     sent_records_folder_id: str

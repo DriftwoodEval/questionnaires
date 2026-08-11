@@ -18,7 +18,6 @@ COPY . .
 
 ENV CHROME_BIN=/usr/bin/chromium \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver \
-    TZ=America/New_York \
     PYTHONUNBUFFERED=1
 
 FROM base AS test
