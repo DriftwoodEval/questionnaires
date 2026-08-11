@@ -297,7 +297,7 @@ def send_message_ta(
     for attempt in range(messages_tab_attempts):
         try:
             click_element(
-                driver, By.XPATH, "//a[contains(normalize-space(text()), 'Messages')]"
+                driver, By.XPATH, "//a[contains(normalize-space(.), 'Messages')]"
             )
             break
         except TimeoutException:
