@@ -262,8 +262,8 @@ class TestResolveWantedDiagnoses:
     @pytest.mark.parametrize(
         ("asd_adhd", "expected"),
         [
-            (None, {"ASD", "ADHD"}),
-            ("", {"ASD", "ADHD"}),
+            (None, {"ASD", "ADHD", "LD"}),
+            ("", {"ASD", "ADHD", "LD"}),
             ("Both", {"ASD", "ADHD"}),
             ("ASD", {"ASD"}),
             ("ADHD", {"ADHD"}),

@@ -532,7 +532,11 @@ def _resolve_applicable_rules(
     """
     wanted_diagnoses = _resolve_wanted_diagnoses(client.asdAdhd)
 
-    diagnosis_filtered = [r for r in rules if r.get("diagnosis") in wanted_diagnoses]
+    diagnosis_filtered = [
+        r
+        for r in rules
+        if r.get("diagnosis") is None or r.get("diagnosis") in wanted_diagnoses
+    ]
 
     unsent_statuses = {"JUST_ADDED", "ARCHIVED"}
     active_sent_types = {
