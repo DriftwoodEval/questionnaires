@@ -5,7 +5,51 @@ from typing import cast
 import loguru
 import pytest
 
-from utils.misc import check_distance, json_log_format, stderr_log_format
+from utils.custom_types import Config
+from utils.misc import (
+    MAX_FAILURE_REASON_LENGTH,
+    add_failure,
+    check_distance,
+    json_log_format,
+    stderr_log_format,
+)
+
+
+class TestAddFailure:
+    @pytest.mark.parametrize(
+        ("error", "expected_length"),
+        [
+            ("short error", 11),
+            ("x" * 2000, MAX_FAILURE_REASON_LENGTH),
+        ],
+    )
+    def test_truncates_error_before_persisting(
+        self, monkeypatch, error, expected_length
+    ):
+        captured = {}
+
+        def fake_add_to_failure_sheet(_config, _client_id, error, *_args, **_kwargs):
+            captured["sheet_error"] = error
+
+        def fake_add_failure_to_db(_config, _client_id, error, *_args, **_kwargs):
+            captured["db_error"] = error
+
+        monkeypatch.setattr(
+            "utils.misc.add_to_failure_sheet", fake_add_to_failure_sheet
+        )
+        monkeypatch.setattr("utils.misc.add_failure_to_db", fake_add_failure_to_db)
+
+        add_failure(
+            config=cast("Config", None),
+            client_id=1,
+            error=error,
+            failed_date=date(2024, 1, 1),
+            full_name="Test Client",
+        )
+
+        assert len(captured["sheet_error"]) == expected_length
+        assert len(captured["db_error"]) == expected_length
+        assert captured["sheet_error"] == captured["db_error"]
 
 
 class TestCheckDistance:
