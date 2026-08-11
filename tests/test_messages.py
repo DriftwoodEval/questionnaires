@@ -41,7 +41,7 @@ class TestBuildQMessage:
         message = build_q_message(config, client, q, 0)
         assert message is not None
         assert "Jane" in message
-        assert "complete your questionnaire" in message
+        assert "complete your 1 questionnaire" in message
 
     @pytest.mark.parametrize(
         ("reminded", "distance", "expected_substring"),
@@ -84,7 +84,40 @@ class TestBuildQMessage:
         client = client_factory(questionnaires=[q1, q2])
         message = build_q_message(config, client, q1, 0)
         assert message is not None
-        assert "complete your questionnaires" in message
+        assert "complete your 2 questionnaires" in message
+
+    @pytest.mark.parametrize(
+        ("reminded", "distance", "q_count", "expected_substring"),
+        [
+            (0, 0, 1, "complete your 1 questionnaire"),
+            (0, 0, 2, "complete your 2 questionnaires"),
+            (1, 5, 1, "complete the 1 questionnaire"),
+            (1, 5, 2, "complete the 2 questionnaires"),
+            (2, 5, 1, "your 1 questionnaire is"),
+            (2, 5, 2, "your 2 questionnaires are"),
+        ],
+    )
+    def test_includes_unfinished_questionnaire_count(
+        self,
+        config_factory,
+        client_factory,
+        questionnaire_factory,
+        reminded,
+        distance,
+        q_count,
+        expected_substring,
+    ):
+        config = config_factory()
+        questionnaires = [
+            questionnaire_factory(
+                sent=date(2024, 1, 1), reminded=reminded, q_type=f"Q{i}"
+            )
+            for i in range(q_count)
+        ]
+        client = client_factory(questionnaires=questionnaires)
+        message = build_q_message(config, client, questionnaires[0], distance)
+        assert message is not None
+        assert expected_substring in message
 
     def test_postda_pending_alone_does_not_change_wording(
         self, config_factory, client_factory, questionnaire_factory
@@ -98,7 +131,7 @@ class TestBuildQMessage:
         message = build_q_message(config, client, q, 0)
         assert message is not None
         assert "finalize our review" not in message
-        assert "complete your questionnaire" in message
+        assert "complete your 1 questionnaire" in message
 
     def test_postda_and_posteval_pending_changes_wording(
         self, config_factory, client_factory, questionnaire_factory

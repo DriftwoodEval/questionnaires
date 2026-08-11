@@ -81,23 +81,23 @@ def build_q_message(
         0: (
             f"Hello, this is {config.name} from Driftwood Evaluation Center. "
             f"{'We are moving towards scheduling an appointment. The next step is ' if not is_posteval else ('In order to finalize our review, ' if is_postda else 'In order to provide you with a comprehensive report, ')}"
-            f"we need you to complete your {q_s_en}. You can find {it_them_en} in the messages tab "
+            f"we need you to complete your {link_count} {q_s_en}. You can find {it_them_en} in the messages tab "
             f"in our patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
         ),
         1: (
             f"Hello, this is {config.name} with Driftwood Evaluation Center. "
-            f"We are waiting for you to complete the {q_s_en} sent to you {distance_phrase_en}. "
+            f"We are waiting for you to complete the {link_count} {q_s_en} sent to you {distance_phrase_en}. "
             f"{'We are unable to schedule your appointment' if not is_posteval else ('We are unable to finalize our review' if is_postda else 'We are unable to provide you with a comprehensive report')} until {it_they_en} {is_are_en} completed "
             f"in {its_their_en} entirety. You can find {it_them_en} in the messages tab in our "
             f"patient portal: {portal_link} Please reply to this text with any questions. "
             f"Thank you for your help."
         ),
         2: (
-            f"This is Driftwood Evaluation Center. If your {q_s_en} {is_are_en} not completed by "
+            f"This is Driftwood Evaluation Center. If your {link_count} {q_s_en} {is_are_en} not completed by "
             f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), "
             f"we will {'close out your referral' if not is_posteval else ('be unable to move forward' if is_postda else 'provide you with an incomplete report')}. Reply to this text with any concerns. You can find the "
-            f"{q_s_en} in the messages tab in our patient portal: {portal_link}"
+            f"{link_count} {q_s_en} in the messages tab in our patient portal: {portal_link}"
         ),
     }
 
@@ -105,19 +105,19 @@ def build_q_message(
         0: (
             f"Hola, es {config.name} de Driftwood Evaluation Center. ¡Estamos listos para "
             f"programar su cita! Para poder programar su cita, necesitamos que complete {su_sus_es} "
-            f"{q_s_es}. {sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com. "
+            f"{link_count} {q_s_es}. {sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com. "
             f"Por favor, responda a este mensaje con cualquier pregunta. Gracias."
         ),
         1: (
             f"Hola, es {config.name} de Driftwood Evaluation Center. Estamos esperando que "
-            f"complete {su_sus_es} {q_s_es} enviado{sent_s_es} {distance_phrase_es}. "
+            f"complete {su_sus_es} {link_count} {q_s_es} enviado{sent_s_es} {distance_phrase_es}. "
             f"No podemos programar su cita hasta que {lo_los_es} {esta_estan_es} "
             f"completo{complete_s_es} en {su_sus_es} totalidad. {sent_it_them_es} a su correo electrónico "
             f"desde una dirección DriftwoodEval.com. Por favor, responda a este mensaje con "
             f"cualquier pregunta. Gracias."
         ),
         2: (
-            f"Es Driftwood Evaluation Center. Si {su_sus_es} {q_s_es} no {esta_estan_es} "
+            f"Es Driftwood Evaluation Center. Si {su_sus_es} {link_count} {q_s_es} no {esta_estan_es} "
             f"completo{complete_s_es} antes de "
             f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (en 3 días), "
             f"cerraremos su remisión. Responda a este mensaje con cualquier inquietud. "
