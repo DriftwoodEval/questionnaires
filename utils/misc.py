@@ -163,6 +163,13 @@ class NetworkSink:
                     self.sock.sendall(f"{self.app_name}:\n".encode())
 
 
+# emr_failure.reason is part of a composite primary key (clientId, reason),
+# capping it at 767 chars. Exception messages (e.g. Selenium's TimeoutException,
+# which appends a full Stacktrace) can run far longer than that, so they need
+# truncating before they're used as the reason, or the DB insert fails outright.
+MAX_FAILURE_REASON_LENGTH = 767
+
+
 def add_failure(
     config: Config,
     client_id: int,
@@ -177,6 +184,8 @@ def add_failure(
     questionnaires_generated: list[dict[str, str]] | None = None,
 ) -> None:
     """Add a client to the failure sheet and database."""
+    error = error[:MAX_FAILURE_REASON_LENGTH]
+
     logger.debug(
         f"Failure information: {client_id}, {error}, {failed_date}, {full_name}, {asd_adhd}, {daeval}, {questionnaires_needed}, {questionnaires_generated}"
     )
