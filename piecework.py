@@ -40,7 +40,34 @@ logger.add("logs/piecework.log", format=json_log_format, rotation="500 MB")
 app = typer.Typer()
 
 
-def get_report_clients(config: Config) -> pd.DataFrame | None:
+def force_clients_ready(
+    punch_list: pd.DataFrame, client_ids: list[int]
+) -> pd.DataFrame:
+    """Override the billing/review columns on existing punch list rows so the
+    given clients read as billed and ready for report payment, leaving every
+    other column (name, evaluator, assigned writer, etc.) untouched. For
+    testing without editing the real sheet."""
+    punch_list = punch_list.copy()
+    target_ids = {str(cid) for cid in client_ids}
+    mask = punch_list["Client ID"].isin(target_ids)
+
+    missing = target_ids - set(punch_list.loc[mask, "Client ID"])
+    if missing:
+        logger.warning(
+            f"Client ID(s) not found in punch list, skipping: {', '.join(sorted(missing))}"
+        )
+
+    punch_list.loc[mask, "Billed?"] = "TRUE"
+    punch_list.loc[mask, "AJP Review Done/Hold for payroll"] = ""
+    punch_list.loc[mask, "MCS Review Needed"] = "FALSE"
+
+    logger.info(f"Forced {int(mask.sum())} client(s) to read as ready for payment")
+    return punch_list
+
+
+def get_report_clients(
+    config: Config, force_ready_client_ids: list[int] | None = None
+) -> pd.DataFrame | None:
     """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
     while True:
         punch_list = get_punch_list(config)
@@ -48,6 +75,9 @@ def get_report_clients(config: Config) -> pd.DataFrame | None:
         if punch_list is None:
             logger.critical("Punch list is empty")
             return None
+
+        if force_ready_client_ids:
+            punch_list = force_clients_ready(punch_list, force_ready_client_ids)
 
         billed_pending = punch_list[
             (punch_list["MCS Review Needed"] == "TRUE")
@@ -629,9 +659,24 @@ def main(
         "--dev",
         help="Run in dev mode (do not upload to Google Drive)",
     ),
+    force_ready_clients: str = typer.Option(
+        "",
+        "--force-ready-clients",
+        help=(
+            "Comma-separated client IDs to force through as billed and ready "
+            "for report payment, overriding just the billing/review columns "
+            "on their existing punch list rows (name, evaluator, assigned "
+            "writer, etc. are left as-is). For testing without editing the "
+            "real sheet."
+        ),
+    ),
 ):
     """Main function to run piecework."""
     dev_mode = dev
+    force_ready_client_ids = [
+        int(cid.strip()) for cid in force_ready_clients.split(",") if cid.strip()
+    ]
+
     _, config = load_config()
     date_range = get_date_range()
 
@@ -651,7 +696,9 @@ def main(
         appointments = []
 
     try:
-        report_clients = get_report_clients(config)
+        report_clients = get_report_clients(
+            config, force_ready_client_ids=force_ready_client_ids
+        )
     except Exception:
         logger.exception("Failed to fetch report clients.")
         report_clients = None
