@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import pymysql.cursors
 from loguru import logger
+from pymysql.constants import CLIENT
 
 from utils.constants import TEST_NAMES_LOWER
 from utils.custom_types import (
@@ -30,6 +31,11 @@ def get_db(config: Config):
         database=db_url.path[1:],
         cursorclass=pymysql.cursors.DictCursor,
         init_command="SET time_zone = '+00:00'",
+        # Without this, MySQL reports UPDATE rowcount as rows actually
+        # changed, not rows matched by WHERE -- a no-op UPDATE (new value
+        # equals the current value) reports 0, which looks identical to "no
+        # matching row" if calling code checks rowcount for existence.
+        client_flag=CLIENT.FOUND_ROWS,
     )
 
 
@@ -303,7 +309,16 @@ def save_new_tracked_reports(
             "INSERT IGNORE INTO emr_piecework_report_tracking (clientId, tracked_date) VALUES (%s, %s)",
             [(cid, tracked_date) for cid in client_ids],
         )
-    logger.info(f"Saved {len(client_ids)} new piecework tracking entries to DB")
+        affected = cursor.rowcount
+        db_connection.commit()
+    if affected < len(client_ids):
+        logger.warning(
+            f"Attempted {len(client_ids)} piecework tracking inserts, but only "
+            f"{affected} were actually saved. MySQL silently ignores rows on "
+            "INSERT IGNORE (e.g. a clientId not present in emr_clients), so the "
+            "rest never landed."
+        )
+    logger.info(f"Saved {affected} new piecework tracking entries to DB")
 
 
 def update_tracking_writer(config: Config, client_id: int, writer_email: str) -> None:
@@ -314,6 +329,13 @@ def update_tracking_writer(config: Config, client_id: int, writer_email: str) ->
             "UPDATE emr_piecework_report_tracking SET writer_email = %s WHERE clientId = %s",
             (writer_email, client_id),
         )
+        db_connection.commit()
+        if cursor.rowcount == 0:
+            logger.warning(
+                f"No piecework tracking row found for clientId {client_id}; "
+                "writer email was not set (the tracking row was likely never "
+                "inserted)"
+            )
 
 
 def get_appointments(
