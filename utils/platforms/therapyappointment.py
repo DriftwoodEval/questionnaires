@@ -316,7 +316,7 @@ def send_message_ta(
     click_element(
         driver,
         By.XPATH,
-        "//div[2]/section/div/a/span/span",
+        "//a[contains(normalize-space(.), 'New Message')]",
     )
     sleep(1)
 

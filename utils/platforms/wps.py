@@ -212,12 +212,12 @@ def gen_dp4(driver: WebDriver, config: Config, client: pd.Series) -> str:
         click_element(
             driver,
             By.XPATH,
-            "//button[h5[contains(text(), 'New Administration')]]",
+            "//button[h5[contains(text(), 'Add Forms')]]",
             timeout=15,
         )
     except (NoSuchElementException, TimeoutException, ElementClickInterceptedException):
         logger.error("Failed to create new administration. ")
-        input("Please click New Administration and press enter...")
+        input("Please click Add Forms and press enter...")
 
     logger.debug("Selecting test")
     click_element(
