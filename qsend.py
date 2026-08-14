@@ -563,6 +563,106 @@ def diagnose_client(config: Config, client_filter: str) -> None:
     rich_print()
 
 
+def check_client_ready(config: Config, services: Services, client_filter: str) -> None:
+    """Log into TherapyAppointment only and report what questionnaires a client would get.
+
+    Does not log into WPS, QGlobal, or MHS, and does not generate or send anything.
+    """
+    punch_list = get_punch_list(config)
+    if punch_list is None:
+        rich_print("[red]Punch list is empty[/red]")
+        return
+
+    punch_list["Client Name"] = (
+        punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
+    )
+
+    if client_filter.isdigit():
+        matches = punch_list[punch_list["Client ID"] == client_filter]
+    else:
+        matches = punch_list[
+            punch_list["Client Name"].str.lower() == client_filter.lower()
+        ]
+
+    if matches.empty:
+        rich_print(f"[red]'{client_filter}' not found in punch list at all[/red]")
+        return
+
+    client = matches.iloc[0].copy()
+
+    da_sent = client.get("DA Qs Sent") == "TRUE"
+    eval_sent = client.get("EVAL Qs Sent") == "TRUE"
+    da_unsent = client.get("DA Qs Needed") == "TRUE" and not da_sent
+    eval_unsent = client.get("EVAL Qs Needed") == "TRUE" and not eval_sent
+    if client["For"] == "ADHD":
+        client["daeval"] = "DA"
+    elif da_unsent and eval_unsent:
+        client["daeval"] = "DAEVAL"
+    elif eval_unsent:
+        client["daeval"] = "EVAL"
+    else:
+        client["daeval"] = "DA"
+
+    prev_clients, _ = get_previous_clients(config, failed=True)
+    client_from_db = prev_clients.get(int(client["Client ID"]))
+    if not client_from_db:
+        rich_print(
+            f"[red]{client['Client Name']} not found in DB, do they exist in TherapyAppointment?[/red]"
+        )
+        return
+
+    eval_dates = get_most_recent_eval_appointment_dates(config)
+    eval_date = eval_dates.get(client_from_db.id)
+    age = relativedelta(
+        eval_date or now_business(config.business_timezone).date(),
+        client_from_db.dob,
+    ).years
+
+    rich_print(
+        f"\n[bold]Checking readiness: {client['Client Name']} ({client['Client ID']})[/bold]"
+    )
+    rich_print(f"  Age: {age}, For: {client['For']}, DA/EVAL: {client['daeval']}")
+
+    if client_from_db.autismStop:
+        rich_print("  [red]autismStop is set[/red]")
+    if client_from_db.pause:
+        rich_print("  [red]pause is set[/red]")
+
+    driver = initialize_selenium()
+    try:
+        check_and_login_ta(driver, services, first_time=True)
+
+        if client["Language"] != "Spanish":
+            client_url = go_to_client(driver, services, client["Client ID"])
+            if not client_url:
+                rich_print("  [red]Client URL not found in TherapyAppointment[/red]")
+                return
+            opened_portal = check_if_opened_portal(driver)
+            docs_signed = check_if_docs_signed(driver)
+            rich_print(
+                f"  Portal opened: {'yes' if opened_portal else 'no'}, "
+                f"Docs signed: {'yes' if docs_signed else 'no'}"
+            )
+        else:
+            rich_print("  Spanish-speaking, portal/docs checks skipped")
+
+        questionnaire_rules = get_questionnaire_rules(config)
+        questionnaires_needed = get_questionnaires(
+            age, client["For"], client["daeval"], questionnaire_rules
+        )
+
+        if isinstance(questionnaires_needed, str):
+            rich_print(f"  [red]{questionnaires_needed}[/red]")
+        else:
+            rich_print(
+                f"  [green]Questionnaires needed: {questionnaires_needed}[/green]"
+            )
+    finally:
+        driver.quit()
+
+    rich_print()
+
+
 @app.command()
 def main(
     client_filter: str = typer.Option(
@@ -578,6 +678,14 @@ def main(
         None,
         "--debug-client",
         help="Diagnose why a client is being skipped (by ID or name)",
+    ),
+    check_ready_client: str = typer.Option(
+        None,
+        "--check-ready",
+        help=(
+            "Log into TherapyAppointment only and report what questionnaires a "
+            "client would get, without sending anything (by ID or name)"
+        ),
     ),
 ):
     """Main function for qsend.py.
@@ -601,6 +709,10 @@ def main(
 
     if debug_client:
         diagnose_client(config, debug_client)
+        return
+
+    if check_ready_client:
+        check_client_ready(config, services, check_ready_client)
         return
 
     driver = initialize_selenium()
