@@ -53,6 +53,7 @@ class TestBuildQMessage:
     )
     def test_reminder_wording_by_count_and_distance(
         self,
+        *,
         config_factory,
         client_factory,
         questionnaire_factory,

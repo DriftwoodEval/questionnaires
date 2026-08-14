@@ -59,6 +59,7 @@ def logged_in_qglobal(driver, real_config, qglobal_cleanup):  # noqa: ARG001
 @pytest.mark.parametrize("questionnaire", sorted(GEN_FUNCS))
 @pytest.mark.parametrize("state", ["new", "existing"])
 def test_gen_assessment(
+    *,
     logged_in_qglobal,
     real_config,
     fake_client_factory,

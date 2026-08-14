@@ -529,6 +529,7 @@ def generate_main_report(
     start_date: date,
     end_date: date,
     config: Config,
+    *,
     dev_mode: bool = False,
 ):
     """Generates a single Excel file with two sheets: Summary and Detail."""
@@ -607,6 +608,7 @@ def generate_individual_detail_reports(
     start_date: date,
     end_date: date,
     config: Config,
+    *,
     dev_mode: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
 ):
@@ -725,14 +727,19 @@ def main(
             return
 
         generate_main_report(
-            summary_data, combined_detail_data, start_date, end_date, config, dev_mode
+            summary_data,
+            combined_detail_data,
+            start_date,
+            end_date,
+            config,
+            dev_mode=dev_mode,
         )
         generate_individual_detail_reports(
             worker_details,
             start_date,
             end_date,
             config,
-            dev_mode,
+            dev_mode=dev_mode,
             progress_callback=task.progress,
         )
 

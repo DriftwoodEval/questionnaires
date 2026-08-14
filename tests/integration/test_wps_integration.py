@@ -34,6 +34,7 @@ def logged_in_wps(driver, real_config):
     ],
 )
 def test_gen_dp4(
+    *,
     logged_in_wps,
     real_config,
     fake_client_factory,

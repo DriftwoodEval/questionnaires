@@ -268,6 +268,7 @@ def assign_questionnaire(
     services: Services,
     client: pd.Series,
     questionnaire: str,
+    *,
     accounts_created: dict[str, bool],
 ) -> tuple[str, dict[str, bool]]:
     """Generate a questionnaire and assign it to a client."""
@@ -1004,7 +1005,7 @@ def main(
                             services,
                             client,
                             questionnaire,
-                            accounts_created,
+                            accounts_created=accounts_created,
                         )
 
                         if link is None or link == "":
@@ -1030,9 +1031,9 @@ def main(
                             config,
                             client["Client ID"],
                             link,
-                            questionnaire,
-                            today_str,
-                            "JUST_ADDED",
+                            qtype=questionnaire,
+                            sent_date=today_str,
+                            status="JUST_ADDED",
                         )
 
                     except Exception as e:
@@ -1061,9 +1062,9 @@ def main(
                         client["Date of Birth"],
                         client["TA First Name"],
                         client["TA Last Name"],
-                        client["For"],
-                        client["Gender"],
-                        client["Phone Number"],
+                        asd_adhd=client["For"],
+                        gender=client["Gender"],
+                        phone_number=client["Phone Number"],
                     )
                     daeval = client["daeval"]
                     client_id = client["Client ID"]

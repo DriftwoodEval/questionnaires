@@ -470,6 +470,7 @@ def _gen_basc(
     config: Config,
     client: pd.Series,
     variant: str,
+    *,
     just_created: bool = False,
 ) -> str:
     """Generate and return a link for one variant of the BASC questionnaire in QGlobal."""
@@ -501,7 +502,9 @@ def gen_basc_preschool(
     just_created: bool = False,
 ) -> str:
     """Generates a BASC Preschool assessment for the given client and returns the link."""
-    return _gen_basc(driver, services, config, client, "Preschool", just_created)
+    return _gen_basc(
+        driver, services, config, client, "Preschool", just_created=just_created
+    )
 
 
 def gen_basc_child(
@@ -512,7 +515,9 @@ def gen_basc_child(
     just_created: bool = False,
 ) -> str:
     """Generates a BASC Child assessment for the given client and returns the link."""
-    return _gen_basc(driver, services, config, client, "Child", just_created)
+    return _gen_basc(
+        driver, services, config, client, "Child", just_created=just_created
+    )
 
 
 def gen_basc_adolescent(
@@ -523,7 +528,9 @@ def gen_basc_adolescent(
     just_created: bool = False,
 ) -> str:
     """Generates a BASC Adolescent assessment for the given client and returns the link."""
-    return _gen_basc(driver, services, config, client, "Adolescent", just_created)
+    return _gen_basc(
+        driver, services, config, client, "Adolescent", just_created=just_created
+    )
 
 
 @with_qglobal_recovery()

@@ -70,6 +70,7 @@ def mhs_existing_client(
 
 @pytest.mark.parametrize("questionnaire", sorted(GEN_FUNCS))
 def test_gen_new_client(
+    *,
     logged_in_mhs,
     real_config,
     fake_client_factory,
@@ -91,6 +92,7 @@ def test_gen_new_client(
 
 @pytest.mark.parametrize("questionnaire", sorted(GEN_FUNCS))
 def test_gen_existing_client(
+    *,
     logged_in_mhs,
     real_config,
     mhs_existing_client,

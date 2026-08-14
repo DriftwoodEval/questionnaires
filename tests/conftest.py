@@ -12,6 +12,7 @@ from utils.custom_types import (
 
 
 def make_questionnaire(
+    *,
     q_type: str = "ASRS (6-18 Years)",
     status: QuestionnaireStatus = "PENDING",
     sent: date | None = None,
@@ -32,6 +33,7 @@ def make_questionnaire(
 
 
 def make_client(
+    *,
     client_id: int = 1,
     dob: date = date(2015, 1, 1),
     status: bool = True,

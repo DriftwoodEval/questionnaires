@@ -205,6 +205,7 @@ def click_element(
     driver: WebDriver,
     by: str,
     locator: str,
+    *,
     max_attempts: int = 3,
     timeout: int = 5,
     refresh: bool = False,
