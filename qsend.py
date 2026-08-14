@@ -188,7 +188,7 @@ def get_questionnaires(
     """Get the list of questionnaires to send to a client based on age, appointment type, and prospective diagnosis.
 
     Uses rules loaded from the database. Returns a list of questionnaire names or a
-    string indicating the client is too young or an unknown case.
+    string indicating the client is too young, too old, or an unknown case.
     """
     if check == "ADHD+LD":
         check = "ADHD"
@@ -196,15 +196,18 @@ def get_questionnaires(
         check = "ASD"
 
     def _lookup(daeval_key: str, diagnosis_key: str | None) -> list[str] | str:
-        matches = [
+        candidates = [
             r
             for r in rules
-            if r["daeval"] == daeval_key
-            and r["diagnosis"] == diagnosis_key
-            and r["minAge"] <= age <= r["maxAge"]
+            if r["daeval"] == daeval_key and r["diagnosis"] == diagnosis_key
         ]
+        matches = [r for r in candidates if r["minAge"] <= age <= r["maxAge"]]
         if not matches:
-            return "Too young"
+            if not candidates:
+                return "Unknown"
+            if age < min(r["minAge"] for r in candidates):
+                return "Too young"
+            return "Too old"
         # If multiple rules overlap (shouldn't happen but be safe), union them
         result: list[str] = []
         for m in matches:
@@ -219,8 +222,8 @@ def get_questionnaires(
     if daeval == "DA":
         if check == "ASD+ADHD":
             asd = _lookup("DA", "ASD")
-            if asd == "Too young":
-                return "Too young"
+            if isinstance(asd, str):
+                return asd
             adhd = _lookup("DA", "ADHD")
             if isinstance(adhd, str):
                 return asd
@@ -230,8 +233,8 @@ def get_questionnaires(
     if daeval == "EVAL":
         if check == "ASD+ADHD":
             asd = _lookup("EVAL", "ASD")
-            if asd == "Too young":
-                return "Too young"
+            if isinstance(asd, str):
+                return asd
             adhd = _lookup("EVAL", "ADHD")
             if isinstance(adhd, str):
                 return asd
@@ -516,6 +519,7 @@ def diagnose_client(config: Config, client_filter: str) -> None:
         ok("No blocking previous failures")
     elif error in [
         "too young",
+        "too old",
         "portal not opened",
         "docs not signed",
         "not in db",
@@ -847,6 +851,31 @@ def main(
                     continue
 
                 if client.get("Previous Error") == "too young":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason=client["Previous Error"],
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
+
+                if str(questionnaires_needed) == "Too old":
+                    logger.log(
+                        "NOTICE",
+                        f"{client['Client Name']} is too old (age {client['Age']})",
+                    )
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="too old",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
+
+                if client.get("Previous Error") == "too old":
                     update_failure_in_db(
                         config=config,
                         client_id=client["Client ID"],
