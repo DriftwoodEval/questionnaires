@@ -830,7 +830,10 @@ def main(
                 )
 
                 if str(questionnaires_needed) == "Too young":
-                    logger.log("NOTICE", f"{client['Client Name']} is too young")
+                    logger.log(
+                        "NOTICE",
+                        f"{client['Client Name']} is too young (age {client['Age']})",
+                    )
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
