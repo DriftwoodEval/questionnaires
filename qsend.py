@@ -190,6 +190,9 @@ def get_questionnaires(
     Uses rules loaded from the database. Returns a list of questionnaire names or a
     string indicating the client is too young, too old, or an unknown case.
     """
+    # DAEVAL rules are keyed on "ASD" or "LD" diagnoses (never "ADHD"), so DAEVAL
+    # lookups need the raw, un-squashed check to know whether LD applies.
+    raw_check = check
     if check == "ADHD+LD":
         check = "ADHD"
     if check == "ASD+LD":
@@ -217,7 +220,19 @@ def get_questionnaires(
         return result
 
     if daeval == "DAEVAL":
-        return _lookup("DAEVAL", None)
+        diagnoses = {"ASD", "LD"} & set(raw_check.split("+"))
+        if not diagnoses:
+            return "Unknown"
+        results = [_lookup("DAEVAL", d) for d in sorted(diagnoses)]
+        lists = [r for r in results if isinstance(r, list)]
+        if not lists:
+            return results[0]
+        combined: list[str] = []
+        for r in lists:
+            for q in r:
+                if q not in combined:
+                    combined.append(q)
+        return combined
 
     if daeval == "DA":
         if check == "ASD+ADHD":
