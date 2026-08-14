@@ -45,6 +45,7 @@ markers = [
   "mhs: integration tests that hit the real MHS site",
   "qglobal: integration tests that hit the real QGlobal site",
   "wps: integration tests that hit the real WPS site",
+  "ta: integration tests that hit the real TherapyAppointment site",
 ]
 
 [tool.coverage.run]

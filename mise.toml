@@ -48,6 +48,12 @@ raw_args = true
 env = { COVERAGE_FILE = ".coverage.integration" }
 run = "uv run pytest -s tests/integration -m 'integration and qglobal'"
 
+[tasks."test-integration:ta"]
+description = "Run TA integration tests only"
+raw_args = true
+env = { COVERAGE_FILE = ".coverage.integration" }
+run = "uv run pytest -s tests/integration -m 'integration and ta'"
+
 [tasks."test-integration:wps"]
 description = "Run WPS integration tests only"
 raw_args = true

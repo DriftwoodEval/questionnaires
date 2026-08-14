@@ -297,7 +297,9 @@ def send_message_ta(
     for attempt in range(messages_tab_attempts):
         try:
             click_element(
-                driver, By.XPATH, "//a[contains(normalize-space(.), 'Messages')]"
+                driver,
+                By.XPATH,
+                "//a[@role='tab' and contains(normalize-space(.), 'Messages')]",
             )
             break
         except TimeoutException:
@@ -313,10 +315,17 @@ def send_message_ta(
             driver.get(client_url)
 
     logger.debug("Initiating new message")
+    # The page renders this link twice - once in a "visible-sm visible-xs"
+    # mobile-only column and once in a "hidden-sm hidden-xs" desktop-only
+    # column - both with the same href. At our 1920x1080 window size only
+    # the desktop copy is actually displayed, but an unscoped locator
+    # matches the mobile copy first (it comes first in the DOM), which
+    # never becomes clickable and just times out.
     click_element(
         driver,
         By.XPATH,
-        "//a[contains(normalize-space(.), 'New Message')]",
+        "//div[contains(@class, 'hidden-sm') and contains(@class, 'hidden-xs')]"
+        "//a[contains(@href, 'createMessageThread')]",
     )
     sleep(1)
 
