@@ -843,3 +843,50 @@ def get_most_recent_failure(
     return max(
         unresolved_failures, key=lambda f: cast(date, f["failedDate"]), default=None
     )
+
+
+def get_reminder_settings(config: Config) -> dict:
+    """Load the questionnaire reminder cadence settings.
+
+    Returns a dict with stage2OffsetDays, stage3OffsetDays, escalationSilenceDays.
+    Falls back to the defaults baked into the schema if no row exists yet.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT stage2OffsetDays, stage3OffsetDays, escalationSilenceDays "
+            "FROM emr_questionnaire_reminder_settings LIMIT 1"
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return {
+            "stage2OffsetDays": 14,
+            "stage3OffsetDays": 7,
+            "escalationSilenceDays": 3,
+        }
+    return row
+
+
+def get_reminder_templates(config: Config) -> dict[tuple[int, str], str]:
+    """Load the global default reminder message per (reminderIndex, variant)."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT reminderIndex, variant, message FROM emr_questionnaire_reminder_template"
+        )
+        rows = cursor.fetchall()
+    return {(row["reminderIndex"], row["variant"]): row["message"] for row in rows}
+
+
+def get_reminder_overrides(config: Config) -> dict[tuple[int, date, int], str]:
+    """Load per-client, per-batch, per-stage reminder message overrides."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clientId, sent, reminderIndex, message FROM emr_questionnaire_reminder_override"
+        )
+        rows = cursor.fetchall()
+    return {
+        (row["clientId"], row["sent"], row["reminderIndex"]): row["message"]
+        for row in rows
+    }

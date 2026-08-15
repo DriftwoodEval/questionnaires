@@ -31,6 +31,8 @@ def is_potential_private_pay(client: ClientFromDB, has_matched_evaluator: bool) 
     )
     return no_insurance_on_file or not has_matched_evaluator
 
+PORTAL_LINK = "https://portal.therapyappointment.com"
+
 
 def format_ta_message(questionnaires: list[dict]) -> str:
     """Formats the message to be sent in TA."""
@@ -76,13 +78,97 @@ def build_referral_message(
     return message
 
 
-def build_q_message(
+# Default global reminder messages, seeded into emr_questionnaire_reminder_template
+# on migration and ported verbatim (in placeholder form) from the wording that used
+# to be hardcoded here. Keyed by (reminderIndex, variant), matching the DB table.
+DEFAULT_REMINDER_TEMPLATES: dict[tuple[int, str], str] = {
+    (0, "DEFAULT"): (
+        "Hello, this is $STAFF_NAME from Driftwood Evaluation Center. "
+        "We are moving towards scheduling an appointment. The next step is "
+        "we need you to complete your $QUESTIONNAIRE_WORD. You can find $IT_THEM "
+        "in the messages tab in our patient portal: $PORTAL_LINK Please reply to "
+        "this text with any questions. Thank you for your help."
+    ),
+    (0, "POSTDA"): (
+        "Hello, this is $STAFF_NAME from Driftwood Evaluation Center. "
+        "In order to finalize our review, we need you to complete your "
+        "$QUESTIONNAIRE_WORD. You can find $IT_THEM in the messages tab in our "
+        "patient portal: $PORTAL_LINK Please reply to this text with any "
+        "questions. Thank you for your help."
+    ),
+    (0, "POSTEVAL"): (
+        "Hello, this is $STAFF_NAME from Driftwood Evaluation Center. "
+        "In order to provide you with a comprehensive report, we need you to "
+        "complete your $QUESTIONNAIRE_WORD. You can find $IT_THEM in the "
+        "messages tab in our patient portal: $PORTAL_LINK Please reply to this "
+        "text with any questions. Thank you for your help."
+    ),
+    (1, "DEFAULT"): (
+        "Hello, this is $STAFF_NAME with Driftwood Evaluation Center. "
+        "We are waiting for you to complete the $QUESTIONNAIRE_WORD sent to you "
+        "$DISTANCE_PHRASE. We are unable to schedule your appointment until "
+        "$IT_THEY $IS_ARE completed in $ITS_THEIR entirety. You can find "
+        "$IT_THEM in the messages tab in our patient portal: $PORTAL_LINK "
+        "Please reply to this text with any questions. Thank you for your help."
+    ),
+    (1, "POSTDA"): (
+        "Hello, this is $STAFF_NAME with Driftwood Evaluation Center. "
+        "We are waiting for you to complete the $QUESTIONNAIRE_WORD sent to you "
+        "$DISTANCE_PHRASE. We are unable to finalize our review until $IT_THEY "
+        "$IS_ARE completed in $ITS_THEIR entirety. You can find $IT_THEM in the "
+        "messages tab in our patient portal: $PORTAL_LINK Please reply to this "
+        "text with any questions. Thank you for your help."
+    ),
+    (1, "POSTEVAL"): (
+        "Hello, this is $STAFF_NAME with Driftwood Evaluation Center. "
+        "We are waiting for you to complete the $QUESTIONNAIRE_WORD sent to you "
+        "$DISTANCE_PHRASE. We are unable to provide you with a comprehensive "
+        "report until $IT_THEY $IS_ARE completed in $ITS_THEIR entirety. You "
+        "can find $IT_THEM in the messages tab in our patient portal: "
+        "$PORTAL_LINK Please reply to this text with any questions. Thank you "
+        "for your help."
+    ),
+    (2, "DEFAULT"): (
+        "This is Driftwood Evaluation Center. If your $QUESTIONNAIRE_WORD "
+        "$IS_ARE not completed by $DEADLINE_DATE ($ESCALATION_DAYS days from "
+        "now), we will close out your referral. Reply to this text with any "
+        "concerns. You can find the $QUESTIONNAIRE_WORD in the messages tab in "
+        "our patient portal: $PORTAL_LINK"
+    ),
+    (2, "POSTDA"): (
+        "This is Driftwood Evaluation Center. If your $QUESTIONNAIRE_WORD "
+        "$IS_ARE not completed by $DEADLINE_DATE ($ESCALATION_DAYS days from "
+        "now), we will be unable to move forward. Reply to this text with any "
+        "concerns. You can find the $QUESTIONNAIRE_WORD in the messages tab in "
+        "our patient portal: $PORTAL_LINK"
+    ),
+    (2, "POSTEVAL"): (
+        "This is Driftwood Evaluation Center. If your $QUESTIONNAIRE_WORD "
+        "$IS_ARE not completed by $DEADLINE_DATE ($ESCALATION_DAYS days from "
+        "now), we will provide you with an incomplete report. Reply to this "
+        "text with any concerns. You can find the $QUESTIONNAIRE_WORD in the "
+        "messages tab in our patient portal: $PORTAL_LINK"
+    ),
+}
+
+
+def render_reminder_message(
+    templates: dict[tuple[int, str], str],
+    settings: dict,
     config: Config,
     client: ClientWithQuestionnaires,
+    *,
     most_recent_q: Questionnaire,
     distance: int,
+    override: str | None = None,
 ) -> str | None:
-    """Builds the message to be sent to the client based on their most recent questionnaire."""
+    """Renders the reminder message for a client's most recent pending questionnaire.
+
+    Picks the template for (reminded count, postda/posteval variant) unless an
+    `override` text is given for this client's batch/stage, then substitutes
+    $PLACEHOLDER tokens (in either the default template or the override) with
+    values computed for this client/batch.
+    """
     if not most_recent_q["sent"]:
         logger.warning(
             f"{client.fullName}'s {most_recent_q['questionnaireType']} has no sent date, cannot build message"
@@ -93,101 +179,59 @@ def build_q_message(
         [
             q
             for q in client.questionnaires
-            if q["status"]
-            in [
-                "PENDING",
-                #  "SPANISH"
-                "POSTDA_PENDING",
-                "POSTEVAL_PENDING",
-            ]
+            if q["status"] in ["PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"]
         ]
     )
-    # is_spanish = any(q["status"] == "SPANISH" for q in client.questionnaires)  # noqa: ERA001 maybe someday
-    is_spanish = False
+    completed_count = len(
+        [q for q in client.questionnaires if q["status"] == "COMPLETED"]
+    )
     is_postda = any(q["status"] == "POSTDA_PENDING" for q in client.questionnaires)
     is_posteval = any(q["status"] == "POSTEVAL_PENDING" for q in client.questionnaires)
-    portal_link = "https://portal.therapyappointment.com"
+
+    if is_posteval and is_postda:
+        variant = "POSTDA"
+    elif is_posteval:
+        variant = "POSTEVAL"
+    else:
+        variant = "DEFAULT"
+
+    reminded_count = most_recent_q["reminded"]
+    template = (
+        override if override is not None else templates.get((reminded_count, variant))
+    )
+    if template is None:
+        return None
 
     if distance == 0:
-        distance_phrase_en = "today"
-        distance_phrase_es = "hoy"
+        distance_phrase = "today"
     elif distance == -1:
         date_str = most_recent_q["sent"].strftime("%m/%d")
-        distance_phrase_en = f"on {date_str} (yesterday)"
-        distance_phrase_es = f"el {date_str} (ayer)"
+        distance_phrase = f"on {date_str} (yesterday)"
     else:
         date_str = most_recent_q["sent"].strftime("%m/%d")
         days_ago = abs(distance)
-        distance_phrase_en = f"on {date_str} ({days_ago} days ago)"
-        distance_phrase_es = f"el {date_str} (hace {days_ago} días)"
+        distance_phrase = f"on {date_str} ({days_ago} days ago)"
 
-    q_s_en = "questionnaire" if link_count == 1 else "questionnaires"
-    it_them_en = "it" if link_count == 1 else "them"
-    it_they_en = "it" if link_count == 1 else "they"
-    is_are_en = "is" if link_count == 1 else "are"
-    its_their_en = "its" if link_count == 1 else "their"
+    escalation_days = settings["escalationSilenceDays"]
+    deadline_date = (datetime.now() + timedelta(days=escalation_days)).strftime("%m/%d")
 
-    q_s_es = "cuestionario" if link_count == 1 else "cuestionarios"
-    lo_los_es = "lo" if link_count == 1 else "los"
-    esta_estan_es = "está" if link_count == 1 else "están"
-    su_sus_es = "su" if link_count == 1 else "sus"
-    sent_s_es = "" if link_count == 1 else "s"
-    complete_s_es = "" if link_count == 1 else "s"
-    sent_it_them_es = "Lo enviamos" if link_count == 1 else "Los enviamos"
-
-    messages_en = {
-        0: (
-            f"Hello, this is {config.name} from Driftwood Evaluation Center. "
-            f"{'We are moving towards scheduling an appointment. The next step is ' if not is_posteval else ('In order to finalize our review, ' if is_postda else 'In order to provide you with a comprehensive report, ')}"
-            f"we need you to complete your {q_s_en}. You can find {it_them_en} in the messages tab "
-            f"in our patient portal: {portal_link} Please reply to this text with any questions. "
-            f"Thank you for your help."
-        ),
-        1: (
-            f"Hello, this is {config.name} with Driftwood Evaluation Center. "
-            f"We are waiting for you to complete the {q_s_en} sent to you {distance_phrase_en}. "
-            f"{'We are unable to schedule your appointment' if not is_posteval else ('We are unable to finalize our review' if is_postda else 'We are unable to provide you with a comprehensive report')} until {it_they_en} {is_are_en} completed "
-            f"in {its_their_en} entirety. You can find {it_them_en} in the messages tab in our "
-            f"patient portal: {portal_link} Please reply to this text with any questions. "
-            f"Thank you for your help."
-        ),
-        2: (
-            f"This is Driftwood Evaluation Center. If your {q_s_en} {is_are_en} not completed by "
-            f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (3 days from now), "
-            f"we will {'close out your referral' if not is_posteval else ('be unable to move forward' if is_postda else 'provide you with an incomplete report')}. Reply to this text with any concerns. You can find the "
-            f"{q_s_en} in the messages tab in our patient portal: {portal_link}"
-        ),
+    substitutions = {
+        "$CLIENT_FIRST_NAME": client.firstName,
+        "$STAFF_NAME": config.name,
+        "$QUESTIONNAIRE_WORD": "questionnaire" if link_count == 1 else "questionnaires",
+        "$IT_THEM": "it" if link_count == 1 else "them",
+        "$IT_THEY": "it" if link_count == 1 else "they",
+        "$IS_ARE": "is" if link_count == 1 else "are",
+        "$ITS_THEIR": "its" if link_count == 1 else "their",
+        "$DISTANCE_PHRASE": distance_phrase,
+        "$DEADLINE_DATE": deadline_date,
+        "$ESCALATION_DAYS": str(escalation_days),
+        "$PORTAL_LINK": PORTAL_LINK,
+        "$COMPLETED_COUNT": str(completed_count),
+        "$REMAINING_COUNT": str(link_count),
     }
 
-    messages_es = {
-        0: (
-            f"Hola, es {config.name} de Driftwood Evaluation Center. ¡Estamos listos para "
-            f"programar su cita! Para poder programar su cita, necesitamos que complete {su_sus_es} "
-            f"{q_s_es}. {sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com. "
-            f"Por favor, responda a este mensaje con cualquier pregunta. Gracias."
-        ),
-        1: (
-            f"Hola, es {config.name} de Driftwood Evaluation Center. Estamos esperando que "
-            f"complete {su_sus_es} {q_s_es} enviado{sent_s_es} {distance_phrase_es}. "
-            f"No podemos programar su cita hasta que {lo_los_es} {esta_estan_es} "
-            f"completo{complete_s_es} en {su_sus_es} totalidad. {sent_it_them_es} a su correo electrónico "
-            f"desde una dirección DriftwoodEval.com. Por favor, responda a este mensaje con "
-            f"cualquier pregunta. Gracias."
-        ),
-        2: (
-            f"Es Driftwood Evaluation Center. Si {su_sus_es} {q_s_es} no {esta_estan_es} "
-            f"completo{complete_s_es} antes de "
-            f"{(datetime.now() + timedelta(days=3)).strftime('%m/%d')} (en 3 días), "
-            f"cerraremos su remisión. Responda a este mensaje con cualquier inquietud. "
-            f"{sent_it_them_es} a su correo electrónico desde una dirección DriftwoodEval.com."
-        ),
-    }
-
-    reminded_count = most_recent_q["reminded"]
-
-    if is_spanish:
-        message = messages_es.get(reminded_count)
-    else:
-        message = messages_en.get(reminded_count)
-
+    message = template
+    for placeholder, value in substitutions.items():
+        message = message.replace(placeholder, value)
     return message
