@@ -23,6 +23,9 @@ from utils.database import (
     get_most_recent_failure,
     get_previous_clients,
     get_questionnaire_rules,
+    get_reminder_overrides,
+    get_reminder_settings,
+    get_reminder_templates,
     get_sent_referral_client_ids,
     has_requested_records_date,
     log_questionnaire_msg,
@@ -35,7 +38,7 @@ from utils.google import (
     build_admin_email,
     send_gmail,
 )
-from utils.messages import build_q_message
+from utils.messages import render_reminder_message
 from utils.misc import check_distance, json_log_format, load_config
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
@@ -223,12 +226,14 @@ def build_failure_message(config: Config, client: FailedClientFromDB) -> str | N
     return None
 
 
-def should_send_reminder(reminded_count: int, last_reminded_distance: int) -> bool:
+def should_send_reminder(
+    reminded_count: int, last_reminded_distance: int, settings: dict
+) -> bool:
     """Checks if a reminder should be sent to the client, based on the last reminder distance."""
     reminder_schedule = {
         0: 0,  # Initial message (same day)
-        1: 14,  # First follow-up (2 weeks later)
-        2: 7,  # Second follow-up (1 week after first follow-up)
+        1: settings["stage2OffsetDays"],
+        2: settings["stage3OffsetDays"],
     }
 
     expected_day = reminder_schedule.get(reminded_count)
@@ -432,6 +437,9 @@ def main(
         quo = Quo(config, services)
         rules = get_questionnaire_rules(config)
         eval_dates = get_most_recent_eval_appointment_dates(config)
+        reminder_settings = get_reminder_settings(config)
+        reminder_templates = get_reminder_templates(config)
+        reminder_overrides = get_reminder_overrides(config)
         email_info: AdminEmailInfo = {
             "ignoring": [],
             "failed": [],
@@ -561,7 +569,9 @@ def main(
                             and client.phoneNumber
                         ):
                             if should_send_reminder(
-                                reminded_count, last_reminded_distance
+                                reminded_count,
+                                last_reminded_distance,
+                                reminder_settings,
                             ):
                                 logger.info(f"Sending reminder TO {client.fullName}")
                                 if reason == "portal not opened":
@@ -703,7 +713,8 @@ def main(
 
                         if (
                             most_recent_q["reminded"] == 3
-                            and last_reminded_distance >= 3
+                            and last_reminded_distance
+                            >= reminder_settings["escalationSilenceDays"]
                         ):
                             email_info["call"].append(client)
 
@@ -712,7 +723,9 @@ def main(
                             and not already_messaged_today
                             and client.phoneNumber
                             and should_send_reminder(
-                                most_recent_q["reminded"], last_reminded_distance
+                                most_recent_q["reminded"],
+                                last_reminded_distance,
+                                reminder_settings,
                             )
                         ):
                             if (
@@ -743,8 +756,26 @@ def main(
                                     continue
 
                             logger.info(f"Sending reminder TO {client.fullName}")
-                            message = build_q_message(
-                                config, client, most_recent_q, distance
+                            override_message = reminder_overrides.get(
+                                (
+                                    client.id,
+                                    most_recent_q["sent"],
+                                    most_recent_q["reminded"],
+                                )
+                            )
+                            if override_message:
+                                logger.info(
+                                    f"Using reminder override for {client.fullName} "
+                                    f"(batch sent {most_recent_q['sent']}, stage {most_recent_q['reminded']})"
+                                )
+                            message = render_reminder_message(
+                                reminder_templates,
+                                reminder_settings,
+                                config,
+                                client,
+                                most_recent_q=most_recent_q,
+                                distance=distance,
+                                override=override_message,
                             )
                             # Redundant failsafe to super ensure we don't text people a message that just says "None"
                             if not message:
