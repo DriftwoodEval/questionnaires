@@ -3,7 +3,6 @@ from typing import Annotated, Literal, TypedDict
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     EmailStr,
     Field,
     StringConstraints,
@@ -224,10 +223,6 @@ class FailedClient(TypedDict):
 
 
 class _ClientBase(BaseModel):
-    # populate_by_name lets sessionStartedAt still be set by its Python name
-    # (tests, manual construction) even though the DB column is session_started_at.
-    model_config = ConfigDict(populate_by_name=True)
-
     id: int
     dob: date
     firstName: str  # noqa: N815
@@ -238,9 +233,7 @@ class _ClientBase(BaseModel):
     gender: str | None = None
     asdAdhd: str | None = None  # noqa: N815
     status: bool
-    sessionStartedAt: datetime | None = Field(  # noqa: N815
-        default=None, alias="session_started_at"
-    )
+    sessionStartedAt: datetime | None = None  # noqa: N815
 
 
 class _SharedClientFromDB(_ClientBase):
