@@ -746,7 +746,12 @@ def main(
 
 
 if __name__ == "__main__":
-    log_host = load_local_settings().log_host
-    network_sink = NetworkSink(log_host, 9999, app_name="piecework")
+    local_settings = load_local_settings()
+    network_sink = NetworkSink(
+        local_settings.log_host,
+        9999,
+        app_name="piecework",
+        shared_secret=local_settings.log_shared_secret,
+    )
     logger.add(network_sink.write, format=json_log_format, enqueue=True)
     app()

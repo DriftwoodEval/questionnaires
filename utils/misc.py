@@ -142,13 +142,14 @@ def json_log_format(record: "loguru.Record") -> str:
 class NetworkSink:
     """Send log lines to a remote log server via TCP."""
 
-    def __init__(self, log_host: str, port: int, app_name: str):
+    def __init__(self, log_host: str, port: int, app_name: str, shared_secret: str):
         self.ip = log_host
         self.port = port
         self.app_name = app_name
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.sock.connect((self.ip, port))
+            self.sock.sendall(f"AUTH:{shared_secret}\n".encode())
         except (OSError, ConnectionRefusedError, TimeoutError) as e:
             logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
             self.sock = None

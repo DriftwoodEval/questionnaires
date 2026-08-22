@@ -23,6 +23,9 @@ class LocalSettings(BaseModel):
 
     api_url: str = Field(description="The full URL for fetching the remote config.")
     log_host: str = Field(description="Host for sending logs to a remote log server.")
+    log_shared_secret: str = Field(
+        description="Shared secret log-server.py requires before accepting log lines."
+    )
     api_secret: str = Field(description="API secret for authentication")
     config_overrides: LocalConfigOverrides = Field(default_factory=LocalConfigOverrides)
 

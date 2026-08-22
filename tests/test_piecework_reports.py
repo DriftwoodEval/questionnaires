@@ -14,10 +14,11 @@ import pytest
 from utils.custom_types import PieceworkConfig, PieceworkCosts
 
 
-def _noop_init(self, log_host, port, app_name):
+def _noop_init(self, log_host, port, app_name, shared_secret):
     self.ip = log_host
     self.port = port
     self.app_name = app_name
+    self.shared_secret = shared_secret
     self.sock = None
 
 

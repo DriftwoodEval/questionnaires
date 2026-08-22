@@ -14,6 +14,8 @@ services:
   log-server:
     image: ghcr.io/driftwoodeval/questionnaires-log-server:main
     container_name: log-server
+    environment:
+      - LOG_SERVER_SHARED_SECRET=${LOG_SERVER_SHARED_SECRET}
     volumes:
       - ./logs:/app/logs
     ports:
