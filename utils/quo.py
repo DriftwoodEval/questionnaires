@@ -20,6 +20,14 @@ RATE_LIMIT_CALLS = 10
 RATE_LIMIT_PERIOD = 1
 
 
+def _mask_phone(number: str) -> str:
+    """Mask a phone number for logging, keeping only the last 4 digits."""
+    digits = "".join(filter(str.isdigit, number))
+    if len(digits) < 4:
+        return "***"
+    return f"***{digits[-4:]}"
+
+
 def before_sleep_loguru(retry_state: RetryCallState) -> None:
     """Custom callback to log retries using Loguru."""
     if retry_state.outcome is None:
@@ -182,7 +190,9 @@ class Quo:
         elif len(digits) == 11 and digits.startswith("1"):
             clean_phone = "+" + digits
         else:
-            logger.warning(f"Cannot check replies for malformed number: {client_phone}")
+            logger.warning(
+                f"Cannot check replies for malformed number: {_mask_phone(client_phone)}"
+            )
             return False
 
         try:
@@ -221,7 +231,9 @@ class Quo:
                     return True
             return False
         except Exception as e:
-            logger.error(f"Failed to check incoming messages for {client_phone}: {e}")
+            logger.error(
+                f"Failed to check incoming messages for {_mask_phone(client_phone)}: {e}"
+            )
             return False
 
     @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
@@ -245,18 +257,18 @@ class Quo:
         if len(digits) == 10:
             if digits.startswith("1"):
                 raise InvalidPhoneNumberError(
-                    f"10-digit number starts with 1: {to_number}"
+                    f"10-digit number starts with 1: {_mask_phone(to_number)}"
                 )
             to_number_clean = "+1" + digits
         elif len(digits) == 11:
             if not digits.startswith("1"):
                 raise InvalidPhoneNumberError(
-                    f"11-digit number does not start with 1: {to_number}"
+                    f"11-digit number does not start with 1: {_mask_phone(to_number)}"
                 )
             to_number_clean = "+" + digits
         else:
             raise InvalidPhoneNumberError(
-                f"Phone number has invalid length ({len(digits)}): {to_number}"
+                f"Phone number has invalid length ({len(digits)}): {_mask_phone(to_number)}"
             )
 
         url = f"{API_BASE}messages"
@@ -272,7 +284,7 @@ class Quo:
             payload["setInboxStatus"] = "done"
 
         try:
-            logger.info(f"Sending message to {to_number_clean}...")
+            logger.info(f"Sending message to {_mask_phone(to_number_clean)}...")
             response = self.session.post(url, json=payload)
 
             if response.status_code == 402:
