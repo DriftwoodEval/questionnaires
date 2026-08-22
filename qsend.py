@@ -78,7 +78,7 @@ app = typer.Typer()
 
 logger.remove()
 logger.level("NOTICE", no=25, color="<yellow><bold>", icon="!")
-logger.add(sys.stdout, format=stderr_log_format)
+logger.add(sys.stdout, format=stderr_log_format, diagnose=False)
 
 logger.add("logs/qsend.log", format=json_log_format, rotation="500 MB")
 

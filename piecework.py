@@ -33,6 +33,7 @@ logger.add(
     sys.stdout,
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
     level="INFO",
+    diagnose=False,
 )
 
 logger.add("logs/piecework.log", format=json_log_format, rotation="500 MB")

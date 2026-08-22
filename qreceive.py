@@ -63,6 +63,7 @@ logger.remove()
 logger.add(
     sys.stdout,
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
+    diagnose=False,
 )
 
 logger.add("logs/qreceive.log", format=json_log_format, rotation="500 MB")
@@ -196,6 +197,10 @@ def _save_pending_email(email_info: AdminEmailInfo) -> None:
     PENDING_EMAIL_PATH.write_text(
         json.dumps({"runs": [_serialize_email_info(r) for r in runs]}, indent=2)
     )
+    # This queue holds client PHI (name, DOB, phone) between cron runs until the
+    # 1pm email send. Restrict it to the owning user, same as the intent behind
+    # config/local_config.yml being gitignored rather than world-readable.
+    PENDING_EMAIL_PATH.chmod(0o600)
     logger.info(f"Queued email content for 1pm send ({len(runs)} run(s) accumulated)")
 
 
