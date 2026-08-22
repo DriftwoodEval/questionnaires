@@ -254,23 +254,25 @@ def check_questionnaires(
     tasks = []
     for client in clients.values():
         if client.id in initially_completed_ids:
-            logger.info(f"{client.fullName} has already completed their questionnaires")
+            logger.info(
+                f"Client {client.id} has already completed their questionnaires"
+            )
             continue
 
         for questionnaire in client.questionnaires:
             if questionnaire["status"] == "COMPLETED":
                 logger.info(
-                    f"{client.fullName}'s {questionnaire['questionnaireType']} is already done"
+                    f"Client {client.id}'s {questionnaire['questionnaireType']} is already done"
                 )
                 continue
             if questionnaire["status"] == "ARCHIVED":
                 logger.info(
-                    f"{client.fullName}'s {questionnaire['questionnaireType']} is archived"
+                    f"Client {client.id}'s {questionnaire['questionnaireType']} is archived"
                 )
                 continue
             if not questionnaire["link"]:
                 logger.warning(
-                    f"No link found for {client.fullName}'s {questionnaire['questionnaireType']}"
+                    f"No link found for client {client.id}'s {questionnaire['questionnaireType']}"
                 )
                 continue
             tasks.append((client, questionnaire))
@@ -284,7 +286,7 @@ def check_questionnaires(
     def _check_single_q(task):
         client, questionnaire = task
         logger.info(
-            f"Checking {client.fullName}'s {questionnaire['questionnaireType']}"
+            f"Checking client {client.id}'s {questionnaire['questionnaireType']}"
         )
         for attempt in range(3):
             try:
@@ -296,6 +298,7 @@ def check_questionnaires(
                             services,
                             client.firstName,
                             client.lastName,
+                            client.id,
                         )
                         if is_done:
                             filename = generate_screenshot_filename(
@@ -337,11 +340,11 @@ def check_questionnaires(
                     if is_done:
                         questionnaire["status"] = "COMPLETED"
                         logger.info(
-                            f"{client.fullName}'s {questionnaire['questionnaireType']} is COMPLETED"
+                            f"Client {client.id}'s {questionnaire['questionnaireType']} is COMPLETED"
                         )
                         return client.id, True
                     logger.warning(
-                        f"{client.fullName}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
+                        f"Client {client.id}'s {questionnaire['questionnaireType']} is {questionnaire['status']}"
                     )
                     return client.id, False
                 finally:
@@ -349,16 +352,16 @@ def check_questionnaires(
             except WebDriverException as e:
                 if "Read timed out" in str(e) and attempt < 2:
                     logger.warning(
-                        f"Timeout checking {client.fullName}'s {questionnaire['questionnaireType']}, retrying (attempt {attempt + 2}/3)"
+                        f"Timeout checking client {client.id}'s {questionnaire['questionnaireType']}, retrying (attempt {attempt + 2}/3)"
                     )
                     continue
                 logger.error(
-                    f"Error checking questionnaires for {client.fullName}: {e}"
+                    f"Error checking questionnaires for client {client.id}: {e}"
                 )
                 return client.id, e
             except Exception as e:
                 logger.error(
-                    f"Error checking questionnaires for {client.fullName}: {e}"
+                    f"Error checking questionnaires for client {client.id}: {e}"
                 )
                 return client.id, e
         raise RuntimeError("unreachable")
@@ -388,7 +391,7 @@ def check_questionnaires(
     completed_clients = []
     for client in updated_clients:
         if all_questionnaires_done(client):
-            logger.success(f"{client.fullName} has completed all questionnaires")
+            logger.success(f"Client {client.id} has completed all questionnaires")
             completed_clients.append(client)
 
     return completed_clients, error_clients
@@ -643,7 +646,7 @@ def check_battery_sent(
             q["questionnaireType"]: q["status"] for q in client.questionnaires
         }
         logger.debug(
-            f"[battery-sent] {client.fullName} (ID:{client.id}) "
+            f"[battery-sent] client {client.id} "
             f"asdAdhd={client.asdAdhd!r} age={age_in_years}"
         )
         logger.debug(
@@ -731,7 +734,7 @@ def check_battery_completeness(
 
     if verbose:
         logger.debug(
-            f"[battery-done] {client.fullName} (ID:{client.id}) "
+            f"[battery-done] client {client.id} "
             f"asdAdhd={client.asdAdhd!r} age={age_in_years}"
         )
         logger.debug(

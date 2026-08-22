@@ -57,13 +57,14 @@ def check_novopsych_completed(
     services: Services,
     first_name: str,
     last_name: str,
+    client_id: int,
 ) -> bool:
     """Check NovoPsych Recent Activity for a CAT-Q completion by this client.
 
     Returns True if a matching completed CAT-Q entry is found.
     """
     full_name = f"{first_name} {last_name}"
-    logger.info(f"NovoPsych check: looking for '{full_name}' CAT-Q completion")
+    logger.info(f"NovoPsych check: looking for client {client_id} CAT-Q completion")
 
     try:
         check_and_login_novopsych(driver, services)
@@ -75,7 +76,9 @@ def check_novopsych_completed(
             timeout=10,
         )
 
-        # The activity list uses Ionic components; match by normalized name + CAT-Q span
+        # The activity list uses Ionic components; match by normalized name + CAT-Q span.
+        # NovoPsych's own UI is keyed by name, not client ID, so this is the one place
+        # the name has to be used directly rather than logged.
         xpath = (
             "//div[contains(@class,'activity')]"
             "//ion-label["
@@ -83,12 +86,12 @@ def check_novopsych_completed(
             " and contains(span,'CAT-Q')]"
         )
         find_element(driver, By.XPATH, xpath, timeout=5)
-        logger.info(f"Found '{full_name}' CAT-Q completion on NovoPsych")
+        logger.info(f"Found client {client_id} CAT-Q completion on NovoPsych")
         return True
 
     except (NoSuchElementException, TimeoutException):
-        logger.info(f"Did not find '{full_name}' CAT-Q completion on NovoPsych")
+        logger.info(f"Did not find client {client_id} CAT-Q completion on NovoPsych")
         return False
     except Exception:
-        logger.exception(f"Error during NovoPsych check for '{full_name}'")
+        logger.exception(f"Error during NovoPsych check for client {client_id}")
         return False
