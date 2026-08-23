@@ -143,16 +143,16 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     clients_needing_records = []
     with db_connection, db_connection.cursor() as cursor:
         sql = """
-            SELECT c.*, err.custom_message AS pendingRequestMessage
+            SELECT c.*, err.customMessage AS pendingRequestMessage
             FROM emr_client c
             INNER JOIN emr_external_record_request err ON c.id = err.clientId
             WHERE c.recordsNeeded = "Needed"
             AND err.requestedDate IS NULL
-            AND (err.hold_until IS NULL OR err.hold_until <= CURDATE())
+            AND (err.holdUntil IS NULL OR err.holdUntil <= CURDATE())
             AND c.status IS NOT FALSE
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
-            AND (c.session_started_at IS NULL OR err.created_at >= c.session_started_at)
+            AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -188,9 +188,9 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 c.asdAdhd,
                 er.content,
                 COUNT(CASE WHEN err.requestedDate IS NOT NULL
-                    AND (c.session_started_at IS NULL OR err.created_at >= c.session_started_at)
+                    AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
                     THEN 1 END) AS sentCount,
-                MAX(CASE WHEN c.session_started_at IS NULL OR err.created_at >= c.session_started_at
+                MAX(CASE WHEN c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt
                     THEN err.requestedDate END) AS lastSentDate
             FROM emr_client c
             LEFT JOIN emr_external_record er ON c.id = er.clientId
@@ -238,7 +238,7 @@ def has_requested_records_date(
             SELECT 1
             FROM emr_external_record_request
             WHERE clientId=%s AND requestedDate IS NOT NULL
-            AND (%s IS NULL OR created_at >= %s)
+            AND (%s IS NULL OR createdAt >= %s)
             LIMIT 1
         """
         cursor.execute(sql, (client_id, session_started_at, session_started_at))
@@ -291,10 +291,10 @@ def load_tracked_reports(config: Config) -> dict[str, str]:
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         cursor.execute(
-            "SELECT clientId, tracked_date FROM emr_piecework_report_tracking"
+            "SELECT clientId, trackedDate FROM emr_piecework_report_tracking"
         )
         rows = cursor.fetchall()
-    return {str(row["clientId"]): str(row["tracked_date"]) for row in rows}
+    return {str(row["clientId"]): str(row["trackedDate"]) for row in rows}
 
 
 def save_new_tracked_reports(
@@ -306,7 +306,7 @@ def save_new_tracked_reports(
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         cursor.executemany(
-            "INSERT IGNORE INTO emr_piecework_report_tracking (clientId, tracked_date) VALUES (%s, %s)",
+            "INSERT IGNORE INTO emr_piecework_report_tracking (clientId, trackedDate) VALUES (%s, %s)",
             [(cid, tracked_date) for cid in client_ids],
         )
         affected = cursor.rowcount
@@ -326,7 +326,7 @@ def update_tracking_writer(config: Config, client_id: int, writer_email: str) ->
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         cursor.execute(
-            "UPDATE emr_piecework_report_tracking SET writer_email = %s WHERE clientId = %s",
+            "UPDATE emr_piecework_report_tracking SET writerEmail = %s WHERE clientId = %s",
             (writer_email, client_id),
         )
         db_connection.commit()
@@ -450,7 +450,7 @@ def update_questionnaire_in_db(
         with db_connection.cursor() as cursor:
             sql = """
                 UPDATE `emr_questionnaire`
-                SET status=%s, updated_at = NOW()
+                SET status=%s, updatedAt = NOW()
                 WHERE clientId=%s AND sent=%s AND questionnaireType=%s
             """
 
@@ -470,7 +470,7 @@ def update_questionnaires_in_db(
                 for questionnaire in client.questionnaires:
                     sql = """
                         UPDATE `emr_questionnaire`
-                        SET status=%s, reminded=%s, lastReminded=%s, updated_at = NOW()
+                        SET status=%s, reminded=%s, lastReminded=%s, updatedAt = NOW()
                         WHERE clientId=%s AND sent=%s AND questionnaireType=%s
                     """
 
@@ -501,7 +501,7 @@ def add_failure_to_db(
             VALUES (%s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
             daEval=VALUES(daEval),
-            updated_at = NOW();
+            updatedAt = NOW();
             """
         values = (client_id, da_eval, error, failed_date)
         cursor.execute(sql, values)
@@ -547,7 +547,7 @@ def update_failure_in_db(
             values += (last_reminded,)
 
         if not updates:
-            updates.append("updated_at = NOW()")
+            updates.append("updatedAt = NOW()")
 
         sql += ", ".join(updates)
         sql += " WHERE clientId=%s AND reason=%s"
@@ -635,7 +635,7 @@ def get_assessment_types(config: Config) -> list[dict]:
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         cursor.execute(
-            "SELECT name, site, minAge, maxAge, minutes, in_person FROM emr_assessment_type"
+            "SELECT name, site, minAge, maxAge, minutes, inPerson FROM emr_assessment_type"
         )
         rows = cursor.fetchall()
 
@@ -646,7 +646,7 @@ def get_assessment_types(config: Config) -> list[dict]:
             "minAge": row["minAge"],
             "maxAge": row["maxAge"],
             "minutes": row["minutes"],
-            "inPerson": bool(row["in_person"]),
+            "inPerson": bool(row["inPerson"]),
         }
         for row in rows
     ]
