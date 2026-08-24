@@ -480,15 +480,19 @@ def main(
                         logger.error(
                             f"An error occurred while processing {client_name}: {e}"
                         )
+                        reason = str(e)
                         add_to_sheet = True
 
-                        if str(e) in ["portal not opened", "docs not signed"]:
+                        if reason in ["portal not opened", "docs not signed"]:
                             add_to_sheet = False
+                            error = reason
+                        else:
+                            error = f"Unhandled error for {client_name}"
 
                         add_failure(
                             config=config,
                             client_id=client.id,
-                            error=str(e),
+                            error=error,
                             failed_date=today,
                             add_to_sheet=add_to_sheet,
                             full_name=client_name,

@@ -1276,7 +1276,7 @@ def main(
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],
-                    error=str(e),
+                    error=f"Unhandled error for {client['Client Name']}",
                     failed_date=today,
                     full_name=client["Client Name"],
                     asd_adhd=client["For"],
