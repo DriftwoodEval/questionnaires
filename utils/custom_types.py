@@ -146,6 +146,7 @@ class Config(BaseModel):
     ]
     name: str
     referral_sender_name: str
+    private_pay_sender_name: str
     email: EmailStr
     automated_email: EmailStr
     qreceive_emails: list[EmailStr]

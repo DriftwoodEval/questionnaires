@@ -100,6 +100,7 @@ def make_config(**overrides) -> Config:
         "initials": "TC",
         "name": "Test Clinician",
         "referral_sender_name": "Test Referral Sender",
+        "private_pay_sender_name": "Test Private Pay Sender",
         "email": "clinician@example.com",
         "automated_email": "automated@example.com",
         "qreceive_emails": ["admin@example.com"],

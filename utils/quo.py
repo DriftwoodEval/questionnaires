@@ -86,6 +86,9 @@ class Quo:
         self.referral_user = self._resolve_user_id(
             config.referral_sender_name, services.openphone.users
         )
+        self.private_pay_referral_user = self._resolve_user_id(
+            config.private_pay_sender_name, services.openphone.users
+        )
 
         self.session = requests.Session()
         self.session.headers.update(
