@@ -58,7 +58,12 @@ class TestShouldSendReminder:
         ],
     )
     def test_should_send_reminder(self, reminded_count, distance, expected):
-        assert should_send_reminder(reminded_count, distance) == expected
+        settings = {
+            "stage2OffsetDays": 14,
+            "stage3OffsetDays": 7,
+            "escalationSilenceDays": 3,
+        }
+        assert should_send_reminder(reminded_count, distance, settings) == expected
 
 
 class TestBuildFailureMessage:

@@ -5,11 +5,18 @@ from dateutil.relativedelta import relativedelta
 
 from utils.messages import (
     DD4_SCHOOL_DISTRICT,
-    build_q_message,
+    DEFAULT_REMINDER_TEMPLATES,
     build_referral_message,
     format_ta_message,
     is_potential_private_pay,
+    render_reminder_message,
 )
+
+DEFAULT_SETTINGS = {
+    "stage2OffsetDays": 14,
+    "stage3OffsetDays": 7,
+    "escalationSilenceDays": 3,
+}
 
 
 class TestFormatTaMessage:
@@ -154,14 +161,24 @@ class TestBuildReferralMessage:
         assert "Babynet" not in message
 
 
-class TestBuildQMessage:
+class TestRenderReminderMessage:
     def test_no_sent_date_returns_none(
         self, config_factory, client_factory, questionnaire_factory
     ):
         config = config_factory()
         client = client_factory()
         q = questionnaire_factory(sent=None)
-        assert build_q_message(config, client, q, 0) is None
+        assert (
+            render_reminder_message(
+                DEFAULT_REMINDER_TEMPLATES,
+                DEFAULT_SETTINGS,
+                config,
+                client,
+                most_recent_q=q,
+                distance=0,
+            )
+            is None
+        )
 
     def test_first_reminder_mentions_today(
         self, config_factory, client_factory, questionnaire_factory
@@ -169,7 +186,14 @@ class TestBuildQMessage:
         config = config_factory(name="Jane")
         q = questionnaire_factory(sent=date.today(), reminded=0)
         client = client_factory(questionnaires=[q])
-        message = build_q_message(config, client, q, 0)
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=0,
+        )
         assert message is not None
         assert "Jane" in message
         assert "complete your questionnaire" in message
@@ -177,7 +201,7 @@ class TestBuildQMessage:
     @pytest.mark.parametrize(
         ("reminded", "distance", "expected_substring"),
         [
-            (1, -1, "(yesterday)"),
+            (1, 1, "(yesterday)"),
             (1, 5, "5 days ago"),
             (2, 5, "close out your referral"),
         ],
@@ -195,7 +219,14 @@ class TestBuildQMessage:
         config = config_factory()
         q = questionnaire_factory(sent=date(2024, 1, 1), reminded=reminded)
         client = client_factory(questionnaires=[q])
-        message = build_q_message(config, client, q, distance)
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=distance,
+        )
         assert message is not None
         assert expected_substring in message
 
@@ -205,7 +236,17 @@ class TestBuildQMessage:
         config = config_factory()
         q = questionnaire_factory(sent=date(2024, 1, 1), reminded=99)
         client = client_factory(questionnaires=[q])
-        assert build_q_message(config, client, q, 5) is None
+        assert (
+            render_reminder_message(
+                DEFAULT_REMINDER_TEMPLATES,
+                DEFAULT_SETTINGS,
+                config,
+                client,
+                most_recent_q=q,
+                distance=5,
+            )
+            is None
+        )
 
     def test_multiple_pending_questionnaires_use_plural(
         self, config_factory, client_factory, questionnaire_factory
@@ -214,7 +255,14 @@ class TestBuildQMessage:
         q1 = questionnaire_factory(sent=date.today(), reminded=0, q_type="ASRS")
         q2 = questionnaire_factory(sent=date.today(), reminded=0, q_type="BASC")
         client = client_factory(questionnaires=[q1, q2])
-        message = build_q_message(config, client, q1, 0)
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q1,
+            distance=0,
+        )
         assert message is not None
         assert "complete your questionnaires" in message
 
@@ -227,7 +275,14 @@ class TestBuildQMessage:
             sent=date.today(), reminded=0, status="POSTDA_PENDING"
         )
         client = client_factory(questionnaires=[q])
-        message = build_q_message(config, client, q, 0)
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=0,
+        )
         assert message is not None
         assert "finalize our review" not in message
         assert "complete your questionnaire" in message
@@ -243,7 +298,14 @@ class TestBuildQMessage:
             sent=date.today(), reminded=0, status="POSTEVAL_PENDING", q_type="BASC"
         )
         client = client_factory(questionnaires=[q1, q2])
-        message = build_q_message(config, client, q1, 0)
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q1,
+            distance=0,
+        )
         assert message is not None
         assert "finalize our review" in message
 
@@ -255,6 +317,98 @@ class TestBuildQMessage:
             sent=date.today(), reminded=0, status="POSTEVAL_PENDING"
         )
         client = client_factory(questionnaires=[q])
-        message = build_q_message(config, client, q, 0)
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=0,
+        )
         assert message is not None
         assert "comprehensive report" in message
+
+    def test_client_first_name_placeholder(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        templates = {(0, "DEFAULT"): "Hi $CLIENT_FIRST_NAME, please complete it."}
+        config = config_factory()
+        q = questionnaire_factory(sent=date.today(), reminded=0)
+        client = client_factory(questionnaires=[q])
+        message = render_reminder_message(
+            templates, DEFAULT_SETTINGS, config, client, most_recent_q=q, distance=0
+        )
+        assert message == "Hi Test, please complete it."
+
+    def test_override_is_used_instead_of_default_template(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        config = config_factory()
+        q = questionnaire_factory(sent=date.today(), reminded=0)
+        client = client_factory(questionnaires=[q])
+        message = render_reminder_message(
+            DEFAULT_REMINDER_TEMPLATES,
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=0,
+            override="This is a one-off message for $CLIENT_FIRST_NAME.",
+        )
+        assert message == "This is a one-off message for Test."
+
+    def test_completed_and_remaining_count_placeholders(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        templates = {
+            (0, "DEFAULT"): "Completed: $COMPLETED_COUNT, remaining: $REMAINING_COUNT."
+        }
+        config = config_factory()
+        q1 = questionnaire_factory(
+            sent=date.today(), reminded=0, status="PENDING", q_type="ASRS"
+        )
+        q2 = questionnaire_factory(
+            sent=date.today(), reminded=0, status="COMPLETED", q_type="BASC"
+        )
+        q3 = questionnaire_factory(
+            sent=date.today(), reminded=0, status="COMPLETED", q_type="Vineland"
+        )
+        client = client_factory(questionnaires=[q1, q2, q3])
+        message = render_reminder_message(
+            templates, DEFAULT_SETTINGS, config, client, most_recent_q=q1, distance=0
+        )
+        assert message == "Completed: 2, remaining: 1."
+
+    def test_falls_back_to_hardcoded_default_when_db_template_missing(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        """If the emr_questionnaire_reminder_template table is missing a row
+        (e.g. the seed script was never run), still send the hardcoded
+        default instead of silently sending nothing."""
+        config = config_factory(name="Jane")
+        q = questionnaire_factory(sent=date.today(), reminded=0)
+        client = client_factory(questionnaires=[q])
+        message = render_reminder_message(
+            {},
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=0,
+        )
+        assert message is not None
+        assert "Jane" in message
+        assert "complete your questionnaire" in message
+
+    def test_unknown_stage_with_empty_templates_returns_none(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        config = config_factory()
+        q = questionnaire_factory(sent=date.today(), reminded=99)
+        client = client_factory(questionnaires=[q])
+        assert (
+            render_reminder_message(
+                {}, DEFAULT_SETTINGS, config, client, most_recent_q=q, distance=0
+            )
+            is None
+        )
