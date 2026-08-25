@@ -682,13 +682,20 @@ def get_matched_client_ids(config: Config) -> set[int]:
     return {row["clientId"] for row in rows}
 
 
-def log_referral_msg(config: Config, client_id: int, openphone_message_id: str) -> None:
+def log_referral_msg(
+    config: Config,
+    client_id: int,
+    openphone_message_id: str,
+    is_private_pay_outreach: bool = False,
+) -> None:
     """Log that a referral message was delivered to a client."""
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         cursor.execute(
-            "INSERT IGNORE INTO emr_referral_msg_log (clientId, openphoneMessageId, sentAt) VALUES (%s, %s, NOW())",
-            (client_id, openphone_message_id),
+            "INSERT IGNORE INTO emr_referral_msg_log "
+            "(clientId, openphoneMessageId, isPrivatePayOutreach, sentAt) "
+            "VALUES (%s, %s, %s, NOW())",
+            (client_id, openphone_message_id, is_private_pay_outreach),
         )
         db_connection.commit()
 

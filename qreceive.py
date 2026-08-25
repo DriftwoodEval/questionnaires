@@ -36,7 +36,11 @@ from utils.google import (
     build_admin_email,
     send_gmail,
 )
-from utils.messages import build_q_message, build_referral_message
+from utils.messages import (
+    build_q_message,
+    build_referral_message,
+    is_potential_private_pay,
+)
 from utils.misc import check_distance, json_log_format, load_config
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
@@ -818,7 +822,7 @@ def main(
                             f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                         )
 
-            referral_messages_sent: list[tuple[ClientFromDB, str]] = []
+            referral_messages_sent: list[tuple[ClientFromDB, str, bool]] = []
 
             if send_referral_texts or dry_run:
                 cutoff_date = date.today() - timedelta(days=1)
@@ -854,8 +858,12 @@ def main(
                     logger.info(
                         f"Sending referral message to new client {client.fullName} (added {client.addedDate})"
                     )
+                    has_matched_evaluator = client.id in matched_client_ids
+                    is_private_pay_outreach = is_potential_private_pay(
+                        client, has_matched_evaluator
+                    )
                     referral_msg = build_referral_message(
-                        config, client, client.id in matched_client_ids
+                        config, client, has_matched_evaluator
                     )
                     if send_referral_texts:
                         try:
@@ -868,7 +876,11 @@ def main(
                             if attempt_text and "id" in attempt_text:
                                 numbers_sent.append(client.phoneNumber)
                                 referral_messages_sent.append(
-                                    (client, attempt_text["id"])
+                                    (
+                                        client,
+                                        attempt_text["id"],
+                                        is_private_pay_outreach,
+                                    )
                                 )
                             else:
                                 logger.error(
@@ -984,7 +996,7 @@ def main(
             logger.info(
                 f"Starting status check for {len(referral_messages_sent)} referral message(s)."
             )
-            for client, message_id in referral_messages_sent:
+            for client, message_id, is_private_pay_outreach in referral_messages_sent:
                 try:
                     delivered = quo.check_text_delivered(message_id)
                     if delivered:
@@ -992,7 +1004,12 @@ def main(
                             f"Delivered referral msg to {client.fullName} ({message_id})"
                         )
                         try:
-                            log_referral_msg(config, client.id, message_id)
+                            log_referral_msg(
+                                config,
+                                client.id,
+                                message_id,
+                                is_private_pay_outreach=is_private_pay_outreach,
+                            )
                         except Exception as log_err:
                             logger.error(
                                 f"Failed to log referral msg for {client.fullName}: {log_err}"
