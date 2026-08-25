@@ -65,14 +65,21 @@ def load_config() -> tuple[Services, Config]:
         response = requests.get(endpoint, headers=headers, timeout=10)
 
         if response.status_code == 401:
-            logger.error("Authentication failed. Check your token.")
+            logger.error(f"Authentication failed against {endpoint}. Check your token.")
+            sys.exit(1)
+
+        if response.status_code == 429:
+            logger.error(
+                f"Rate limited by {endpoint}: too many recent failed auth attempts "
+                "from this host. Check your token, then wait before retrying."
+            )
             sys.exit(1)
 
         response.raise_for_status()
         remote_data = response.json()
 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch config from API: {e}")
+        logger.error(f"Failed to fetch config from {endpoint}: {e}")
         sys.exit(1)
 
     try:

@@ -19,6 +19,51 @@ from utils.custom_types import (
     QuestionnaireStatus,
 )
 
+# Sentinel actor for audit rows written by this script's direct DB writes,
+# distinct from the internal-api sentinel used by winnonah's own HTTP
+# endpoints (this path uses the script's own DB credentials, not the
+# API_KEY-authed internal API).
+AUDIT_LOG_ACTOR_ID = "system:questionnaires-db"
+AUDIT_LOG_ACTOR_EMAIL = "questionnaires (direct DB write)"
+
+
+def record_audit_log(
+    db_connection,
+    action: str,
+    client_id: int | None,
+    *,
+    success: bool = True,
+    error_message: str | None = None,
+    detail: dict | None = None,
+) -> None:
+    """Write a row to emr_audit_log for a direct DB write made by this script.
+
+    Called on the same connection as the write it's recording, before that
+    write's commit, so the two land in the same transaction. Best-effort:
+    a failure here must never take down the caller's actual write, so
+    errors are logged and swallowed rather than raised.
+    """
+    try:
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO emr_audit_log
+                    (userId, userEmail, action, clientId, detail, success, errorMessage)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    AUDIT_LOG_ACTOR_ID,
+                    AUDIT_LOG_ACTOR_EMAIL,
+                    action,
+                    client_id,
+                    json.dumps(detail, default=str) if detail is not None else None,
+                    success,
+                    error_message,
+                ),
+            )
+    except Exception:
+        logger.exception(f"Failed to write audit log for action={action}")
+
 
 def get_db(config: Config):
     """Connect to the database and return a connection object."""
@@ -262,6 +307,12 @@ def update_external_record_in_db(
                 LIMIT 1
             """
             cursor.execute(sql, (requested_date, client_id))
+        record_audit_log(
+            db_connection,
+            "internal.recordsRequest.update",
+            client_id,
+            detail={"requestedDate": requested_date},
+        )
         db_connection.commit()
 
 
@@ -407,6 +458,7 @@ def insert_basic_client(
 
             cursor.execute(sql, values)
 
+        record_audit_log(db_connection, "internal.client.create", int(client_id))
         db_connection.commit()
 
 
@@ -433,6 +485,12 @@ def put_questionnaire_in_db(
             values = (int(client_id), link, qtype, sent_date, status)
 
             cursor.execute(sql, values)
+        record_audit_log(
+            db_connection,
+            "internal.questionnaire.create",
+            int(client_id),
+            detail={"questionnaireType": qtype, "sent": sent_date, "status": status},
+        )
         db_connection.commit()
 
 
@@ -456,6 +514,12 @@ def update_questionnaire_in_db(
 
             values = (status, int(client_id), sent_date, qtype)
             cursor.execute(sql, values)
+        record_audit_log(
+            db_connection,
+            "internal.questionnaire.update",
+            int(client_id),
+            detail={"questionnaireType": qtype, "sent": sent_date, "status": status},
+        )
         db_connection.commit()
 
 
@@ -484,6 +548,24 @@ def update_questionnaires_in_db(
                     )
 
                     cursor.execute(sql, values)
+
+                record_audit_log(
+                    db_connection,
+                    "internal.questionnaire.bulkUpdate",
+                    client.id,
+                    detail={
+                        "questionnaires": [
+                            {
+                                "questionnaireType": q["questionnaireType"],
+                                "sent": q["sent"],
+                                "status": q["status"],
+                                "reminded": q["reminded"],
+                                "lastReminded": q["lastReminded"],
+                            }
+                            for q in client.questionnaires
+                        ]
+                    },
+                )
         db_connection.commit()
 
 
@@ -505,6 +587,12 @@ def add_failure_to_db(
             """
         values = (client_id, da_eval, error, failed_date)
         cursor.execute(sql, values)
+        record_audit_log(
+            db_connection,
+            "internal.failure.create",
+            client_id,
+            detail={"daEval": da_eval, "reason": error, "failedDate": failed_date},
+        )
         db_connection.commit()
 
 
@@ -554,6 +642,19 @@ def update_failure_in_db(
         values += (client_id, reason)
 
         cursor.execute(sql, values)
+        record_audit_log(
+            db_connection,
+            "internal.failure.update",
+            client_id,
+            detail={
+                "reason": reason,
+                "daEval": da_eval,
+                "resolved": resolved,
+                "failedDate": failed_date,
+                "reminded": reminded,
+                "lastReminded": last_reminded,
+            },
+        )
         db_connection.commit()
 
 
