@@ -195,7 +195,10 @@ def add_failure(
     error = error[:MAX_FAILURE_REASON_LENGTH]
 
     logger.debug(
-        f"Failure information: {client_id}, {error}, {failed_date}, {full_name}, {asd_adhd}, {daeval}, {questionnaires_needed}, {questionnaires_generated}"
+        f"Failure information: client_id={client_id}, error={error}, "
+        f"failed_date={failed_date}, daeval={daeval}, "
+        f"questionnaires_needed_count={len(questionnaires_needed or [])}, "
+        f"questionnaires_generated_count={len(questionnaires_generated or [])}"
     )
 
     if add_to_sheet:

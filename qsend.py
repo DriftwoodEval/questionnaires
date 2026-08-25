@@ -78,7 +78,7 @@ app = typer.Typer()
 
 logger.remove()
 logger.level("NOTICE", no=25, color="<yellow><bold>", icon="!")
-logger.add(sys.stdout, format=stderr_log_format)
+logger.add(sys.stdout, format=stderr_log_format, diagnose=False)
 
 logger.add("logs/qsend.log", format=json_log_format, rotation="500 MB")
 
@@ -291,7 +291,7 @@ def assign_questionnaire(
 ) -> tuple[str, dict[str, bool]]:
     """Generate a questionnaire and assign it to a client."""
     logger.info(
-        f"Assigning questionnaire '{questionnaire}' to {client['TA First Name']} {client['TA Last Name']}"
+        f"Assigning questionnaire '{questionnaire}' to {client.get('Client ID', 'unknown client')}"
     )
 
     if questionnaire == "Conners EC":
@@ -772,7 +772,7 @@ def main(
         total_clients = len(clients)
         for i, (_, client) in enumerate(clients.iterrows(), start=1):
             task.progress(i, total_clients)
-            logger.info(f"Starting loop for {client['Client Name']}")
+            logger.info(f"Starting loop for {client['Client ID']}")
 
             if prev_failed_clients:
                 previously_failed, error = check_client_failed(
@@ -791,7 +791,7 @@ def main(
                     ]:
                         logger.log(
                             "NOTICE",
-                            f"{client['Client Name']} has already failed to send",
+                            f"{client['Client ID']} has already failed to send",
                         )
                         add_failure(
                             config=config,
@@ -805,12 +805,12 @@ def main(
 
                         continue
                     logger.info(
-                        f"{client['Client Name']} has already failed to send because {error}, retrying"
+                        f"{client['Client ID']} has already failed to send because {error}, retrying"
                     )
 
             if client["Language"] not in ["", "English", "Spanish"]:
                 logger.log(
-                    "NOTICE", f"{client['Client Name']} speaks {client['Language']}"
+                    "NOTICE", f"{client['Client ID']} speaks {client['Language']}"
                 )
                 add_failure(
                     config=config,
@@ -827,7 +827,7 @@ def main(
                 client_from_db = prev_clients.get(int(client["Client ID"]))
                 if not client_from_db:
                     logger.error(
-                        f"{client['Client Name']} not found in DB, do they exist in TherapyAppointment?"
+                        f"{client['Client ID']} not found in DB, do they exist in TherapyAppointment?"
                     )
                     add_failure(
                         config=config,
@@ -859,11 +859,11 @@ def main(
                 client["TA Last Name"] = client_from_db.lastName
 
                 if client_from_db.autismStop:
-                    logger.log("NOTICE", f"{client['Client Name']} has autism stop")
+                    logger.log("NOTICE", f"{client['Client ID']} has autism stop")
                     continue
 
                 if client_from_db.pause:
-                    logger.log("NOTICE", f"{client['Client Name']} has been paused")
+                    logger.log("NOTICE", f"{client['Client ID']} has been paused")
                     continue
 
                 client_url = ""
@@ -892,7 +892,7 @@ def main(
                         )
                     if not check_if_opened_portal(driver):
                         logger.log(
-                            "NOTICE", f"{client['Client Name']} has not opened portal"
+                            "NOTICE", f"{client['Client ID']} has not opened portal"
                         )
                         add_failure(
                             config=config,
@@ -916,7 +916,7 @@ def main(
 
                     if not check_if_docs_signed(driver):
                         logger.log(
-                            "NOTICE", f"{client['Client Name']} has not signed docs"
+                            "NOTICE", f"{client['Client ID']} has not signed docs"
                         )
                         add_failure(
                             config=config,
@@ -964,7 +964,7 @@ def main(
                 if str(questionnaires_needed) == "Too young":
                     logger.log(
                         "NOTICE",
-                        f"{client['Client Name']} is too young (age {client['Age']})",
+                        f"{client['Client ID']} is too young (age {client['Age']})",
                     )
                     add_failure(
                         config=config,
@@ -989,7 +989,7 @@ def main(
                 if str(questionnaires_needed) == "Too old":
                     logger.log(
                         "NOTICE",
-                        f"{client['Client Name']} is too old (age {client['Age']})",
+                        f"{client['Client ID']} is too old (age {client['Age']})",
                     )
                     add_failure(
                         config=config,
@@ -1013,7 +1013,7 @@ def main(
 
                 if isinstance(questionnaires_needed, str):
                     logger.error(
-                        f"{client['Client Name']} has unknown questionnaire needs"
+                        f"{client['Client ID']} has unknown questionnaire needs"
                     )
                     add_failure(
                         config=config,
@@ -1107,7 +1107,7 @@ def main(
 
                         if remaining_overlaps:
                             logger.error(
-                                f"{client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
+                                f"{client['Client ID']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
                             )
                             add_failure(
                                 config=config,
@@ -1122,7 +1122,7 @@ def main(
                             continue
 
                 logger.info(
-                    f"{client['Client Name']} needs questionnaires for {client['Language']}{' ' if client['Language'] != '' else ''}{client['For']} {client['daeval']}: {questionnaires_needed}"
+                    f"{client['Client ID']} needs questionnaires for {client['daeval']}: {questionnaires_needed}"
                 )
 
                 questionnaires = []
@@ -1272,7 +1272,7 @@ def main(
                     )
 
             except Exception as e:
-                logger.error(f"Error for {client['Client Name']}: {e}")
+                logger.error(f"Error for {client['Client ID']}: {e}")
                 add_failure(
                     config=config,
                     client_id=client["Client ID"],

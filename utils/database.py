@@ -119,7 +119,7 @@ def get_previous_clients(
             try:
                 pydantic_client = ClientFromDB(**client_data)
                 if pydantic_client.fullName.lower() in TEST_NAMES_LOWER:
-                    logger.debug(f"Skipping test client {pydantic_client.fullName}")
+                    logger.debug(f"Skipping test client {pydantic_client.id}")
                     continue
                 prev_clients[pydantic_client.id] = pydantic_client
             except Exception:
