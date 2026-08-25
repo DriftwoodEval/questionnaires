@@ -196,15 +196,29 @@ def render_reminder_message(
         variant = "DEFAULT"
 
     reminded_count = most_recent_q["reminded"]
-    template = (
-        override if override is not None else templates.get((reminded_count, variant))
-    )
+    if override is not None:
+        template = override
+    else:
+        template = templates.get((reminded_count, variant))
+        if template is None:
+            template = DEFAULT_REMINDER_TEMPLATES.get((reminded_count, variant))
+            if template is not None:
+                logger.error(
+                    f"No emr_questionnaire_reminder_template row for "
+                    f"(reminderIndex={reminded_count}, variant={variant}), "
+                    "falling back to the hardcoded default. Run "
+                    "scripts/seed-questionnaire-reminder-templates.ts to fix."
+                )
     if template is None:
+        logger.error(
+            f"No reminder template found for (reminderIndex={reminded_count}, "
+            f"variant={variant}), cannot build message for {client.fullName}"
+        )
         return None
 
     if distance == 0:
         distance_phrase = "today"
-    elif distance == -1:
+    elif distance == 1:
         date_str = most_recent_q["sent"].strftime("%m/%d")
         distance_phrase = f"on {date_str} (yesterday)"
     else:

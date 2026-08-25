@@ -201,7 +201,7 @@ class TestRenderReminderMessage:
     @pytest.mark.parametrize(
         ("reminded", "distance", "expected_substring"),
         [
-            (1, -1, "(yesterday)"),
+            (1, 1, "(yesterday)"),
             (1, 5, "5 days ago"),
             (2, 5, "close out your referral"),
         ],
@@ -378,3 +378,37 @@ class TestRenderReminderMessage:
             templates, DEFAULT_SETTINGS, config, client, most_recent_q=q1, distance=0
         )
         assert message == "Completed: 2, remaining: 1."
+
+    def test_falls_back_to_hardcoded_default_when_db_template_missing(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        """If the emr_questionnaire_reminder_template table is missing a row
+        (e.g. the seed script was never run), still send the hardcoded
+        default instead of silently sending nothing."""
+        config = config_factory(name="Jane")
+        q = questionnaire_factory(sent=date.today(), reminded=0)
+        client = client_factory(questionnaires=[q])
+        message = render_reminder_message(
+            {},
+            DEFAULT_SETTINGS,
+            config,
+            client,
+            most_recent_q=q,
+            distance=0,
+        )
+        assert message is not None
+        assert "Jane" in message
+        assert "complete your questionnaire" in message
+
+    def test_unknown_stage_with_empty_templates_returns_none(
+        self, config_factory, client_factory, questionnaire_factory
+    ):
+        config = config_factory()
+        q = questionnaire_factory(sent=date.today(), reminded=99)
+        client = client_factory(questionnaires=[q])
+        assert (
+            render_reminder_message(
+                {}, DEFAULT_SETTINGS, config, client, most_recent_q=q, distance=0
+            )
+            is None
+        )
