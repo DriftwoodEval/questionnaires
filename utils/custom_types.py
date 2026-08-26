@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 from typing import Annotated, Literal, TypedDict
 
@@ -256,6 +257,13 @@ class _SharedClientFromDB(_ClientBase):
     primaryInsurance: str | None = None  # noqa: N815
     secondaryInsurance: list[str] | None = None  # noqa: N815
     privatePay: bool = False  # noqa: N815
+
+    @field_validator("secondaryInsurance", mode="before")
+    @classmethod
+    def parse_secondary_insurance(cls, v: list[str] | str | None) -> list[str] | None:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
 
 
 class ClientFromDB(_SharedClientFromDB):
