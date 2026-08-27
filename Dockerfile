@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium-driver \
     chromium-common \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -36,6 +37,13 @@ RUN curl -fsSLO "$SUPERCRONIC_URL" \
     && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
 
 COPY --chmod=555 ./docker/scripts/*.sh .
+
+# supercronic reads CRON_SCHEDULE in the container's local time, and the in-code
+# send gates (is_send_time, is_referral_send_time in qreceive.py) check
+# business-local wall-clock hours via now_business(). Both only line up if the
+# container clock is business time, so pin it here even though the data handling
+# is otherwise tz-aware.
+ENV TZ=America/New_York
 
 ENV CRON_SCHEDULE="0 7,10,13,16,19 * * *"
 

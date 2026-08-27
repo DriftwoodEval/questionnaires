@@ -856,7 +856,13 @@ def main(
             referral_messages_sent: list[tuple[ClientFromDB, str, bool]] = []
 
             if send_referral_texts or dry_run:
-                cutoff_date = date.today() - timedelta(days=1)
+                # Look back far enough to cover weekends and any missed runs.
+                # emr_referral_msg_log dedupes (see sent_referral_ids below), so a
+                # wider window only catches clients a narrower one would have
+                # dropped permanently, it never re-sends.
+                cutoff_date = now_business(config.business_timezone).date() - timedelta(
+                    days=10
+                )
                 sent_referral_ids = get_sent_referral_client_ids(config)
                 matched_client_ids = get_matched_client_ids(config)
                 new_clients = [

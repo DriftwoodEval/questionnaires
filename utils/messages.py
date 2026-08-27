@@ -31,6 +31,7 @@ def is_potential_private_pay(client: ClientFromDB, has_matched_evaluator: bool) 
     )
     return no_insurance_on_file or not has_matched_evaluator
 
+
 PORTAL_LINK = "https://portal.therapyappointment.com"
 
 
