@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -24,7 +25,7 @@ from utils.database import get_most_recent_failure
 from utils.questionnaires import get_most_recent_not_done
 
 SCOPES = [
-    "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -49,10 +50,15 @@ def google_authenticate():
 
     # If the credentials are invalid or have expired, refresh the credentials
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        # If there are no credentials, start the manual login
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except RefreshError:
+                logger.warning("Token refresh failed, falling back to manual login")
+        # If there are no usable credentials, start the manual login
+        if not refreshed:
             flow = InstalledAppFlow.from_client_secrets_file(
                 "./config/credentials.json", SCOPES
             )
