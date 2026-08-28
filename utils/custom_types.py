@@ -151,6 +151,7 @@ class Config(BaseModel):
     email: EmailStr
     automated_email: EmailStr
     qreceive_emails: list[EmailStr]
+    tech_email: EmailStr | Literal[""] = ""
     punch_list_id: str
     punch_list_range: Annotated[
         str,

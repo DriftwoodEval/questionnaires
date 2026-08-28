@@ -104,6 +104,7 @@ def make_config(**overrides) -> Config:
         "email": "clinician@example.com",
         "automated_email": "automated@example.com",
         "qreceive_emails": ["admin@example.com"],
+        "tech_email": "tech@example.com",
         "punch_list_id": "punch-list-id",
         "punch_list_range": "Sheet1!A1:Z",
         "failed_sheet_id": "failed-sheet-id",

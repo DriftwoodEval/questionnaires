@@ -12,7 +12,6 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from loguru import logger
 
@@ -124,7 +123,7 @@ def send_gmail(
 
         logger.info(f"Sent email to {to_addr}: {subject}")
 
-    except HttpError:
+    except Exception:
         logger.exception("Failed to send email")
         send_message = None
     return send_message

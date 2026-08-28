@@ -75,6 +75,15 @@ logger.add(
 
 logger.add("logs/qreceive.log", format=json_log_format, rotation="500 MB")
 
+# In-memory capture of this run's warnings and errors, so the failure-alert email
+# (see the finally block in run) can carry the relevant log lines inline.
+_captured_logs: list[str] = []
+logger.add(
+    _captured_logs.append,
+    level="WARNING",
+    format="[{time:YY-MM-DD HH:mm:ss}] {level: <8} | {message}",
+)
+
 app = typer.Typer()
 
 PENDING_EMAIL_PATH = Path("logs/pending_email.json")
@@ -1121,17 +1130,37 @@ def main(
                 admin_email_text, admin_email_html = build_admin_email(merged_info)
                 if admin_email_text != "":
                     if not dry_run:
-                        try:
-                            send_gmail(
-                                message_text=admin_email_text,
-                                subject=f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}",
-                                to_addr=",".join(config.qreceive_emails),
-                                from_addr=config.automated_email,
-                                html=admin_email_html,
+                        subject = f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}"
+                        sent = send_gmail(
+                            message_text=admin_email_text,
+                            subject=subject,
+                            to_addr=",".join(config.qreceive_emails),
+                            from_addr=config.automated_email,
+                            html=admin_email_html,
+                        )
+                        if sent is None:
+                            logger.error(
+                                "Admin email failed to send; keeping queued content for retry"
                             )
-                        except Exception:
-                            logger.exception("Failed to send the admin email")
-                        PENDING_EMAIL_PATH.unlink(missing_ok=True)
+                            recent_logs = "".join(_captured_logs[-40:]).strip()
+                            alert_to = config.tech_email or ",".join(
+                                config.qreceive_emails
+                            )
+                            send_gmail(
+                                message_text=(
+                                    f"The qreceive admin email ({subject}) failed to send "
+                                    f"to {', '.join(config.qreceive_emails)}. Its content is "
+                                    "queued and will be retried on the next 1pm run.\n\n"
+                                    "Recent warnings/errors from this run:\n\n"
+                                    f"{recent_logs or '(none captured)'}"
+                                ),
+                                subject=f"[ALERT] qreceive admin email failed - {subject}",
+                                to_addr=alert_to,
+                                from_addr=config.automated_email,
+                            )
+                            _save_pending_email(email_info)
+                        else:
+                            PENDING_EMAIL_PATH.unlink(missing_ok=True)
                     else:
                         logger.info(
                             f"[DRY RUN] Would send admin email:\n{admin_email_text}"
