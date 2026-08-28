@@ -13,7 +13,7 @@ from loguru import logger
 from openpyxl.styles import Alignment, Font
 
 from utils.constants import BUSINESS_TIMEZONE
-from utils.custom_types import Appointment, Config
+from utils.custom_types import Appointment, Config, Services
 from utils.database import (
     get_all_evaluators_info,
     get_appointments,
@@ -23,6 +23,7 @@ from utils.database import (
     update_tracking_writer,
 )
 from utils.google import get_punch_list, upload_file_to_drive
+from utils.kimai import export_timesheets
 from utils.misc import NetworkSink, json_log_format, load_config, load_local_settings
 from utils.piecework import extract_writer_initials
 from utils.task_tracker import track_task
@@ -66,7 +67,10 @@ def force_clients_ready(
 
 
 def get_report_clients(
-    config: Config, force_ready_client_ids: list[int] | None = None
+    config: Config,
+    force_ready_client_ids: list[int] | None = None,
+    *,
+    dev_mode: bool = False,
 ) -> pd.DataFrame | None:
     """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
     while True:
@@ -147,7 +151,8 @@ def get_report_clients(
             for cid in new_reports["Client ID"]
             if str(cid) not in tracked_reports
         ]
-        save_new_tracked_reports(config, new_client_ids, today_str)
+        if not dev_mode:
+            save_new_tracked_reports(config, new_client_ids, today_str)
         for cid in new_client_ids:
             tracked_reports[str(cid)] = today_str
 
@@ -263,15 +268,23 @@ def get_report_clients(
             for cid in result["Client ID"]
             if str(cid) not in tracked_reports  # type: ignore[arg-type]
         ]
-        save_new_tracked_reports(config, newly_added, today_str)
+        if dev_mode:
+            logger.info(
+                f"Dev mode: skipping DB tracking writes for {len(newly_added)} "
+                "new client(s) and writer email updates"
+            )
+        else:
+            save_new_tracked_reports(config, newly_added, today_str)
 
-        for _, row in result.iterrows():
-            writer_name = row["Writer Name"]
-            writer_email = config.piecework.payroll_emails.get(writer_name)
-            if writer_email:
-                update_tracking_writer(config, int(row["Client ID"]), str(writer_email))  # type: ignore[arg-type]
-            else:
-                logger.warning(f"No payroll email found for writer: {writer_name}")
+            for _, row in result.iterrows():
+                writer_name = row["Writer Name"]
+                writer_email = config.piecework.payroll_emails.get(writer_name)
+                if writer_email:
+                    update_tracking_writer(
+                        config, int(row["Client ID"]), str(writer_email)
+                    )  # type: ignore[arg-type]
+                else:
+                    logger.warning(f"No payroll email found for writer: {writer_name}")
 
         result = result.drop(columns=["Initials", "Assigned To"])
         logger.debug(result)
@@ -654,6 +667,34 @@ def generate_individual_detail_reports(
             )
 
 
+def export_kimai_timesheets(
+    services: Services,
+    config: Config,
+    start_date: date,
+    end_date: date,
+    *,
+    dev_mode: bool,
+) -> None:
+    """Best-effort Kimai timesheet export for the piecework range: writes it to
+    piecework_output/ and, outside dev mode, uploads it to the payroll folder.
+    Never raises: a Kimai failure must not stop the piecework run."""
+    kimai = services.kimai
+    if not (kimai and kimai.url and kimai.token):
+        logger.info("No Kimai configuration found, skipping Kimai export")
+        return
+
+    try:
+        export_path = export_timesheets(
+            kimai, start_date, end_date, Path("piecework_output")
+        )
+    except Exception:
+        logger.exception("Kimai export failed")
+        return
+
+    if export_path and not dev_mode:
+        upload_file_to_drive(export_path, config.payroll_folder_id)
+
+
 @app.command()
 def main(
     dev: bool = typer.Option(
@@ -679,13 +720,15 @@ def main(
         int(cid.strip()) for cid in force_ready_clients.split(",") if cid.strip()
     ]
 
-    _, config = load_config()
+    services, config = load_config()
     date_range = get_date_range()
 
     if not date_range:
         return
 
     start_date, end_date = date_range
+
+    export_kimai_timesheets(services, config, start_date, end_date, dev_mode=dev_mode)
 
     evaluators = get_all_evaluators_info(config)
     if not evaluators:
@@ -699,7 +742,9 @@ def main(
 
     try:
         report_clients = get_report_clients(
-            config, force_ready_client_ids=force_ready_client_ids
+            config,
+            force_ready_client_ids=force_ready_client_ids,
+            dev_mode=dev_mode,
         )
     except Exception:
         logger.exception("Failed to fetch report clients.")
@@ -719,7 +764,12 @@ def main(
         logger.info("No valid appointments found to include in the report.")
         return
 
-    with track_task(config, "piecework_report", "Generating piecework report") as task:
+    with track_task(
+        config,
+        "piecework_report",
+        "Generating piecework report",
+        dev_mode=dev_mode,
+    ) as task:
         if task is None:
             logger.info(
                 "Skipping run: a previous piecework report run is still in progress."

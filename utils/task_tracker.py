@@ -49,6 +49,17 @@ def _clear_orphaned_rows(
     connection.commit()
 
 
+class NoOpTaskHandle:
+    """Stand-in yielded by track_task in dev mode: records nothing."""
+
+    task_id = 0
+
+    def progress(
+        self, current: int, total: int | None = None, detail: str | None = None
+    ) -> None:
+        pass
+
+
 class TaskHandle:
     def __init__(self, connection, task_id: int) -> None:
         self._connection = connection
@@ -71,9 +82,17 @@ class TaskHandle:
 
 @contextmanager
 def track_task(
-    config: Config, task_type: str, label: str, exclusive: bool = True
-) -> Iterator[TaskHandle | None]:
+    config: Config,
+    task_type: str,
+    label: str,
+    exclusive: bool = True,
+    *,
+    dev_mode: bool = False,
+) -> Iterator[TaskHandle | NoOpTaskHandle | None]:
     """Records a job run as a row in emr_task.
+
+    If dev_mode is True, takes no lock and writes no row: yields a
+    NoOpTaskHandle so callers run their work without touching the shared DB.
 
     If exclusive is True (the default), also holds a MySQL named lock for
     the task type so a second cron-triggered run of the same job can't
@@ -87,6 +106,11 @@ def track_task(
     Otherwise yields a TaskHandle for reporting progress; the row is
     marked completed or failed automatically.
     """
+    if dev_mode:
+        logger.info(f"Dev mode: not recording {task_type} run in emr_task")
+        yield NoOpTaskHandle()
+        return
+
     connection = get_db(config)
     lock_name = f"task:{task_type}"
 

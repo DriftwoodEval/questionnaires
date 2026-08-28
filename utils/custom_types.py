@@ -55,6 +55,13 @@ class OpenPhoneService(BaseModel):
     users: dict[str, OpenPhoneUser]
 
 
+class KimaiService(BaseModel):
+    """Kimai time-tracking instance URL and API token."""
+
+    url: str
+    token: str
+
+
 class Services(BaseModel):
     """A BaseModel containing all the service configurations and credentials."""
 
@@ -64,6 +71,7 @@ class Services(BaseModel):
     qglobal: Service
     wps: Service
     novopsych: Service
+    kimai: KimaiService | None = None
 
 
 class PieceworkCosts(BaseModel):
