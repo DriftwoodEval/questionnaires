@@ -1,6 +1,8 @@
 import base64
 import mimetypes
 import re
+import time
+from collections.abc import Sequence
 from datetime import date
 from email.message import EmailMessage
 from functools import cache
@@ -133,6 +135,155 @@ def send_gmail(
         logger.exception("Failed to send email")
         send_message = None
     return send_message
+
+
+def _get_message_body(payload: dict) -> tuple[str | None, str | None]:
+    """Walk a Gmail message payload's MIME parts, returning (text_plain, text_html)."""
+    text_plain = None
+    text_html = None
+
+    def decode(data: str) -> str:
+        return base64.urlsafe_b64decode(data.encode()).decode("utf-8", errors="replace")
+
+    def walk(part: dict) -> None:
+        nonlocal text_plain, text_html
+        mime_type = part.get("mimeType", "")
+        body_data = part.get("body", {}).get("data")
+        if mime_type == "text/plain" and body_data and text_plain is None:
+            text_plain = decode(body_data)
+        elif mime_type == "text/html" and body_data and text_html is None:
+            text_html = decode(body_data)
+        for subpart in part.get("parts", []):
+            walk(subpart)
+
+    walk(payload)
+    return text_plain, text_html
+
+
+def list_gmail_messages(
+    query: str | None = None,
+    label_ids: Sequence[str] | None = None,
+    max_results: int = 50,
+) -> list[dict]:
+    """List Gmail message id stubs matching a Gmail search query.
+
+    Paginates until max_results is reached. Returns the raw {"id", "threadId"}
+    stubs; use get_gmail_message() to fetch full content.
+    """
+    creds = google_authenticate()
+    service = build("gmail", "v1", credentials=creds)
+    messages: list[dict] = []
+    page_token = None
+    while len(messages) < max_results:
+        response = (
+            service.users()
+            .messages()
+            .list(
+                userId="me",
+                q=query,
+                labelIds=label_ids,
+                pageToken=page_token,
+                maxResults=min(max_results - len(messages), 500),
+            )
+            .execute()
+        )
+        messages.extend(response.get("messages", []))
+        page_token = response.get("nextPageToken")
+        if page_token is None:
+            break
+    return messages[:max_results]
+
+
+def get_gmail_message(message_id: str) -> dict:
+    """Fetch and parse a single Gmail message by id.
+
+    Returns a dict with subject, from, to, date, snippet, body_text, body_html.
+    """
+    creds = google_authenticate()
+    service = build("gmail", "v1", credentials=creds)
+    message = (
+        service.users()
+        .messages()
+        .get(userId="me", id=message_id, format="full")
+        .execute()
+    )
+
+    payload = message.get("payload", {})
+    headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
+    body_text, body_html = _get_message_body(payload)
+
+    return {
+        "id": message["id"],
+        "thread_id": message.get("threadId"),
+        "subject": headers.get("subject"),
+        "from": headers.get("from"),
+        "to": headers.get("to"),
+        "date": headers.get("date"),
+        "snippet": message.get("snippet"),
+        "body_text": body_text,
+        "body_html": body_html,
+    }
+
+
+def mark_gmail_message_read(message_id: str) -> None:
+    """Remove the UNREAD label from a Gmail message."""
+    creds = google_authenticate()
+    service = build("gmail", "v1", credentials=creds)
+    service.users().messages().modify(
+        userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+    ).execute()
+
+
+PEARSON_VERIFICATION_QUERY = (
+    'to:ratingscales@driftwoodeval.com subject:"Pearson Verification Code Requested"'
+)
+
+
+def _parse_pearson_code(message: dict) -> str | None:
+    text = message["body_text"] or message["snippet"] or ""
+    match = re.search(r"verification code is:?\s*(\d+)", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"\b\d{6}\b", text)
+    if not match:
+        return None
+    return match.group(1) if match.re.groups else match.group(0)
+
+
+def get_pearson_verification_code(
+    after_epoch: int | None = None,
+    max_wait: int = 90,
+    poll_interval: int = 5,
+) -> str | None:
+    """Fetch the Pearson (QGlobal) 2FA verification code from Gmail.
+
+    Mirrors the logic in ../winnonah: find the message sent to
+    ratingscales@driftwoodeval.com with the "Pearson Verification Code
+    Requested" subject, mark it read, and pull the numeric code out of the body.
+
+    Pearson emails the code a few seconds after the login form asks for it, so
+    when after_epoch is given this polls (up to max_wait seconds) for a message
+    newer than that timestamp instead of returning a stale code.
+    """
+    query = PEARSON_VERIFICATION_QUERY
+    if after_epoch is not None:
+        query = f"{query} after:{after_epoch}"
+
+    deadline = time.monotonic() + max_wait
+    while True:
+        messages = list_gmail_messages(query=query, max_results=1)
+        if messages:
+            message = get_gmail_message(messages[0]["id"])
+            mark_gmail_message_read(message["id"])
+            code = _parse_pearson_code(message)
+            if code:
+                logger.info(f"Pearson verification code: {code}")
+                return code
+            logger.error("Could not parse verification code from Pearson email.")
+            return None
+        if after_epoch is None or time.monotonic() >= deadline:
+            logger.error("No Pearson verification code email found.")
+            return None
+        time.sleep(poll_interval)
 
 
 def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:

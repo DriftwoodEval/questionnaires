@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
@@ -17,6 +18,7 @@ from urllib3.exceptions import MaxRetryError
 from urllib3.exceptions import TimeoutError as Urllib3TimeoutError
 
 from utils.custom_types import Config, Services
+from utils.google import get_pearson_verification_code
 from utils.selenium import (
     click_element,
     command_timeout,
@@ -114,6 +116,53 @@ def _accept_cookies_if_present(driver: WebDriver) -> None:
         click_element(driver, By.ID, "onetrust-accept-btn-handler")
 
 
+def _handle_mfa_if_present(driver: WebDriver, requested_at: int) -> None:
+    """Handle Pearson's ForgeRock email MFA step if it shows after login.
+
+    Pearson only sometimes prompts for an emailed one-time passcode. When it
+    does, the passcode field is name="callback_1" (id "showHideIconPassword"),
+    the "Trust this device" checkbox is id "trustDeviceCheckbox_3" (its
+    hidden partner callback_3 is what actually gets submitted), and the submit
+    button is id "idToken3_0". Trusting the device suppresses the prompt on
+    later logins from the same browser profile.
+    """
+    if not find_element_exists(driver, By.ID, "showHideIconPassword", timeout=10):
+        return
+
+    logger.debug("QGlobal MFA email prompt shown, fetching passcode from Gmail")
+    code = get_pearson_verification_code(after_epoch=requested_at)
+    if not code:
+        logger.warning("Could not retrieve QGlobal MFA passcode from Gmail.")
+        code = input(
+            "QGlobal MFA: enter the emailed passcode and press enter, or resolve "
+            "the prompt in the browser yourself and press enter with no input: "
+        ).strip()
+        if not code:
+            logger.info("Continuing; assuming QGlobal MFA was resolved manually.")
+            return
+
+    find_element(driver, By.NAME, "callback_1").send_keys(code)
+
+    if find_element_exists(
+        driver,
+        By.CSS_SELECTOR,
+        ".trust-device-container input[type='checkbox']",
+        timeout=3,
+    ):
+        click_element(
+            driver,
+            By.CSS_SELECTOR,
+            ".trust-device-container input[type='checkbox']",
+        )
+
+    click_element(driver, By.ID, "idToken3_0")
+
+    # A successful passcode lands on an "Account Verified" interstitial with a
+    # "Done" button (id "loginButton_0") that must be clicked to finish.
+    if find_element_exists(driver, By.ID, "loginButton_0", timeout=15):
+        click_element(driver, By.ID, "loginButton_0")
+
+
 def login_qglobal(driver: WebDriver, services: Services) -> None:
     """Log in to QGlobal."""
     logger.debug("Logging in to QGlobal")
@@ -130,7 +179,10 @@ def login_qglobal(driver: WebDriver, services: Services) -> None:
 
     logger.debug("Entering password")
     find_element(driver, By.NAME, "callback_2").send_keys(services.qglobal.password)
+    requested_at = int(time.time())
     click_element(driver, By.ID, "idToken4_0")
+
+    _handle_mfa_if_present(driver, requested_at)
 
     try:
         find_element(driver, By.XPATH, "//a[text()='Search']", timeout=60)
