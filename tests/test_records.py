@@ -12,6 +12,8 @@ class TestNormalizeDistrict:
             ("", ""),
             ("Charleston County School District", "charleston"),
             ("Berkeley County", "berkeley"),
+            ("Berkley County", "berkeley"),
+            ("Berkley County School District", "berkeley"),
             ("  Dorchester   School District  ", "dorchester"),
         ],
     )

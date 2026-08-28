@@ -2,6 +2,11 @@ import re
 
 from utils.custom_types import RecordsContact
 
+# Common misspellings seen on client forms, mapped to the canonical district name.
+MISSPELLINGS = {
+    "berkley": "berkeley",
+}
+
 
 def normalize_district(name: str | None) -> str:
     if not name:
@@ -11,7 +16,9 @@ def normalize_district(name: str | None) -> str:
 
     clean = re.sub(rf"(?i){pattern}", "", name)
 
-    return " ".join(clean.split()).lower()
+    normalized = " ".join(clean.split()).lower()
+
+    return MISSPELLINGS.get(normalized, normalized)
 
 
 def resolve_school_contact(
