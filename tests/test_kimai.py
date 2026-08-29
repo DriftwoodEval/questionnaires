@@ -67,15 +67,14 @@ def test_export_writes_enriched_spreadsheet(tmp_path, routes):
     df = pd.read_excel(result, sheet_name="Timesheets")
     row = df.iloc[0]
     assert row["User"] == "Jane Doe"
-    assert row["Project"] == "Evaluations"
+    assert "Project" not in df.columns
     assert row["Activity"] == "Writing"
     assert row["Customer"] == "Driftwood"
     assert row["Hours"] == 1.0
 
-    summary = pd.read_excel(result, sheet_name="Hours by Project")
-    assert summary.columns.tolist() == ["Person", "Project", "Hours"]
+    summary = pd.read_excel(result, sheet_name="Hours by Person")
+    assert summary.columns.tolist() == ["Person", "Hours"]
     assert summary.iloc[0]["Person"] == "Jane Doe"
-    assert summary.iloc[0]["Project"] == "Evaluations"
     assert summary.iloc[0]["Hours"] == 1.0
 
 
@@ -120,5 +119,5 @@ def test_export_tolerates_lookup_failures(tmp_path, routes):
 
     assert result is not None
     df = pd.read_excel(result, sheet_name="Timesheets")
-    assert str(df.iloc[0]["Project"]) == "7"
+    assert "Project" not in df.columns
     assert df.iloc[0]["User"] == "Jane Doe"

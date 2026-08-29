@@ -83,7 +83,6 @@ def _fetch_timesheets(
 
 def _to_rows(records: list[dict], lookups: dict[str, dict]) -> list[dict]:
     users = lookups["users"]
-    projects = lookups["projects"]
     activities = lookups["activities"]
     customers = lookups["customers"]
     project_customers = lookups["project_customers"]
@@ -101,7 +100,6 @@ def _to_rows(records: list[dict], lookups: dict[str, dict]) -> list[dict]:
                 "Start": start.strftime("%H:%M") if start else "",
                 "User": users.get(record.get("user"), str(record.get("user", ""))),
                 "Customer": customers.get(customer_id, ""),
-                "Project": projects.get(project_id, str(project_id or "")),
                 "Activity": activities.get(
                     record.get("activity"), str(record.get("activity", ""))
                 ),
@@ -118,7 +116,7 @@ def export_timesheets(
     kimai: KimaiService, start_date: date, end_date: date, output_dir: Path
 ) -> Path | None:
     """Fetch every Kimai timesheet entry in the date range, resolve the user,
-    project, activity and customer names, and write them to an Excel file.
+    activity and customer names, and write them to an Excel file.
 
     Returns the file path, or None if the fetch failed or there were no entries.
     """
@@ -137,12 +135,10 @@ def export_timesheets(
     customers = _fetch_lookup(session, base, "customers", ["name"])
 
     project_customers: dict[int, int] = {}
-    projects: dict[int, str] = {}
     try:
         response = session.get(f"{base}/api/projects", timeout=TIMEOUT)
         response.raise_for_status()
         for item in response.json():
-            projects[item["id"]] = str(item.get("name") or item["id"])
             if item.get("customer"):
                 project_customers[item["id"]] = item["customer"]
     except requests.RequestException:
@@ -152,14 +148,13 @@ def export_timesheets(
         records,
         {
             "users": users,
-            "projects": projects,
             "activities": activities,
             "customers": customers,
             "project_customers": project_customers,
         },
     )
     df = pd.DataFrame(rows).sort_values(["User", "Date", "Start"])
-    summary = _hours_by_project(df)
+    summary = _hours_by_person(df)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = (
@@ -167,18 +162,18 @@ def export_timesheets(
         / f"kimai_{start_date.strftime('%y-%m-%d')}_{end_date.strftime('%y-%m-%d')}.xlsx"
     )
     with pd.ExcelWriter(filename, engine="openpyxl") as writer:
-        summary.to_excel(writer, index=False, sheet_name="Hours by Project")
+        summary.to_excel(writer, index=False, sheet_name="Hours by Person")
         df.to_excel(writer, index=False, sheet_name="Timesheets")
     logger.success(f"Wrote Kimai export: {filename} ({len(df)} entries)")
     return filename
 
 
-def _hours_by_project(df: pd.DataFrame) -> pd.DataFrame:
-    """One row per person/project combination with the total hours worked."""
+def _hours_by_person(df: pd.DataFrame) -> pd.DataFrame:
+    """One row per person with the total hours worked."""
     return (
-        df.groupby(["User", "Project"], as_index=False)["Hours"]
+        df.groupby(["User"], as_index=False)["Hours"]
         .sum()
         .round({"Hours": 2})
         .rename(columns={"User": "Person"})
-        .sort_values(["Person", "Project"])
+        .sort_values(["Person"])
     )
