@@ -90,6 +90,18 @@ class PieceworkConfig(BaseModel):
     costs: dict[str, PieceworkCosts]
     name_map: dict[str, str]
     payroll_emails: dict[str, EmailStr]
+    # NPI of the evaluator whose ADHD reports are paid as piecework. Snapshotted
+    # onto emr_report at creation, so piecework does not read this directly, but
+    # it is kept here to stay in sync with the winnonah config schema.
+    adhd_piecework_evaluator_npi: str = ""
+
+    def name_from_email(self, email: str) -> str:
+        """Reverse lookup: payroll email to worker display name."""
+        email_lower = email.lower()
+        for name, mapped in self.payroll_emails.items():
+            if str(mapped).lower() == email_lower:
+                return name
+        return ""
 
     def get_unit_cost(self, evaluator_name: str, appointment_type: str) -> float:
         """Get the unit cost for a specific evaluator and appointment type.

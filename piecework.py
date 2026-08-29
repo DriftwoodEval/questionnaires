@@ -17,6 +17,9 @@ from utils.custom_types import Appointment, Config, Services
 from utils.database import (
     get_all_evaluators_info,
     get_appointments,
+    get_billable_reports,
+    get_reports_for_clients,
+    get_reports_pending_second_review,
     get_self_report_writer_for_client,
     load_tracked_reports,
     save_new_tracked_reports,
@@ -290,6 +293,136 @@ def get_report_clients(
         logger.debug(result)
         logger.info(f"Found {len(result)} new reports")
 
+        return result
+
+
+def get_report_clients_db(
+    config: Config,
+    force_ready_client_ids: list[int] | None = None,
+    *,
+    dev_mode: bool = False,
+) -> pd.DataFrame | None:
+    """Report writing entries to pay, sourced from emr_report (the EMR reports
+    workflow) instead of the punch list. Same dedup ledger and prompts as the
+    legacy path."""
+    while True:
+        pending = get_reports_pending_second_review(config)
+        if pending:
+            client_list = [
+                f"{row['client_name']} ({row['clientId']})" for row in pending
+            ]
+            answers = inquirer.prompt(
+                [
+                    inquirer.List(
+                        "action",
+                        message=(
+                            f"These reports are awaiting review: {', '.join(client_list)}. "
+                            "What would you like to do?"
+                        ),
+                        choices=[
+                            ("I've reviewed them, reload", "reload"),
+                            ("Skip this check and continue", "continue"),
+                        ],
+                    )
+                ]
+            )
+            if not answers:
+                logger.info("Aborting.")
+                sys.exit()
+            if answers["action"] == "reload":
+                continue
+
+        rows = get_billable_reports(config)
+        if force_ready_client_ids:
+            forced = get_reports_for_clients(config, force_ready_client_ids)
+            seen = {r["clientId"] for r in rows}
+            rows = rows + [r for r in forced if r["clientId"] not in seen]
+
+        if not rows:
+            logger.info("No clients found that have reports done")
+            return None
+
+        report_done = pd.DataFrame(rows)
+        report_done["Client ID"] = report_done["clientId"].astype(str)
+        report_done["Client Name"] = report_done["client_name"]
+
+        tracked_reports = load_tracked_reports(config)
+        today_str = now_business(config.business_timezone).strftime("%Y-%m-%d")
+
+        is_tracked_today = report_done["Client ID"].isin(tracked_reports)
+        matches_today = report_done["Client ID"].map(tracked_reports) == today_str
+        new_reports = report_done[~is_tracked_today | matches_today].copy()
+
+        if new_reports.empty:
+            logger.info("No new reports found")
+            return None
+
+        new_reports["Writer Name"] = new_reports["writerEmail"].apply(
+            lambda e: (
+                config.piecework.name_from_email(e) if isinstance(e, str) and e else ""
+            )
+        )
+
+        unresolved_mask = new_reports["Writer Name"] == ""
+        for idx in new_reports[unresolved_mask].index:
+            client_id = int(new_reports.loc[idx, "Client ID"])
+            writer = get_self_report_writer_for_client(config, client_id)
+            if writer:
+                new_reports.loc[idx, "Writer Name"] = writer
+
+        still_unassigned = new_reports["Writer Name"] == ""
+        if still_unassigned.any():
+            names = [
+                f"{row['Client Name']} ({row['Client ID']})"
+                for _, row in new_reports[still_unassigned].iterrows()
+            ]
+            answers = inquirer.prompt(
+                [
+                    inquirer.List(
+                        "action",
+                        message=f"Missing writers for: {', '.join(names)}. What would you like to do?",
+                        choices=[
+                            ("I've made changes, refetch", "refetch"),
+                            ("Continue, ignore these clients", "continue"),
+                        ],
+                    )
+                ]
+            )
+            if not answers:
+                logger.info("Aborting.")
+                sys.exit()
+            if answers["action"] == "refetch":
+                continue
+            new_reports = new_reports[~still_unassigned]
+
+        result = new_reports[["Client Name", "Client ID", "Writer Name"]].copy()
+        if result.empty:
+            logger.error(
+                "No valid reports found after filtering out unassigned clients"
+            )
+            return None
+
+        newly_added = [
+            int(cid) for cid in result["Client ID"] if cid not in tracked_reports
+        ]
+        if dev_mode:
+            logger.info(
+                f"Dev mode: skipping DB tracking writes for {len(newly_added)} new client(s)"
+            )
+        else:
+            save_new_tracked_reports(config, newly_added, today_str)
+            for _, row in result.iterrows():
+                writer_email = config.piecework.payroll_emails.get(row["Writer Name"])
+                if writer_email:
+                    update_tracking_writer(
+                        config, int(row["Client ID"]), str(writer_email)
+                    )
+                else:
+                    logger.warning(
+                        f"No payroll email found for writer: {row['Writer Name']}"
+                    )
+
+        logger.info(f"Found {len(result)} new reports")
         return result
 
 
@@ -702,6 +835,14 @@ def main(
         "--dev",
         help="Run in dev mode (do not upload to Google Drive)",
     ),
+    legacy_punchlist: bool = typer.Option(
+        False,
+        "--legacy-punchlist",
+        help=(
+            "Read report writing entries from the punch list sheet instead of "
+            "the EMR reports table. Transitional safety valve for diffing runs."
+        ),
+    ),
     force_ready_clients: str = typer.Option(
         "",
         "--force-ready-clients",
@@ -740,8 +881,11 @@ def main(
         logger.info("No appointments found for the selected range.")
         appointments = []
 
+    fetch_report_clients = (
+        get_report_clients if legacy_punchlist else get_report_clients_db
+    )
     try:
-        report_clients = get_report_clients(
+        report_clients = fetch_report_clients(
             config,
             force_ready_client_ids=force_ready_client_ids,
             dev_mode=dev_mode,

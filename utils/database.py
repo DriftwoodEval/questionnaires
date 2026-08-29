@@ -389,6 +389,71 @@ def update_tracking_writer(config: Config, client_id: int, writer_email: str) ->
             )
 
 
+def get_billable_reports(config: Config) -> list[dict]:
+    """Reports ready for piecework payment: billed, first review not done/held,
+    not archived, and flagged billable (the ADHD/self-written rule is snapshotted
+    on the row).
+
+    Replaces the punch-list "Billed? / first review / For / Evaluator" filter.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                r.clientId,
+                c.fullName AS client_name,
+                r.writerEmail,
+                r.asdAdhd
+            FROM emr_report r
+            JOIN emr_client c ON c.id = r.clientId
+            WHERE r.billed = 1
+              AND r.firstReviewDone = 0
+              AND r.archivedAt IS NULL
+              AND r.billablePiecework = 1
+            """
+        )
+        return list(cursor.fetchall())
+
+
+def get_reports_for_clients(config: Config, client_ids: list[int]) -> list[dict]:
+    """Fetch non-archived report rows for the given clients regardless of billing
+    state. Used by --force-ready-clients in DB mode for testing."""
+    if not client_ids:
+        return []
+    placeholders = ", ".join(["%s"] * len(client_ids))
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT r.clientId, c.fullName AS client_name, r.writerEmail, r.asdAdhd
+            FROM emr_report r
+            JOIN emr_client c ON c.id = r.clientId
+            WHERE r.archivedAt IS NULL AND r.clientId IN ({placeholders})
+            """,
+            tuple(client_ids),
+        )
+        return list(cursor.fetchall())
+
+
+def get_reports_pending_second_review(config: Config) -> list[dict]:
+    """Reports flagged as needing second review but not yet billed. The operator
+    is prompted about these before piecework continues."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT r.clientId, c.fullName AS client_name
+            FROM emr_report r
+            JOIN emr_client c ON c.id = r.clientId
+            WHERE r.secondReviewNeeded = 1
+              AND r.billed = 0
+              AND r.archivedAt IS NULL
+            """
+        )
+        return list(cursor.fetchall())
+
+
 def get_appointments(
     config: Config, start_date: date, end_date: date
 ) -> list[Appointment] | None:
