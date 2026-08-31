@@ -65,8 +65,8 @@ def build_referral_message(
         )
 
     message = (
-        f"Hello, this is {config.name} from Driftwood Evaluation Center. I'm "
-        "reaching out regarding a referral we received for an evaluation. We are "
+        f"Hello, this is {config.private_pay_sender_name} from Driftwood Evaluation "
+        "Center. I'm reaching out regarding a referral we received for an evaluation. We are "
         "not showing insurance on file, can you share your insurance information "
         "with us? We also offer private pay options. Please reply on how you "
         "would like to proceed."
