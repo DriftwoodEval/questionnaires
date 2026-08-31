@@ -115,7 +115,7 @@ class TestBuildReferralMessage:
     def test_no_insurance_on_file_gets_private_pay_outreach(
         self, config_factory, referral_client_factory
     ):
-        config = config_factory(name="Melissa")
+        config = config_factory(private_pay_sender_name="Melissa")
         client = referral_client_factory(
             primary_insurance=None,
             private_pay=False,
@@ -130,7 +130,7 @@ class TestBuildReferralMessage:
     def test_no_matched_evaluator_gets_private_pay_outreach_despite_insurance(
         self, config_factory, referral_client_factory
     ):
-        config = config_factory(name="Melissa")
+        config = config_factory(private_pay_sender_name="Melissa")
         client = referral_client_factory(
             primary_insurance="Blue Cross",
             dob=date.today() - relativedelta(years=10),

@@ -170,10 +170,6 @@ def export_timesheets(
 
 def _hours_by_person(df: pd.DataFrame) -> pd.DataFrame:
     """One row per person with the total hours worked."""
-    return (
-        df.groupby(["User"], as_index=False)["Hours"]
-        .sum()
-        .round({"Hours": 2})
-        .rename(columns={"User": "Person"})
-        .sort_values(["Person"])
-    )
+    summary = df.groupby("User", as_index=False).agg(Hours=("Hours", "sum"))
+    summary["Hours"] = summary["Hours"].round(2)
+    return summary.rename(columns={"User": "Person"}).sort_values(["Person"])

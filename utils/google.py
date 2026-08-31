@@ -66,7 +66,9 @@ def google_authenticate():
             )
             creds = flow.run_local_server(port=0)
 
-    # Save the credentials for the next run
+    # Save the credentials for the next run. Every branch above either keeps
+    # a valid `creds` or reassigns it via refresh/login, so it's never None here.
+    assert creds is not None
     with Path.open(token_path, "w") as token:
         token.write(creds.to_json())
 
