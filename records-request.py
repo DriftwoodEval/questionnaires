@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.custom_types import ClientFromDB, Config, RecordsContact
 from utils.database import (
+    diagnose_records_readiness,
     get_clients_needing_records,
     update_external_record_in_db,
     update_failure_in_db,
@@ -402,9 +403,27 @@ def main(
     client_filter: str = typer.Option(
         None, "--client", help="Process only this client, by ID or full name"
     ),
+    debug_client: str = typer.Option(
+        None,
+        "--debug-client",
+        help="Report why a client is not ready for records (by ID or name), then exit",
+    ),
 ):
     """Main function to run the automation script."""
     services, config = load_config()
+
+    if debug_client:
+        checks = diagnose_records_readiness(config, debug_client)
+        blocked = any(status == "FAIL" for status, _ in checks)
+        for status, message in checks:
+            log = logger.error if status == "FAIL" else logger.info
+            log(f"{status:<4} {message}")
+        logger.info(
+            "Result: NOT ready for records (see FAIL lines above)"
+            if blocked
+            else "Result: ready — client would be picked up by a records-request run"
+        )
+        return
 
     school_contacts = config.records_emails
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}

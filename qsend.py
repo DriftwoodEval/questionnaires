@@ -141,7 +141,7 @@ def get_clients_to_send(
         if not interactive and not is_filtered:
             punch_list = punch_list[
                 punch_list["Client ID"].apply(
-                    lambda x: record_statuses.get(str(x)) == "Ready"
+                    lambda x: str(record_statuses.get(str(x), "")).startswith("Ready")
                 )
             ]
         else:
@@ -149,7 +149,7 @@ def get_clients_to_send(
             for _, client in punch_list.iterrows():
                 client_id = str(client["Client ID"])
                 status = record_statuses.get(client_id, "Unknown status")
-                if status == "Ready":
+                if status.startswith("Ready"):
                     keep_clients.append(True)
                 else:
                     rich_print(
@@ -436,11 +436,21 @@ def extract_client_data(driver: WebDriver) -> dict[str, str | int]:
     }
 
 
-def diagnose_client(config: Config, client_filter: str) -> None:
-    """Walk through every pre-flight exclusion check for a single client and report pass/fail."""
+def diagnose_client(
+    config: Config,
+    services: Services,
+    client_filter: str,
+    skip_ta_check: bool = False,
+) -> None:
+    """Walk through every pre-flight exclusion check for a single client and report pass/fail.
+
+    Unless skip_ta_check is set, also logs into TherapyAppointment (only TA, never
+    WPS/QGlobal/MHS) to report live portal/docs state and the concrete questionnaire
+    battery. Generates and sends nothing.
+    """
     punch_list = get_punch_list(config)
     if punch_list is None:
-        rich_print("[red]Punch list is empty[/red]")
+        logger.error("Punch list is empty")
         return
 
     punch_list["Client Name"] = (
@@ -455,22 +465,31 @@ def diagnose_client(config: Config, client_filter: str) -> None:
         ]
 
     if matches.empty:
-        rich_print(f"[red]'{client_filter}' not found in punch list at all[/red]")
+        logger.error(f"'{client_filter}' not found in punch list at all")
         return
 
     client = matches.iloc[0]
-    rich_print(
-        f"\n[bold]Diagnosing: {client['Client Name']} ({client.get('Client ID', 'no ID')})[/bold]\n"
-    )
+    logger.info(f"Diagnosing client {client.get('Client ID', 'no ID')}")
+
+    blockers: list[str] = []
 
     def ok(msg: str) -> None:
-        rich_print(f"  [green]PASS[/green]  {msg}")
+        logger.info(f"PASS  {msg}")
 
     def fail(msg: str) -> None:
-        rich_print(f"  [red]FAIL[/red]  {msg}")
+        blockers.append(msg)
+        logger.error(f"FAIL  {msg}")
 
     def warn(msg: str) -> None:
-        rich_print(f"  [yellow]WARN[/yellow]  {msg}")
+        logger.warning(f"WARN  {msg}")
+
+    def summarize() -> None:
+        if blockers:
+            logger.error(
+                f"Result: NOT ready to send ({len(blockers)} blocker(s) above)"
+            )
+        else:
+            logger.info("Result: ready — client would be picked up by a qsend run")
 
     # 1. Are questionnaires actually needed?
     is_adhd = client["For"] == "ADHD"
@@ -497,6 +516,7 @@ def diagnose_client(config: Config, client_filter: str) -> None:
     client_id_raw = client.get("Client ID")
     if "Client ID" not in punch_list.columns or pd.isna(client_id_raw):
         fail("No Client ID")
+        summarize()
         return
     ok(f"Has Client ID: {client_id_raw}")
 
@@ -505,9 +525,11 @@ def diagnose_client(config: Config, client_filter: str) -> None:
     record_status = record_statuses.get(str(client_id_raw), "Unknown")
     if record_status == "Ready":
         ok("Record status: Ready")
+    elif record_status.startswith("Ready"):
+        warn(f"Record status: {record_status}")
     else:
         fail(
-            f"Record status: {record_status}  (must be 'Ready' for non-interactive runs)"
+            f"Record status: {record_status}  (must start with 'Ready' for non-interactive runs)"
         )
 
     # 4. Previous failures
@@ -561,6 +583,7 @@ def diagnose_client(config: Config, client_filter: str) -> None:
 
     if not client_from_db:
         fail("Not found in database (does this client exist in TherapyAppointment?)")
+        summarize()
         return
     ok("Found in database")
 
@@ -575,107 +598,54 @@ def diagnose_client(config: Config, client_filter: str) -> None:
     else:
         ok("pause not set")
 
-    rich_print()
-
-
-def check_client_ready(config: Config, services: Services, client_filter: str) -> None:
-    """Log into TherapyAppointment only and report what questionnaires a client would get.
-
-    Does not log into WPS, QGlobal, or MHS, and does not generate or send anything.
-    """
-    punch_list = get_punch_list(config)
-    if punch_list is None:
-        rich_print("[red]Punch list is empty[/red]")
+    if skip_ta_check:
+        summarize()
         return
 
-    punch_list["Client Name"] = (
-        punch_list["Client Name"].str.replace(r"\s+", " ").str.strip()
-    )
-
-    if client_filter.isdigit():
-        matches = punch_list[punch_list["Client ID"] == client_filter]
-    else:
-        matches = punch_list[
-            punch_list["Client Name"].str.lower() == client_filter.lower()
-        ]
-
-    if matches.empty:
-        rich_print(f"[red]'{client_filter}' not found in punch list at all[/red]")
-        return
-
-    client = matches.iloc[0].copy()
-
-    da_sent = client.get("DA Qs Sent") == "TRUE"
-    eval_sent = client.get("EVAL Qs Sent") == "TRUE"
-    da_unsent = client.get("DA Qs Needed") == "TRUE" and not da_sent
-    eval_unsent = client.get("EVAL Qs Needed") == "TRUE" and not eval_sent
-    if client["For"] == "ADHD":
-        client["daeval"] = "DA"
-    elif da_unsent and eval_unsent:
-        client["daeval"] = "DAEVAL"
-    elif eval_unsent:
-        client["daeval"] = "EVAL"
-    else:
-        client["daeval"] = "DA"
-
-    prev_clients, _ = get_previous_clients(config, failed=True)
-    client_from_db = prev_clients.get(int(client["Client ID"]))
-    if not client_from_db:
-        rich_print(
-            f"[red]{client['Client Name']} not found in DB, do they exist in TherapyAppointment?[/red]"
-        )
-        return
-
+    # 8. Live TherapyAppointment state (portal opened, docs signed) and the
+    # concrete questionnaire battery. Logs into TA only — never WPS, QGlobal,
+    # or MHS — and generates or sends nothing.
     eval_dates = get_most_recent_eval_appointment_dates(config)
     eval_date = eval_dates.get(client_from_db.id)
     age = relativedelta(
         eval_date or now_business(config.business_timezone).date(),
         client_from_db.dob,
     ).years
-
-    rich_print(
-        f"\n[bold]Checking readiness: {client['Client Name']} ({client['Client ID']})[/bold]"
-    )
-    rich_print(f"  Age: {age}, For: {client['For']}, DA/EVAL: {client['daeval']}")
-
-    if client_from_db.autismStop:
-        rich_print("  [red]autismStop is set[/red]")
-    if client_from_db.pause:
-        rich_print("  [red]pause is set[/red]")
+    logger.info(f"Age {age}, For {client['For']}, DA/EVAL {computed_daeval}")
 
     driver = initialize_selenium()
     try:
         check_and_login_ta(driver, services, first_time=True)
 
-        if client["Language"] != "Spanish":
-            client_url = go_to_client(driver, services, client["Client ID"])
+        if lang != "Spanish":
+            client_url = go_to_client(driver, services, str(client_id_raw))
             if not client_url:
-                rich_print("  [red]Client URL not found in TherapyAppointment[/red]")
+                fail("Client URL not found in TherapyAppointment")
+                summarize()
                 return
-            opened_portal = check_if_opened_portal(driver)
-            docs_signed = check_if_docs_signed(driver)
-            rich_print(
-                f"  Portal opened: {'yes' if opened_portal else 'no'}, "
-                f"Docs signed: {'yes' if docs_signed else 'no'}"
-            )
+            if check_if_opened_portal(driver):
+                ok("Portal opened")
+            else:
+                warn("Portal not opened (retryable — send is deferred until it is)")
+            if check_if_docs_signed(driver):
+                ok("Docs signed")
+            else:
+                warn("Docs not signed (retryable — send is deferred until they are)")
         else:
-            rich_print("  Spanish-speaking, portal/docs checks skipped")
+            logger.info("Spanish-speaking, portal/docs checks skipped")
 
         questionnaire_rules = get_questionnaire_rules(config)
         questionnaires_needed = get_questionnaires(
-            age, client["For"], client["daeval"], questionnaire_rules
+            age, client["For"], computed_daeval, questionnaire_rules
         )
-
         if isinstance(questionnaires_needed, str):
-            rich_print(f"  [red]{questionnaires_needed}[/red]")
+            fail(f"Questionnaire battery: {questionnaires_needed}")
         else:
-            rich_print(
-                f"  [green]Questionnaires needed: {questionnaires_needed}[/green]"
-            )
+            ok(f"Questionnaire battery: {questionnaires_needed}")
     finally:
         driver.quit()
 
-    rich_print()
+    summarize()
 
 
 @app.command()
@@ -692,15 +662,16 @@ def main(
     debug_client: str = typer.Option(
         None,
         "--debug-client",
-        help="Diagnose why a client is being skipped (by ID or name)",
-    ),
-    check_ready_client: str = typer.Option(
-        None,
-        "--check-ready",
         help=(
-            "Log into TherapyAppointment only and report what questionnaires a "
-            "client would get, without sending anything (by ID or name)"
+            "Report why a client is not ready to send (by ID or name), including "
+            "live TherapyAppointment portal/docs state and the questionnaire "
+            "battery, then exit. Sends nothing."
         ),
+    ),
+    no_login: bool = typer.Option(
+        False,
+        "--no-login",
+        help="With --debug-client, skip the TherapyAppointment login and only run the offline checks",
     ),
 ):
     """Main function for qsend.py.
@@ -723,11 +694,7 @@ def main(
     services, config = load_config()
 
     if debug_client:
-        diagnose_client(config, debug_client)
-        return
-
-    if check_ready_client:
-        check_client_ready(config, services, check_ready_client)
+        diagnose_client(config, services, debug_client, skip_ta_check=no_login)
         return
 
     driver = initialize_selenium()

@@ -18,6 +18,7 @@ from utils.custom_types import (
     Failure,
     QuestionnaireStatus,
 )
+from utils.timezone import now_business
 
 # Sentinel actor for audit rows written by this script's direct DB writes,
 # distinct from the internal-api sentinel used by winnonah's own HTTP
@@ -226,7 +227,10 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
 def get_record_ready_client_ids(config: Config) -> dict[str, str]:
     """Fetch client IDs and their record statuses.
 
-    Status can be "Ready" or a descriptive string explaining why it's not ready.
+    A status starting with "Ready" means the client is clear to send questionnaires;
+    anything else blocks an automated qsend run. ADHD-only clients (no autism) are
+    never blocked by outstanding records, but their status still says so. Private
+    school clients block until staff record the manual request.
     """
     logger.info("Fetching record statuses from DB")
     db_connection = get_db(config)
@@ -239,6 +243,7 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 c.id,
                 c.recordsNeeded,
                 c.asdAdhd,
+                c.referralData->>'$.privateSchool' AS privateSchool,
                 er.content,
                 COUNT(CASE WHEN err.requestedDate IS NOT NULL
                     AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
@@ -248,7 +253,7 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             FROM emr_client c
             LEFT JOIN emr_external_record er ON c.id = er.clientId
             LEFT JOIN emr_external_record_request err ON c.id = err.clientId
-            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, er.content
+            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, privateSchool, er.content
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -256,17 +261,20 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
         for row in results:
             client_id = str(row["id"])
             records_needed = row["recordsNeeded"]
-            asd_adhd = row["asdAdhd"]
+            asd_adhd = row["asdAdhd"] or ""
             content = row["content"]
             sent_count = row["sentCount"]
             last_sent_date = row["lastSentDate"]
 
-            if (
-                records_needed == "Not Needed"
-                or asd_adhd == "ADHD"
-                or content is not None
-            ):
+            # ADHD without autism: records are still pursued, but an outstanding
+            # request never blocks questionnaire sends. Autism always blocks.
+            is_adhd_only = "ADHD" in asd_adhd and "ASD" not in asd_adhd
+            is_private_school = row["privateSchool"] == "yes"
+
+            if records_needed == "Not Needed" or content is not None:
                 statuses[client_id] = "Ready"
+            elif is_adhd_only:
+                statuses[client_id] = "Ready - records outstanding (ADHD, not blocking)"
             elif sent_count >= 2:
                 statuses[client_id] = (
                     f"Records needed, requested again on {last_sent_date}, but not yet received"
@@ -275,10 +283,171 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 statuses[client_id] = (
                     f"Records needed, requested on {last_sent_date}, but not yet received"
                 )
+            elif is_private_school:
+                statuses[client_id] = (
+                    "Records needed - private school, staff must request manually"
+                )
             else:
                 statuses[client_id] = "Records needed but not yet requested"
 
     return statuses
+
+
+def diagnose_records_readiness(
+    config: Config, client_filter: str
+) -> list[tuple[str, str]]:
+    """Evaluate every gate get_clients_needing_records() applies, for one client.
+
+    Returns a list of (status, message) pairs where status is PASS, FAIL, WARN,
+    or INFO. FAIL marks a condition that currently excludes the client from a
+    records-request run. Accepts a numeric client ID or a full name.
+    """
+    today = now_business(config.business_timezone).date()
+    checks: list[tuple[str, str]] = []
+    db_connection = get_db(config)
+
+    with db_connection, db_connection.cursor() as cursor:
+        if client_filter.isdigit():
+            cursor.execute("SELECT * FROM emr_client WHERE id = %s", (client_filter,))
+        else:
+            cursor.execute(
+                "SELECT * FROM emr_client "
+                "WHERE LOWER(CONCAT(firstName, ' ', lastName)) = %s",
+                (client_filter.lower(),),
+            )
+        client = cursor.fetchone()
+
+        if not client:
+            return [("FAIL", f"No client in emr_client matching '{client_filter}'")]
+
+        client_id = client["id"]
+        checks.append(("INFO", f"Client {client_id}"))
+
+        records_needed = client["recordsNeeded"]
+        if records_needed == "Needed":
+            checks.append(("PASS", "recordsNeeded = 'Needed'"))
+        else:
+            checks.append(
+                ("FAIL", f"recordsNeeded = {records_needed!r} (need 'Needed')")
+            )
+
+        if client["status"] is not False:
+            checks.append(("PASS", f"status = {client['status']!r} (not discharged)"))
+        else:
+            checks.append(("FAIL", "status is FALSE (client discharged)"))
+
+        if client["language"] == "English":
+            checks.append(("PASS", "language = 'English'"))
+        else:
+            checks.append(
+                (
+                    "FAIL",
+                    f"language = {client['language']!r} (records flow is English-only)",
+                )
+            )
+
+        if len(str(client_id)) != 5:
+            checks.append(("PASS", "client ID is not a 5-digit shell ID"))
+        else:
+            checks.append(
+                ("FAIL", "client ID is 5 digits (shell client, not real records)")
+            )
+
+        asd_adhd = client["asdAdhd"] or ""
+        if "ADHD" in asd_adhd and "ASD" not in asd_adhd:
+            checks.append(
+                (
+                    "INFO",
+                    "asdAdhd is ADHD-only: records are still requested, but an "
+                    "outstanding request never blocks a qsend run",
+                )
+            )
+
+        referral_data = client.get("referralData")
+        if isinstance(referral_data, str):
+            referral_data = json.loads(referral_data) if referral_data else None
+        if (referral_data or {}).get("privateSchool") == "yes":
+            checks.append(
+                (
+                    "FAIL",
+                    "private school on intake: records-request.py skips this client, "
+                    "staff must request records manually",
+                )
+            )
+
+        cursor.execute(
+            "SELECT 1 FROM emr_external_record WHERE clientId = %s AND content IS NOT NULL LIMIT 1",
+            (client_id,),
+        )
+        if cursor.fetchone():
+            checks.append(
+                (
+                    "WARN",
+                    "an emr_external_record with content already exists: status is Ready",
+                )
+            )
+
+        session_started_at = client["sessionStartedAt"]
+        cursor.execute(
+            "SELECT id, requestedDate, holdUntil, createdAt, customMessage "
+            "FROM emr_external_record_request WHERE clientId = %s ORDER BY createdAt",
+            (client_id,),
+        )
+        requests = cursor.fetchall()
+
+        if not requests:
+            checks.append(
+                (
+                    "FAIL",
+                    "no emr_external_record_request row (nothing tells the script to request)",
+                )
+            )
+            return checks
+
+        current = [
+            r
+            for r in requests
+            if session_started_at is None or r["createdAt"] >= session_started_at
+        ]
+        if not current:
+            checks.append(
+                (
+                    "FAIL",
+                    f"all {len(requests)} request row(s) predate sessionStartedAt "
+                    f"({session_started_at}); a new request row is needed for this session",
+                )
+            )
+            return checks
+
+        pending = [r for r in current if r["requestedDate"] is None]
+        if not pending:
+            dates = ", ".join(str(r["requestedDate"]) for r in current)
+            checks.append(
+                (
+                    "FAIL",
+                    f"every current request already has requestedDate set ({dates})",
+                )
+            )
+            return checks
+
+        held = [
+            r for r in pending if r["holdUntil"] is not None and r["holdUntil"] > today
+        ]
+        if held and len(held) == len(pending):
+            until = ", ".join(str(r["holdUntil"]) for r in held)
+            checks.append(("FAIL", f"pending request(s) on hold until {until}"))
+        elif pending:
+            checks.append(
+                ("PASS", f"{len(pending)} pending request row(s) ready to send")
+            )
+
+        checks.extend(
+            ("INFO", f"request {r['id']} customMessage: {r['customMessage']}")
+            for r in pending
+            if r["customMessage"]
+        )
+
+    return checks
 
 
 def has_requested_records_date(
