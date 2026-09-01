@@ -198,6 +198,14 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
+            -- Private-school clients still get a pending emr_external_record_request
+            -- row (winnonah's ensurePendingExternalRecordRequest inserts one for
+            -- every "Needed" client, so the outstanding-records state stays visible),
+            -- but staff request their records manually instead of through this script.
+            AND (
+                c.referralData IS NULL
+                OR JSON_UNQUOTE(JSON_EXTRACT(c.referralData, '$.privateSchool')) != "yes"
+            )
         """
         cursor.execute(sql)
         results = cursor.fetchall()
