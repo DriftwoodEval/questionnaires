@@ -27,7 +27,7 @@ jobs:
           load: true
           tags: questionnaires-test:ci
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Run tests
         run: docker run --rm -e HEADLESS=true questionnaires-test:ci
