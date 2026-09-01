@@ -125,7 +125,14 @@ def _handle_mfa_if_present(driver: WebDriver, requested_at: int) -> None:
     hidden partner callback_3 is what actually gets submitted), and the submit
     button is id "idToken3_0". Trusting the device suppresses the prompt on
     later logins from the same browser profile.
+
+    Checks for the post-login "Search" link first, since a device that's
+    already trusted lands there directly and would otherwise burn the full
+    MFA-field wait for a prompt that's never coming.
     """
+    if find_element_exists(driver, By.XPATH, "//a[text()='Search']", timeout=5):
+        return
+
     if not find_element_exists(driver, By.ID, "showHideIconPassword", timeout=10):
         return
 
