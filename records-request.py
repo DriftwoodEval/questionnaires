@@ -60,6 +60,14 @@ WAIT_TIMEOUT = 15  # seconds
 app = typer.Typer()
 
 
+class RecordsRequestError(Exception):
+    """An expected consent-form/validation problem whose message is safe to surface.
+
+    Lets the failure handler fall back to "Unhandled error" only for genuinely
+    unexpected crashes, not for known human-readable failures.
+    """
+
+
 def download_consent_forms(
     driver: WebDriver,
     client: ClientFromDB,
@@ -111,40 +119,36 @@ def download_consent_forms(
     # "Your relationship to client" is the next line on the form — its
     # presence here means the school field was left blank on the consent form.
     if "your relationship to client" in sending_school:
-        raise (Exception("No school found on consent to send"))
+        raise RecordsRequestError("No school found on consent to send")
 
     if "your relationship to client" in receiving_school:
-        raise (Exception("No school found on consent to receive"))
+        raise RecordsRequestError("No school found on consent to receive")
 
     if sending_school != receiving_school:
         logger.warning(
             f"School on Sending, {sending_school}, is not the same as school on Receiving, {receiving_school}"
         )
-        raise (Exception("District on receive does not match district on send"))
+        raise RecordsRequestError("District on receive does not match district on send")
 
     canonical_sending, school_contact = resolve_school_contact(
         sending_school, school_contacts
     )
 
     if not school_contact:
-        raise (
-            Exception(f"School found, {sending_school}, has no email address assigned.")
+        raise RecordsRequestError(
+            f"School found, {sending_school}, has no email address assigned."
         )
 
     if client.schoolDistrict is None:
-        raise (
-            Exception(
-                "Client has no school district in DB, cannot verify if they are the same."
-            )
+        raise RecordsRequestError(
+            "Client has no school district in DB, cannot verify if they are the same."
         )
 
     db_district = normalize_district(client.schoolDistrict)
 
     if normalize_district(canonical_sending) != db_district:
-        raise (
-            Exception(
-                f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
-            )
+        raise RecordsRequestError(
+            f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
         )
 
     default_request_line = "Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation."
@@ -504,6 +508,8 @@ def main(
 
                         if reason in ["portal not opened", "docs not signed"]:
                             add_to_sheet = False
+                            error = reason
+                        elif isinstance(e, RecordsRequestError):
                             error = reason
                         else:
                             error = f"Unhandled error for {client_name}"
