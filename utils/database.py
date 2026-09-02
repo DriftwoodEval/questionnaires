@@ -196,6 +196,8 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND err.requestedDate IS NULL
             AND (err.holdUntil IS NULL OR err.holdUntil <= CURDATE())
             AND c.status IS NOT FALSE
+            AND c.pause IS NOT TRUE
+            AND c.autismStop IS NOT TRUE
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
@@ -335,6 +337,16 @@ def diagnose_records_readiness(
             checks.append(("PASS", f"status = {client['status']!r} (not discharged)"))
         else:
             checks.append(("FAIL", "status is FALSE (client discharged)"))
+
+        if not client["pause"]:
+            checks.append(("PASS", "pause not set"))
+        else:
+            checks.append(("FAIL", "pause is set (client is paused)"))
+
+        if not client["autismStop"]:
+            checks.append(("PASS", "autismStop not set"))
+        else:
+            checks.append(("FAIL", "autismStop is set ('Autism' in Records)"))
 
         if client["language"] == "English":
             checks.append(("PASS", "language = 'English'"))
