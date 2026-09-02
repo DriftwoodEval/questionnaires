@@ -34,6 +34,16 @@ SCOPES = [
 ]
 
 
+class GoogleAuthError(Exception):
+    """Raised when Google auth needs interactive login but can't get it.
+
+    This runs unattended in cron containers with no browser and nobody to
+    click through a consent screen, so a failed manual login is a dead end,
+    not something to retry: config/token.json needs regenerating by hand, on
+    a machine with a real browser.
+    """
+
+
 @cache
 def google_authenticate():
     """Authenticate with Google using the credentials in ./config/credentials.json (obtained from Google Cloud Console) and ./config/token.json (user-specific).
@@ -61,10 +71,17 @@ def google_authenticate():
                 logger.warning("Token refresh failed, falling back to manual login")
         # If there are no usable credentials, start the manual login
         if not refreshed:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "./config/credentials.json", SCOPES
-            )
-            creds = flow.run_local_server(port=0)
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    "./config/credentials.json", SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            except Exception as e:
+                raise GoogleAuthError(
+                    "Google auth needs interactive login and none is available "
+                    "here. Regenerate config/token.json on a machine with a "
+                    "browser."
+                ) from e
 
     # Save the credentials for the next run. Every branch above either keeps
     # a valid `creds` or reassigns it via refresh/login, so it's never None here.
