@@ -92,3 +92,28 @@ jobs:
           package-name: "questionnaires-log-server"
           package-type: "container"
           min-versions-to-keep: 5
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test-build-push
+    steps:
+      # Requires a Tailscale OAuth client with access to the primary host's
+      # tailnet (secrets: TS_OAUTH_CLIENT_ID, TS_OAUTH_CLIENT_SECRET) - the
+      # same host and Watchtower instance winnonah's own deploy job uses.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+
+      # Watchtower monitors every container on the host, qreceive and
+      # log-server included, so this triggers the same instance winnonah
+      # deploys through rather than running a second one. qreceive's
+      # lifecycle hook labels (docker-compose.yaml) make Watchtower wait out
+      # an in-progress run before restarting that container.
+      - name: Trigger watchtower update
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.WATCHTOWER_HTTP_API_TOKEN }}" \
+            "http://${{ secrets.WATCHTOWER_HOST }}:8080/v1/update"
