@@ -24,6 +24,10 @@ class LocalSettings(BaseModel):
     api_url: str = Field(description="The full URL for fetching the remote config.")
     log_host: str = Field(description="Host for sending logs to a remote log server.")
     api_secret: str = Field(description="API secret for authentication")
+    slack_webhook_url: str = Field(
+        default="",
+        description="Slack incoming webhook for alerts that can't rely on email (see utils/slack.py).",
+    )
     config_overrides: LocalConfigOverrides = Field(default_factory=LocalConfigOverrides)
 
 

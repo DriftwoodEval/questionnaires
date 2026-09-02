@@ -10,6 +10,14 @@ services:
       - ./put:/app/put
       - ./logs:/app/logs
     restart: unless-stopped
+    labels:
+      # Tells the shared Watchtower instance on this host (see winnonah's
+      # docker-compose.yaml) to wait out an in-progress qreceive run before
+      # restarting this container for an update, rather than killing it
+      # mid-flight. Timeout is in minutes; qreceive runs are normally a few
+      # minutes, this gives generous headroom for a slow one.
+      - com.centurylinklabs.watchtower.lifecycle.pre-update=/app/wait-for-qreceive.sh
+      - com.centurylinklabs.watchtower.lifecycle.pre-update-timeout=20
 
   log-server:
     image: ghcr.io/driftwoodeval/questionnaires-log-server:main

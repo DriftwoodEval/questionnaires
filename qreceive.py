@@ -35,6 +35,7 @@ from utils.database import (
     update_questionnaires_in_db,
 )
 from utils.google import (
+    GoogleAuthError,
     batch_update_punch_list,
     build_admin_email,
     send_gmail,
@@ -64,6 +65,7 @@ from utils.quo import InvalidPhoneNumberError, NotEnoughCreditsError, Quo
 from utils.selenium import (
     initialize_selenium,
 )
+from utils.slack import send_slack_alert
 from utils.task_tracker import track_task
 from utils.timezone import now_business
 
@@ -1131,33 +1133,69 @@ def main(
                 if admin_email_text != "":
                     if not dry_run:
                         subject = f"Receive Run for {datetime.today().strftime('%a, %b')} {datetime.today().day}"
-                        sent = send_gmail(
-                            message_text=admin_email_text,
-                            subject=subject,
-                            to_addr=",".join(config.qreceive_emails),
-                            from_addr=config.automated_email,
-                            html=admin_email_html,
-                        )
+                        sent = None
+                        send_exception: Exception | None = None
+                        try:
+                            sent = send_gmail(
+                                message_text=admin_email_text,
+                                subject=subject,
+                                to_addr=",".join(config.qreceive_emails),
+                                from_addr=config.automated_email,
+                                html=admin_email_html,
+                            )
+                        except Exception as e:
+                            # Google auth (or anything else send_gmail depends on)
+                            # can fail outright rather than just returning None,
+                            # and this runs inside a finally block: left uncaught,
+                            # it would replace whatever exception was already
+                            # propagating and skip the retry-queue/alert logic
+                            # below entirely.
+                            logger.exception("Admin email raised while sending")
+                            send_exception = e
+
                         if sent is None:
                             logger.error(
                                 "Admin email failed to send; keeping queued content for retry"
                             )
                             recent_logs = "".join(_captured_logs[-40:]).strip()
+
+                            # Email is the thing that just failed, so it can't be
+                            # trusted to carry this alert too - Slack is the
+                            # fallback channel (same pattern as winnonah's
+                            # failover/failback notifications).
+                            if isinstance(send_exception, GoogleAuthError):
+                                slack_reason = (
+                                    "Google auth is broken and needs config/token.json "
+                                    "regenerated on a machine with a browser - email "
+                                    "alerts can't be trusted either until that's fixed."
+                                )
+                            else:
+                                slack_reason = "See recent logs for details."
+                            send_slack_alert(
+                                f":rotating_light: qreceive admin email ({subject}) "
+                                f"failed to send. {slack_reason}"
+                            )
+
                             alert_to = config.tech_email or ",".join(
                                 config.qreceive_emails
                             )
-                            send_gmail(
-                                message_text=(
-                                    f"The qreceive admin email ({subject}) failed to send "
-                                    f"to {', '.join(config.qreceive_emails)}. Its content is "
-                                    "queued and will be retried on the next 1pm run.\n\n"
-                                    "Recent warnings/errors from this run:\n\n"
-                                    f"{recent_logs or '(none captured)'}"
-                                ),
-                                subject=f"[ALERT] qreceive admin email failed - {subject}",
-                                to_addr=alert_to,
-                                from_addr=config.automated_email,
-                            )
+                            try:
+                                send_gmail(
+                                    message_text=(
+                                        f"The qreceive admin email ({subject}) failed to send "
+                                        f"to {', '.join(config.qreceive_emails)}. Its content is "
+                                        "queued and will be retried on the next 1pm run.\n\n"
+                                        "Recent warnings/errors from this run:\n\n"
+                                        f"{recent_logs or '(none captured)'}"
+                                    ),
+                                    subject=f"[ALERT] qreceive admin email failed - {subject}",
+                                    to_addr=alert_to,
+                                    from_addr=config.automated_email,
+                                )
+                            except Exception:
+                                logger.warning(
+                                    "Could not send the email alert either; Slack is the only channel that got this."
+                                )
                             _save_pending_email(email_info)
                         else:
                             PENDING_EMAIL_PATH.unlink(missing_ok=True)
