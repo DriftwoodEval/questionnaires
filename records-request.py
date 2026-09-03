@@ -2,6 +2,7 @@ import io
 import re
 import sys
 from base64 import b64decode
+from datetime import date
 
 import pymupdf
 import typer
@@ -35,14 +36,18 @@ from utils.misc import (
     load_local_settings,
 )
 from utils.platforms.therapyappointment import (
+    assign_online_forms,
     check_and_login_ta,
     check_if_docs_signed,
     check_if_opened_portal,
     find_form_link_for_session,
+    form_link_present,
+    form_row_present,
     go_to_client,
 )
 from utils.records import normalize_district, resolve_school_contact
 from utils.selenium import (
+    click_element,
     initialize_selenium,
 )
 from utils.task_tracker import track_task
@@ -67,25 +72,54 @@ STANDARD_SENDING = "Sending Consent to Release of Information"
 PRIVATE_RECEIVING = "Private School Receiving Release of Information"
 PRIVATE_SENDING = "Private School Sending Release of Information"
 
+# Private-school consent forms are auto-assigned only for clients whose current
+# session started on or after this date. Older private-school clients were
+# handled manually and their forms (if any) are the generic consent forms, so
+# leave them alone. Set to the deploy date.
+PRIVATE_SCHOOL_FORMS_START = date(2026, 9, 3)
+
 app = typer.Typer()
 
 
-def form_link_present(driver: WebDriver, link_text: str) -> bool:
-    """Whether a completed (clickable) Docs & Forms row with this link text exists."""
-    return bool(
-        driver.find_elements(By.XPATH, f"//a[normalize-space(text())='{link_text}']")
-    )
+def ensure_private_school_forms_assigned(
+    driver: WebDriver, client: ClientFromDB, *, dry_run: bool = False
+) -> None:
+    """Assign the private-school consent forms to a private-school client.
 
-
-def form_row_present(driver: WebDriver, form_name: str) -> bool:
-    """Whether the Docs & Forms list has a row for this form at all.
-
-    A form that has been assigned but not yet completed shows as plain text
-    rather than a link, so this matches either.
+    No-op for clients whose session predates PRIVATE_SCHOOL_FORMS_START (handled
+    manually, left alone) or who already have the forms. Assumes the client's
+    page is open in TA.
     """
-    return bool(
-        driver.find_elements(By.XPATH, f"//*[normalize-space(text())='{form_name}']")
-    )
+    session_start = client.sessionStartedAt
+    # lazy: a plain .date() on the UTC instant is close enough for a coarse
+    # deploy-date gate; not worth a business-timezone conversion here.
+    started_on = session_start.date() if session_start else client.addedDate
+    if started_on is None or started_on < PRIVATE_SCHOOL_FORMS_START:
+        logger.info(
+            f"{client.fullName} predates private-school form automation "
+            f"(session started {started_on}); not assigning forms."
+        )
+        return
+
+    click_element(driver, By.LINK_TEXT, "Docs & Forms")
+    missing = [
+        name
+        for name in (PRIVATE_RECEIVING, PRIVATE_SENDING)
+        if not form_row_present(driver, name)
+    ]
+    if not missing:
+        return
+
+    if dry_run:
+        logger.info(f"[DRY RUN] Would assign {missing} to {client.fullName}")
+        return
+
+    try:
+        assign_online_forms(driver, missing)
+    except Exception as e:
+        raise RecordsRequestError(
+            f"Could not assign private-school consent forms: {e}"
+        ) from e
 
 
 def is_blank_school(value: str) -> bool:
@@ -145,8 +179,9 @@ def download_consent_forms(
             # other unsigned document, instead of surfacing a hard failure.
             raise Exception("docs not signed")
         raise RecordsRequestError(
-            "Client is marked private school but the Private School Release of "
-            "Information consent forms have not been assigned."
+            "Client is marked private school but has no Private School Release "
+            "of Information consent forms. Assign them in TherapyAppointment "
+            "(older private-school clients are not assigned automatically)."
         )
     receiving_link = PRIVATE_RECEIVING if use_private_forms else STANDARD_RECEIVING
     sending_link = PRIVATE_SENDING if use_private_forms else STANDARD_SENDING
@@ -589,6 +624,12 @@ def main(
                     try:
                         if not check_if_opened_portal(driver):
                             raise Exception("portal not opened")
+
+                        if client.privateSchool:
+                            ensure_private_school_forms_assigned(
+                                driver, client, dry_run=dry_run
+                            )
+
                         if not check_if_docs_signed(driver):
                             raise Exception("docs not signed")
 

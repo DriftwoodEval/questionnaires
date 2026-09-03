@@ -381,9 +381,10 @@ def diagnose_records_readiness(
             checks.append(
                 (
                     "INFO",
-                    "private school on intake: records-request.py expects the "
-                    "'Private School Receiving/Sending Release of Information' "
-                    "consent forms and an isPrivate school contact",
+                    "private school on intake: records-request.py auto-assigns "
+                    "the 'Private School Receiving/Sending Release of "
+                    "Information' consent forms (sessions on/after the cutoff "
+                    "only) and needs an isPrivate school contact",
                 )
             )
 
