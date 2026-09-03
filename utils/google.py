@@ -1,5 +1,6 @@
 import base64
 import mimetypes
+import os
 import re
 import time
 from collections.abc import Sequence
@@ -54,13 +55,31 @@ def google_authenticate():
     if not creds or not creds.valid:
         refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                refreshed = True
-            except RefreshError:
+            # The refresh token is long-lived; a failure here is usually a
+            # transient network/endpoint blip, so retry a few times before
+            # concluding the token is actually dead.
+            for attempt in range(3):
+                try:
+                    creds.refresh(Request())
+                    refreshed = True
+                    break
+                except RefreshError as e:
+                    logger.warning(f"Token refresh attempt {attempt + 1} failed: {e}")
+                    if attempt < 2:
+                        time.sleep(2**attempt)
+            if not refreshed:
                 logger.warning("Token refresh failed, falling back to manual login")
-        # If there are no usable credentials, start the manual login
+        # If there are no usable credentials, start the manual login. This opens
+        # a local browser, so it only works interactively - a headless server
+        # (qreceive container) must fail loudly instead and be retried once a
+        # human has refreshed config/token.json.
         if not refreshed:
+            if os.getenv("HEADLESS") == "true":
+                raise RuntimeError(
+                    "Google credentials are invalid and interactive login is "
+                    "unavailable on a headless host. Refresh config/token.json "
+                    "from an interactive machine and redeploy."
+                )
             flow = InstalledAppFlow.from_client_secrets_file(
                 "./config/credentials.json", SCOPES
             )
