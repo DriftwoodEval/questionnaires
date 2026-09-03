@@ -9,6 +9,7 @@ from pydantic import (
     StringConstraints,
     TypeAdapter,
     field_validator,
+    model_validator,
 )
 
 
@@ -266,6 +267,26 @@ class _SharedClientFromDB(_ClientBase):
     primaryInsurance: str | None = None  # noqa: N815
     secondaryInsurance: list[str] | None = None  # noqa: N815
     privatePay: bool = False  # noqa: N815
+    # Derived from referralData.privateSchool ("yes"/"no") on the raw row.
+    # Private-school clients sign the "Private School ... Release of
+    # Information" consent forms instead of the standard ones.
+    privateSchool: bool = False  # noqa: N815
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_private_school(cls, data: object) -> object:
+        if not isinstance(data, dict) or "privateSchool" in data:
+            return data
+        referral = data.get("referralData")
+        if isinstance(referral, str):
+            try:
+                referral = json.loads(referral) if referral else None
+            except json.JSONDecodeError:
+                referral = None
+        is_private = (
+            isinstance(referral, dict) and referral.get("privateSchool") == "yes"
+        )
+        return {**data, "privateSchool": is_private}
 
     @field_validator("secondaryInsurance", mode="before")
     @classmethod
