@@ -40,7 +40,12 @@ from utils.platforms.therapyappointment import (
     find_form_link_for_session,
     go_to_client,
 )
-from utils.records import normalize_district, resolve_school_contact
+from utils.records import (
+    RecordsRequestError,
+    classify_failure,
+    normalize_district,
+    resolve_school_contact,
+)
 from utils.selenium import (
     initialize_selenium,
 )
@@ -58,14 +63,6 @@ logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB"
 WAIT_TIMEOUT = 15  # seconds
 
 app = typer.Typer()
-
-
-class RecordsRequestError(Exception):
-    """An expected consent-form/validation problem whose message is safe to surface.
-
-    Lets the failure handler fall back to "Unhandled error" only for genuinely
-    unexpected crashes, not for known human-readable failures.
-    """
 
 
 def download_consent_forms(
@@ -503,16 +500,7 @@ def main(
                         logger.error(
                             f"An error occurred while processing {client_name}: {e}"
                         )
-                        reason = str(e)
-                        add_to_sheet = True
-
-                        if reason in ["portal not opened", "docs not signed"]:
-                            add_to_sheet = False
-                            error = reason
-                        elif isinstance(e, RecordsRequestError):
-                            error = reason
-                        else:
-                            error = f"Unhandled error for {client_name}"
+                        error, add_to_sheet = classify_failure(e, client_name)
 
                         add_failure(
                             config=config,
