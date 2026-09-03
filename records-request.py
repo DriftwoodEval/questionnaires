@@ -2,6 +2,7 @@ import io
 import re
 import sys
 from base64 import b64decode
+from datetime import date
 
 import pymupdf
 import typer
@@ -18,6 +19,7 @@ from utils.custom_types import ClientFromDB, Config, RecordsContact
 from utils.database import (
     diagnose_records_readiness,
     get_clients_needing_records,
+    get_private_school_names,
     update_external_record_in_db,
     update_failure_in_db,
 )
@@ -34,14 +36,18 @@ from utils.misc import (
     load_local_settings,
 )
 from utils.platforms.therapyappointment import (
+    assign_online_forms,
     check_and_login_ta,
     check_if_docs_signed,
     check_if_opened_portal,
     find_form_link_for_session,
+    form_link_present,
+    form_row_present,
     go_to_client,
 )
 from utils.records import normalize_district, resolve_school_contact
 from utils.selenium import (
+    click_element,
     initialize_selenium,
 )
 from utils.task_tracker import track_task
@@ -57,7 +63,72 @@ logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB"
 
 WAIT_TIMEOUT = 15  # seconds
 
+# TherapyAppointment "Docs & Forms" link text for each consent form pair.
+# Private-school clients sign the "Private School ..." variants, where the
+# school is entered under "To be provided to:" instead of a "School District"
+# label.
+STANDARD_RECEIVING = "Receiving Consent to Release of Information"
+STANDARD_SENDING = "Sending Consent to Release of Information"
+PRIVATE_RECEIVING = "Private School Receiving Release of Information"
+PRIVATE_SENDING = "Private School Sending Release of Information"
+
+# Private-school consent forms are auto-assigned only for clients whose current
+# session started on or after this date. Older private-school clients were
+# handled manually and their forms (if any) are the generic consent forms, so
+# leave them alone. Set to the deploy date.
+PRIVATE_SCHOOL_FORMS_START = date(2026, 9, 3)
+
 app = typer.Typer()
+
+
+def ensure_private_school_forms_assigned(
+    driver: WebDriver, client: ClientFromDB, *, dry_run: bool = False
+) -> None:
+    """Assign the private-school consent forms to a private-school client.
+
+    No-op for clients whose session predates PRIVATE_SCHOOL_FORMS_START (handled
+    manually, left alone) or who already have the forms. Assumes the client's
+    page is open in TA.
+    """
+    session_start = client.sessionStartedAt
+    # lazy: a plain .date() on the UTC instant is close enough for a coarse
+    # deploy-date gate; not worth a business-timezone conversion here.
+    started_on = session_start.date() if session_start else client.addedDate
+    if started_on is None or started_on < PRIVATE_SCHOOL_FORMS_START:
+        logger.info(
+            f"{client.fullName} predates private-school form automation "
+            f"(session started {started_on}); not assigning forms."
+        )
+        return
+
+    click_element(driver, By.LINK_TEXT, "Docs & Forms")
+    missing = [
+        name
+        for name in (PRIVATE_RECEIVING, PRIVATE_SENDING)
+        if not form_row_present(driver, name)
+    ]
+    if not missing:
+        return
+
+    if dry_run:
+        logger.info(f"[DRY RUN] Would assign {missing} to {client.fullName}")
+        return
+
+    try:
+        assign_online_forms(driver, missing)
+    except Exception as e:
+        raise RecordsRequestError(
+            f"Could not assign private-school consent forms: {e}"
+        ) from e
+
+
+def is_blank_school(value: str) -> bool:
+    """Whether an extracted school value means the form field was left empty."""
+    value = value.lower().strip()
+    # "Your relationship to client" is the next line on the standard form;
+    # "not found" is what the private-form extractor returns when the anchor
+    # text has no value after it.
+    return value in ("", "not found") or "your relationship to client" in value
 
 
 class RecordsRequestError(Exception):
@@ -72,7 +143,9 @@ def download_consent_forms(
     driver: WebDriver,
     client: ClientFromDB,
     school_contacts: dict[str, RecordsContact],
+    private_school_names: set[str],
     config: Config,
+    *,
     dry_run: bool = False,
 ) -> bool:
     """Navigates to Docs & Forms and saves consent forms as PDFs."""
@@ -94,34 +167,53 @@ def download_consent_forms(
 
     logger.info("Navigating to Docs & Forms...")
 
+    # Private-school clients sign the "Private School ..." consent forms; the
+    # standard forms only ever name a public district. Never request records
+    # for a private-school client until those forms are available.
+    use_private_forms = client.privateSchool
+    if use_private_forms and not form_link_present(driver, PRIVATE_RECEIVING):
+        if form_row_present(driver, PRIVATE_RECEIVING) or form_row_present(
+            driver, PRIVATE_SENDING
+        ):
+            # Assigned but not yet completed: retry on a later run like any
+            # other unsigned document, instead of surfacing a hard failure.
+            raise Exception("docs not signed")
+        raise RecordsRequestError(
+            "Client is marked private school but has no Private School Release "
+            "of Information consent forms. Assign them in TherapyAppointment "
+            "(older private-school clients are not assigned automatically)."
+        )
+    receiving_link = PRIVATE_RECEIVING if use_private_forms else STANDARD_RECEIVING
+    sending_link = PRIVATE_SENDING if use_private_forms else STANDARD_SENDING
+
     receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
         save_document_as_pdf(
             driver,
-            "Receiving Consent to Release of Information",
+            receiving_link,
             client,
             config,
-            dry_run,
+            is_private=use_private_forms,
+            dry_run=dry_run,
         )
     )
     sending_stream, sending_filename, sending_school, sending_drive_file = (
         save_document_as_pdf(
             driver,
-            "Sending Consent to Release of Information",
+            sending_link,
             client,
             config,
-            dry_run,
+            is_private=use_private_forms,
+            dry_run=dry_run,
         )
     )
 
     sending_school = sending_school.lower().strip()
     receiving_school = receiving_school.lower().strip()
 
-    # "Your relationship to client" is the next line on the form — its
-    # presence here means the school field was left blank on the consent form.
-    if "your relationship to client" in sending_school:
+    if is_blank_school(sending_school):
         raise RecordsRequestError("No school found on consent to send")
 
-    if "your relationship to client" in receiving_school:
+    if is_blank_school(receiving_school):
         raise RecordsRequestError("No school found on consent to receive")
 
     if sending_school != receiving_school:
@@ -139,17 +231,33 @@ def download_consent_forms(
             f"School found, {sending_school}, has no email address assigned."
         )
 
-    if client.schoolDistrict is None:
-        raise RecordsRequestError(
-            "Client has no school district in DB, cannot verify if they are the same."
-        )
+    form_is_private = normalize_district(canonical_sending) in private_school_names
 
-    db_district = normalize_district(client.schoolDistrict)
-
-    if normalize_district(canonical_sending) != db_district:
-        raise RecordsRequestError(
-            f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
+    if client.privateSchool:
+        # Signed the Private School consent forms. The school they entered must
+        # be a known private school; a public district here means the referral
+        # flag and the form disagree, so leave it for manual review.
+        if not form_is_private:
+            raise RecordsRequestError(
+                f"Client is marked private school but the consent form school "
+                f"({sending_school}) is not a known private school. Request "
+                f"records manually."
+            )
+        logger.info(
+            f"Consent form names private school {canonical_sending!r}; "
+            "skipping public-district match."
         )
+    else:
+        # Standard forms only name public districts; check against the DB.
+        if client.schoolDistrict is None:
+            raise RecordsRequestError(
+                "Client has no school district in DB, cannot verify if they are the same."
+            )
+        db_district = normalize_district(client.schoolDistrict)
+        if normalize_district(canonical_sending) != db_district:
+            raise RecordsRequestError(
+                f"School district on consent form does not match client's school district in DB, form is {sending_school}, DB is {db_district}."
+            )
 
     default_request_line = "Please send the most recent IEP, any Evaluation Reports, and any Reevaluation Review information.\n\nIf the child is currently undergoing evaluation, please provide the date of the Consent for Evaluation."
     request_line = client.pendingRequestMessage or default_request_line
@@ -212,7 +320,12 @@ def download_consent_forms(
 
 
 def upload_pdf_from_driver(
-    driver: WebDriver, filename: str, folder_id: str, dry_run: bool = False
+    driver: WebDriver,
+    filename: str,
+    folder_id: str,
+    *,
+    is_private: bool = False,
+    dry_run: bool = False,
 ) -> tuple[io.BytesIO, str, str, dict]:
     """Prints page as PDF (in memory) and uploads to Drive."""
     pdf_options = PrintOptions()
@@ -223,7 +336,7 @@ def upload_pdf_from_driver(
     pdf_bytes = b64decode(pdf_base64)
     pdf_stream = io.BytesIO(pdf_bytes)
 
-    school = extract_school_district_name(pdf_stream)
+    school = extract_school_name(pdf_stream, is_private)
 
     if dry_run:
         logger.info(f"[DRY RUN] Would upload {filename} to Drive folder {folder_id}")
@@ -247,8 +360,13 @@ def upload_pdf_from_driver(
     return pdf_stream, filename, school, uploaded_file
 
 
-def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
-    """Use regex to extract the school district name from the PDF."""
+def extract_school_name(pdf_stream: io.BytesIO, is_private: bool = False) -> str:
+    """Extract the school name a client entered on a consent form.
+
+    Standard forms label the field "School District"; the private-school forms
+    put it after "To be provided to:". Returns the normalized name, or
+    "Not Found" if the anchor text has nothing usable after it.
+    """
     pdf_stream.seek(0)
 
     doc = pymupdf.open(stream=pdf_stream, filetype="pdf")
@@ -263,6 +381,14 @@ def extract_school_district_name(pdf_stream: io.BytesIO) -> str:
 
     # Reset stream position to 0 so it can be uploaded to Drive later
     pdf_stream.seek(0)
+
+    if is_private:
+        # lazy: assumes the private-school forms render "To be provided to:"
+        # immediately above (or beside) the entered school name. Widen the
+        # anchor if a real form prints it differently.
+        m = re.search(r"To be provided to:?\s*\r?\n?(.+)", full_text)
+        candidate = m.group(1).strip() if m else ""
+        return normalize_district(candidate) if candidate else "Not Found"
 
     match = None
     if "School District" in full_text:
@@ -289,6 +415,8 @@ def save_document_as_pdf(
     link_text: str,
     client: ClientFromDB,
     config: Config,
+    *,
+    is_private: bool = False,
     dry_run: bool = False,
 ) -> tuple[io.BytesIO, str, str, dict]:
     """Helper function to find, print, and save a single document."""
@@ -320,13 +448,17 @@ def save_document_as_pdf(
             )
         )
 
-        doc_type = link_text.split(" ", maxsplit=1)[0]
+        doc_type = "Receiving" if "Receiving" in link_text else "Sending"
 
         filename = f"{client.firstName} {client.lastName} {client.dob.strftime('%m%d%Y')} {doc_type}.pdf"
 
         logger.info(f"Saving {filename}...")
         stream, stream_name, school, drive_file = upload_pdf_from_driver(
-            driver, filename, config.records_folder_id, dry_run
+            driver,
+            filename,
+            config.records_folder_id,
+            is_private=is_private,
+            dry_run=dry_run,
         )
 
     except Exception as e:
@@ -432,6 +564,8 @@ def main(
     school_contacts = config.records_emails
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}
 
+    private_school_names = get_private_school_names(config)
+
     clients_to_process = get_clients_needing_records(config)
 
     if client_filter:
@@ -490,11 +624,22 @@ def main(
                     try:
                         if not check_if_opened_portal(driver):
                             raise Exception("portal not opened")
+
+                        if client.privateSchool:
+                            ensure_private_school_forms_assigned(
+                                driver, client, dry_run=dry_run
+                            )
+
                         if not check_if_docs_signed(driver):
                             raise Exception("docs not signed")
 
                         skipped = download_consent_forms(
-                            driver, client, school_contacts, config, dry_run
+                            driver,
+                            client,
+                            school_contacts,
+                            private_school_names,
+                            config,
+                            dry_run=dry_run,
                         )
                         if not skipped:
                             new_success_count += 1

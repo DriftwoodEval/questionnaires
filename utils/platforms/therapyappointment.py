@@ -262,6 +262,56 @@ def find_form_link_for_session(
     return latest_row.find_element(By.LINK_TEXT, link_text)
 
 
+def form_link_present(driver: WebDriver, link_text: str) -> bool:
+    """Whether a completed (clickable) Docs & Forms row with this link text exists.
+
+    Assumes the Docs & Forms list is the current view.
+    """
+    return bool(
+        driver.find_elements(By.XPATH, f"//a[normalize-space(text())='{link_text}']")
+    )
+
+
+def form_row_present(driver: WebDriver, form_name: str) -> bool:
+    """Whether the Docs & Forms list has a row for this form at all.
+
+    A form assigned but not yet completed shows as plain text rather than a
+    link, so this matches either. Assumes the Docs & Forms list is the current
+    view.
+    """
+    return bool(
+        driver.find_elements(By.XPATH, f"//*[normalize-space(text())='{form_name}']")
+    )
+
+
+def assign_online_forms(driver: WebDriver, form_names: list[str]) -> None:
+    """Assign online forms to the client whose Docs & Forms list is open in TA.
+
+    Callers must already be on the Docs & Forms view (they check what's there
+    first). Opens the Assign panel, ticks each form by its visible name (the
+    checkbox id is a per-form UUID, but the label text is stable), and submits.
+    """
+    logger.info(f"Assigning online forms: {', '.join(form_names)}")
+    click_element(driver, By.XPATH, "//a[@title='Assign Online Forms']")
+    for name in form_names:
+        click_element(
+            driver,
+            By.XPATH,
+            f"//label[normalize-space(text())='{name}']",
+            scroll=True,
+        )
+    click_element(
+        driver, By.XPATH, "//a[normalize-space(text())='Assign Selected Forms']"
+    )
+    # Wait for the assign panel to close and the list to redraw with the new rows.
+    find_element(
+        driver,
+        By.XPATH,
+        f"//*[normalize-space(text())='{form_names[0]}']",
+        10,
+    )
+
+
 def resend_portal_invite(driver: WebDriver, services: Services, client_id: str) -> None:
     """Resend the TA portal invite to the client."""
     go_to_client(driver, services, client_id)

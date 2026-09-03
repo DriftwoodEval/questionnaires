@@ -18,6 +18,7 @@ from utils.custom_types import (
     Failure,
     QuestionnaireStatus,
 )
+from utils.records import normalize_district
 from utils.timezone import now_business
 
 # Sentinel actor for audit rows written by this script's direct DB writes,
@@ -201,14 +202,6 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
-            -- Private-school clients still get a pending emr_external_record_request
-            -- row (winnonah's ensurePendingExternalRecordRequest inserts one for
-            -- every "Needed" client, so the outstanding-records state stays visible),
-            -- but staff request their records manually instead of through this script.
-            AND (
-                c.referralData IS NULL
-                OR JSON_UNQUOTE(JSON_EXTRACT(c.referralData, '$.privateSchool')) != "yes"
-            )
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -226,13 +219,25 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     return clients_needing_records
 
 
+def get_private_school_names(config: Config) -> set[str]:
+    """Normalized names of every school flagged isPrivate in emr_school_district.
+
+    records-request.py compares the school resolved off a consent form against
+    this set to tell a private-school request from a public-district one.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute("SELECT fullName FROM emr_school_district WHERE isPrivate = 1")
+        return {normalize_district(row["fullName"]) for row in cursor.fetchall()}
+
+
 def get_record_ready_client_ids(config: Config) -> dict[str, str]:
     """Fetch client IDs and their record statuses.
 
     A status starting with "Ready" means the client is clear to send questionnaires;
     anything else blocks an automated qsend run. ADHD-only clients (no autism) are
     never blocked by outstanding records, but their status still says so. Private
-    school clients block until staff record the manual request.
+    school clients follow the same records gate as everyone else.
     """
     logger.info("Fetching record statuses from DB")
     db_connection = get_db(config)
@@ -245,7 +250,6 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 c.id,
                 c.recordsNeeded,
                 c.asdAdhd,
-                c.referralData->>'$.privateSchool' AS privateSchool,
                 er.content,
                 COUNT(CASE WHEN err.requestedDate IS NOT NULL
                     AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
@@ -255,7 +259,7 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             FROM emr_client c
             LEFT JOIN emr_external_record er ON c.id = er.clientId
             LEFT JOIN emr_external_record_request err ON c.id = err.clientId
-            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, privateSchool, er.content
+            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, er.content
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -271,7 +275,6 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             # ADHD without autism: records are still pursued, but an outstanding
             # request never blocks questionnaire sends. Autism always blocks.
             is_adhd_only = "ADHD" in asd_adhd and "ASD" not in asd_adhd
-            is_private_school = row["privateSchool"] == "yes"
 
             if records_needed == "Not Needed" or content is not None:
                 statuses[client_id] = "Ready"
@@ -284,10 +287,6 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             elif sent_count == 1:
                 statuses[client_id] = (
                     f"Records needed, requested on {last_sent_date}, but not yet received"
-                )
-            elif is_private_school:
-                statuses[client_id] = (
-                    "Records needed - private school, staff must request manually"
                 )
             else:
                 statuses[client_id] = "Records needed but not yet requested"
@@ -381,9 +380,11 @@ def diagnose_records_readiness(
         if (referral_data or {}).get("privateSchool") == "yes":
             checks.append(
                 (
-                    "FAIL",
-                    "private school on intake: records-request.py skips this client, "
-                    "staff must request records manually",
+                    "INFO",
+                    "private school on intake: records-request.py auto-assigns "
+                    "the 'Private School Receiving/Sending Release of "
+                    "Information' consent forms (sessions on/after the cutoff "
+                    "only) and needs an isPrivate school contact",
                 )
             )
 
