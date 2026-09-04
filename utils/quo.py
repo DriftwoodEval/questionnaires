@@ -6,7 +6,7 @@ from ratelimit import RateLimitException, limits
 from tenacity import (
     RetryCallState,
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     retry_if_result,
     stop_after_attempt,
     wait_exponential,
@@ -18,6 +18,7 @@ from utils.timezone import business_date_to_utc
 API_BASE = "https://api.quo.com/v1/"
 RATE_LIMIT_CALLS = 10
 RATE_LIMIT_PERIOD = 1
+REQUEST_TIMEOUT_SECONDS = 30
 
 
 def before_sleep_loguru(retry_state: RetryCallState) -> None:
@@ -68,7 +69,7 @@ class InvalidPhoneNumberError(ValueError):
         super().__init__(message)
 
 
-def is_transient_error(exception: Exception) -> bool:
+def is_transient_error(exception: BaseException) -> bool:
     """Check if the exception is a transient error that should be retried."""
     if isinstance(exception, requests.HTTPError) and exception.response is not None:
         # Do not retry on 400, 401, 403, 404, 422
@@ -108,7 +109,7 @@ class Quo:
         return None
 
     _retry_network = retry(
-        retry=retry_if_exception_type(Exception) & retry_if_result(is_transient_error),
+        retry=retry_if_exception(is_transient_error),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(5),
         before_sleep=before_sleep_loguru,
@@ -126,7 +127,7 @@ class Quo:
     def get_text_info(self, message_id: str) -> dict:
         """Retrieves raw info dict. Retries only on network errors."""
         url = f"{API_BASE}messages/{message_id}"
-        response = self.session.get(url)
+        response = self.session.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json().get("data", {})
 
@@ -162,7 +163,7 @@ class Quo:
     def _fetch_phone_number_id(self) -> str | None:
         """Fetch the Quo phone number ID for the main number."""
         url = f"{API_BASE}phone-numbers"
-        response = self.session.get(url)
+        response = self.session.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         for pn in response.json().get("data", []):
             if pn.get("phoneNumber") == self.main_number:
@@ -207,7 +208,9 @@ class Quo:
             if since_dt is not None:
                 params.append(("createdAfter", since_dt.isoformat()))
 
-            response = self.session.get(url, params=params)
+            response = self.session.get(
+                url, params=params, timeout=REQUEST_TIMEOUT_SECONDS
+            )
             response.raise_for_status()
             data = response.json().get("data", [])
 
@@ -279,7 +282,9 @@ class Quo:
 
         try:
             logger.info(f"Sending message to {to_number_clean}...")
-            response = self.session.post(url, json=payload)
+            response = self.session.post(
+                url, json=payload, timeout=REQUEST_TIMEOUT_SECONDS
+            )
 
             if response.status_code == 402:
                 raise NotEnoughCreditsError
