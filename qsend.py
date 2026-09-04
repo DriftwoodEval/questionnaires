@@ -1240,15 +1240,22 @@ def main(
 
             except Exception as e:
                 logger.error(f"Error for {client['Client Name']}: {e}")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error=f"Unhandled error for {client['Client Name']}",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
+                try:
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error=f"Unhandled error for {client['Client Name']}",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                except Exception as failure_log_error:
+                    # If the same blip that caused `e` also breaks add_failure's
+                    # DB/sheet writes, don't let it crash the whole client loop.
+                    logger.error(
+                        f"Failed to record failure for {client['Client Name']}: {failure_log_error}"
+                    )
 
         logger.info(f"Finished loop for {len(clients)} clients")
         # Final newline for preventing overwriting last line on windows
