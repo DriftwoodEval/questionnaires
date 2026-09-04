@@ -30,7 +30,7 @@ from utils.database import (
     update_failure_in_db,
     update_questionnaire_in_db,
 )
-from utils.google import get_punch_list, update_punch_list
+from utils.google import batch_update_punch_list, get_punch_list
 from utils.messages import format_ta_message
 from utils.misc import (
     NetworkSink,
@@ -1196,12 +1196,23 @@ def main(
                     daeval = client["daeval"]
                     client_id = client["Client ID"]
                     if daeval == "DA":
-                        update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+                        punch_list_updates = [(client_id, "DA Qs Sent", "TRUE")]
                     elif daeval == "EVAL":
-                        update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+                        punch_list_updates = [(client_id, "EVAL Qs Sent", "TRUE")]
                     elif daeval == "DAEVAL":
-                        update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
-                        update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+                        punch_list_updates = [
+                            (client_id, "DA Qs Sent", "TRUE"),
+                            (client_id, "EVAL Qs Sent", "TRUE"),
+                        ]
+                    else:
+                        punch_list_updates = []
+                    try:
+                        batch_update_punch_list(config, punch_list_updates)
+                    except Exception:
+                        # The questionnaires were already sent and recorded
+                        # in the DB above; a Sheets blip here shouldn't get
+                        # this client treated as a failed send.
+                        logger.exception("Failed to update Punch List")
 
                     if client["Language"] != "Spanish":
                         for questionnaire in questionnaires:
