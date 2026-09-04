@@ -1,4 +1,5 @@
 import json as _json
+import re
 import socket
 import sys
 import traceback
@@ -176,6 +177,27 @@ class NetworkSink:
 # truncating before they're used as the reason, or the DB insert fails outright.
 MAX_FAILURE_REASON_LENGTH = 767
 
+# Selenium renders every WebDriverException as "Message: <msg>\nStacktrace:\n...".
+# The stacktrace alone can blow past MAX_FAILURE_REASON_LENGTH, and when <msg> is
+# empty (a bare WebDriverWait timeout has no message and no stacktrace) all that
+# survives is a useless "Message:". Either way the raw string is a bad failure
+# reason: it gets stored verbatim and then re-inserted every run by
+# check_client_failed, so it sticks around on the dashboard as "Message:".
+_SELENIUM_MESSAGE_PREFIX = re.compile(r"^\s*message:\s*", re.IGNORECASE)
+
+
+def clean_failure_reason(reason: str) -> str:
+    """Strip Selenium's 'Message:/Stacktrace:' wrapper from an error string,
+    falling back to a readable label when nothing meaningful is left."""
+    without_trace = re.split(r"\n\s*Stacktrace:", reason, maxsplit=1)[0]
+    if not _SELENIUM_MESSAGE_PREFIX.match(without_trace):
+        return reason
+    body = _SELENIUM_MESSAGE_PREFIX.sub("", without_trace).strip()
+    # A message-less WebDriverException stringifies as "Message: None".
+    if not body or body == "None":
+        return "browser automation error (no detail)"
+    return body
+
 
 def add_failure(
     config: Config,
@@ -192,7 +214,7 @@ def add_failure(
     questionnaires_generated: list[dict[str, str]] | None = None,
 ) -> None:
     """Add a client to the failure sheet and database."""
-    error = error[:MAX_FAILURE_REASON_LENGTH]
+    error = clean_failure_reason(error)[:MAX_FAILURE_REASON_LENGTH]
 
     logger.debug(
         f"Failure information: {client_id}, {error}, {failed_date}, {full_name}, {asd_adhd}, {daeval}, {questionnaires_needed}, {questionnaires_generated}"

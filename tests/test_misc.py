@@ -10,6 +10,7 @@ from utils.misc import (
     MAX_FAILURE_REASON_LENGTH,
     add_failure,
     check_distance,
+    clean_failure_reason,
     json_log_format,
     stderr_log_format,
 )
@@ -50,6 +51,30 @@ class TestAddFailure:
         assert len(captured["sheet_error"]) == expected_length
         assert len(captured["db_error"]) == expected_length
         assert captured["sheet_error"] == captured["db_error"]
+
+
+class TestCleanFailureReason:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            # Selenium's empty-message exception string.
+            ("Message: \n", "browser automation error (no detail)"),
+            ("Message: None\n", "browser automation error (no detail)"),
+            # Real message plus a stacktrace tail that must be dropped.
+            (
+                "Message: element not interactable\nStacktrace:\n\tat foo (bar.js:1)\n"
+                * 3,
+                "element not interactable",
+            ),
+            # Case-insensitive: qsend re-adds prior reasons lowercased.
+            ("message: \n", "browser automation error (no detail)"),
+            # Ordinary reasons pass through untouched.
+            ("portal not opened", "portal not opened"),
+            ("too young", "too young"),
+        ],
+    )
+    def test_strips_selenium_wrapper(self, raw, expected):
+        assert clean_failure_reason(raw) == expected
 
 
 class TestCheckDistance:
