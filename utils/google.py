@@ -36,6 +36,24 @@ SCOPES = [
 
 
 @cache
+def get_gmail_service():
+    """Get the Gmail service, reusing the same instance across calls."""
+    return build("gmail", "v1", credentials=google_authenticate())
+
+
+@cache
+def get_sheets_service():
+    """Get the Google Sheets service, reusing the same instance across calls."""
+    return build("sheets", "v4", credentials=google_authenticate())
+
+
+@cache
+def get_drive_service():
+    """Get the Google Drive service, reusing the same instance across calls."""
+    return build("drive", "v3", credentials=google_authenticate())
+
+
+@cache
 def google_authenticate():
     """Authenticate with Google using the credentials in ./config/credentials.json (obtained from Google Cloud Console) and ./config/token.json (user-specific).
 
@@ -115,10 +133,8 @@ def send_gmail(
         html (Optional[str]): The HTML version of the message (optional)
         attachments (Optional[list[dict]]): A list of attachments, where each attachment is a dict with "stream" and "filename" keys (optional)
     """
-    creds = google_authenticate()
-
     try:
-        service = build("gmail", "v1", credentials=creds)
+        service = get_gmail_service()
 
         message = EmailMessage()
         message.set_content(message_text)
@@ -191,8 +207,7 @@ def list_gmail_messages(
     Paginates until max_results is reached. Returns the raw {"id", "threadId"}
     stubs; use get_gmail_message() to fetch full content.
     """
-    creds = google_authenticate()
-    service = build("gmail", "v1", credentials=creds)
+    service = get_gmail_service()
     messages: list[dict] = []
     page_token = None
     while len(messages) < max_results:
@@ -220,8 +235,7 @@ def get_gmail_message(message_id: str) -> dict:
 
     Returns a dict with subject, from, to, date, snippet, body_text, body_html.
     """
-    creds = google_authenticate()
-    service = build("gmail", "v1", credentials=creds)
+    service = get_gmail_service()
     message = (
         service.users()
         .messages()
@@ -248,8 +262,7 @@ def get_gmail_message(message_id: str) -> dict:
 
 def mark_gmail_message_read(message_id: str) -> None:
     """Remove the UNREAD label from a Gmail message."""
-    creds = google_authenticate()
-    service = build("gmail", "v1", credentials=creds)
+    service = get_gmail_service()
     service.users().messages().modify(
         userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
     ).execute()
@@ -418,10 +431,8 @@ def get_punch_list(config: Config):
     Returns:
         pandas.DataFrame: A DataFrame containing the punch list data.
     """
-    creds = google_authenticate()
-
     try:
-        service = build("sheets", "v4", credentials=creds)
+        service = get_sheets_service()
 
         sheet = service.spreadsheets()
         result = (
@@ -507,10 +518,8 @@ def update_punch_list(
     Raises:
         Exception: If anything goes wrong.
     """
-    creds = google_authenticate()
-
     try:
-        service = build("sheets", "v4", credentials=creds)
+        service = get_sheets_service()
         sheet = service.spreadsheets()
         result = (
             sheet.values()
@@ -568,8 +577,7 @@ def batch_update_punch_list(
     if not updates:
         return
 
-    creds = google_authenticate()
-    service = build("sheets", "v4", credentials=creds)
+    service = get_sheets_service()
     sheet = service.spreadsheets()
 
     result = (
@@ -628,10 +636,8 @@ def add_to_failure_sheet(
     questionnaires_generated: list[dict[str, str]] | None = None,
 ):
     """Adds the given failed client to the failure sheet."""
-    creds = google_authenticate()
-
     try:
-        service = build("sheets", "v4", credentials=creds)
+        service = get_sheets_service()
         sheet = service.spreadsheets()
         body = {
             "values": [
@@ -708,10 +714,8 @@ def upload_file_to_drive(
         except Exception as e:
             return f"Error: {e}"
 
-    creds = google_authenticate()
-
     try:
-        service = build("drive", "v3", credentials=creds)
+        service = get_drive_service()
     except Exception:
         logger.exception("Skipping Drive upload: Could not build Drive service")
         return None, None
