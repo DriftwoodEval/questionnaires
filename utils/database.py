@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 from datetime import date, datetime
 from typing import Literal, cast
 from urllib.parse import urlparse
@@ -66,23 +67,39 @@ def record_audit_log(
         logger.exception(f"Failed to write audit log for action={action}")
 
 
+DB_CONNECT_MAX_ATTEMPTS = 3
+DB_CONNECT_BACKOFF_SECONDS = 1
+
+
 def get_db(config: Config):
-    """Connect to the database and return a connection object."""
+    """Connect to the database and return a connection object, retrying on transient connect failures."""
     db_url = urlparse(config.database_url)
-    return pymysql.connect(
-        host=db_url.hostname,
-        port=db_url.port or 3306,
-        user=db_url.username,
-        password=db_url.password or "",
-        database=db_url.path[1:],
-        cursorclass=pymysql.cursors.DictCursor,
-        init_command="SET time_zone = '+00:00'",
-        # Without this, MySQL reports UPDATE rowcount as rows actually
-        # changed, not rows matched by WHERE -- a no-op UPDATE (new value
-        # equals the current value) reports 0, which looks identical to "no
-        # matching row" if calling code checks rowcount for existence.
-        client_flag=CLIENT.FOUND_ROWS,
-    )
+    for attempt in range(1, DB_CONNECT_MAX_ATTEMPTS + 1):
+        try:
+            return pymysql.connect(
+                host=db_url.hostname,
+                port=db_url.port or 3306,
+                user=db_url.username,
+                password=db_url.password or "",
+                database=db_url.path[1:],
+                cursorclass=pymysql.cursors.DictCursor,
+                init_command="SET time_zone = '+00:00'",
+                # Without this, MySQL reports UPDATE rowcount as rows actually
+                # changed, not rows matched by WHERE -- a no-op UPDATE (new value
+                # equals the current value) reports 0, which looks identical to "no
+                # matching row" if calling code checks rowcount for existence.
+                client_flag=CLIENT.FOUND_ROWS,
+            )
+        except (OSError, pymysql.err.OperationalError) as e:
+            if attempt == DB_CONNECT_MAX_ATTEMPTS:
+                raise
+            wait = DB_CONNECT_BACKOFF_SECONDS * 2 ** (attempt - 1)
+            logger.warning(
+                f"DB connect attempt {attempt}/{DB_CONNECT_MAX_ATTEMPTS} failed"
+                f" ({e}), retrying in {wait}s"
+            )
+            time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 def get_previous_clients(

@@ -11,9 +11,12 @@ from rich import print as rich_print
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
+from urllib3.exceptions import MaxRetryError
+from urllib3.exceptions import TimeoutError as Urllib3TimeoutError
 
 from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Config, Services
@@ -27,7 +30,7 @@ from utils.database import (
     update_failure_in_db,
     update_questionnaire_in_db,
 )
-from utils.google import get_punch_list, update_punch_list
+from utils.google import batch_update_punch_list, get_punch_list
 from utils.messages import format_ta_message
 from utils.misc import (
     NetworkSink,
@@ -70,6 +73,7 @@ from utils.questionnaires import (
 from utils.selenium import (
     find_element,
     initialize_selenium,
+    restart_selenium,
 )
 from utils.task_tracker import track_task
 from utils.timezone import now_business
@@ -1192,12 +1196,23 @@ def main(
                     daeval = client["daeval"]
                     client_id = client["Client ID"]
                     if daeval == "DA":
-                        update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
+                        punch_list_updates = [(client_id, "DA Qs Sent", "TRUE")]
                     elif daeval == "EVAL":
-                        update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+                        punch_list_updates = [(client_id, "EVAL Qs Sent", "TRUE")]
                     elif daeval == "DAEVAL":
-                        update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
-                        update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
+                        punch_list_updates = [
+                            (client_id, "DA Qs Sent", "TRUE"),
+                            (client_id, "EVAL Qs Sent", "TRUE"),
+                        ]
+                    else:
+                        punch_list_updates = []
+                    try:
+                        batch_update_punch_list(config, punch_list_updates)
+                    except Exception:
+                        # The questionnaires were already sent and recorded
+                        # in the DB above; a Sheets blip here shouldn't get
+                        # this client treated as a failed send.
+                        logger.exception("Failed to update Punch List")
 
                     if client["Language"] != "Spanish":
                         for questionnaire in questionnaires:
@@ -1240,15 +1255,37 @@ def main(
 
             except Exception as e:
                 logger.error(f"Error for {client['Client Name']}: {e}")
-                add_failure(
-                    config=config,
-                    client_id=client["Client ID"],
-                    error=f"Unhandled error for {client['Client Name']}",
-                    failed_date=today,
-                    full_name=client["Client Name"],
-                    asd_adhd=client["For"],
-                    daeval=client["daeval"],
-                )
+                if isinstance(
+                    e, (WebDriverException, MaxRetryError, Urllib3TimeoutError)
+                ):
+                    # mhs.py/wps.py/therapyappointment.py have no per-flow
+                    # recovery of their own (unlike qglobal.py's
+                    # with_qglobal_recovery), so a wedged chromedriver
+                    # session surfaces here instead. Left alone, it would
+                    # stay wedged for every remaining client in this run.
+                    logger.warning(
+                        "Restarting Selenium after a browser automation error"
+                    )
+                    try:
+                        restart_selenium(driver)
+                    except Exception as restart_error:
+                        logger.error(f"Failed to restart Selenium: {restart_error}")
+                try:
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error=f"Unhandled error for {client['Client Name']}",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                except Exception as failure_log_error:
+                    # If the same blip that caused `e` also breaks add_failure's
+                    # DB/sheet writes, don't let it crash the whole client loop.
+                    logger.error(
+                        f"Failed to record failure for {client['Client Name']}: {failure_log_error}"
+                    )
 
         logger.info(f"Finished loop for {len(clients)} clients")
         # Final newline for preventing overwriting last line on windows
