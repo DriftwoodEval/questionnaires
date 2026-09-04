@@ -1108,7 +1108,19 @@ def main(
                     sync_updates.append((str(client.id), "EVAL Qs Sent", "FALSE"))
 
             if not dry_run:
-                batch_update_punch_list(config, sync_updates)
+                try:
+                    batch_update_punch_list(config, sync_updates)
+                except Exception as e:
+                    # By this point every DB write for the run (reminders,
+                    # completion status) has already succeeded. The punch
+                    # list is a downstream mirror of that DB state, and
+                    # check_battery_completeness/check_battery_sent
+                    # recompute it fresh from the DB every run, so a blip
+                    # here just leaves the sheet one run behind rather than
+                    # losing anything -- it shouldn't fail the whole run or
+                    # be reported as an unhandled exception.
+                    logger.exception("Failed to sync punch list, will retry next run")
+                    email_info["errors"].append(f"Failed to sync punch list: {e}")
             else:
                 for client_id_str, col, val in sync_updates:
                     logger.info(
