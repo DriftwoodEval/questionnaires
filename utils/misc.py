@@ -158,27 +158,17 @@ class NetworkSink:
         try:
             self.sock.connect((self.ip, port))
         except (OSError, ConnectionRefusedError, TimeoutError) as e:
-            # Remote logging is a convenience, not something the actual work
-            # (sending/checking questionnaires) depends on. An unreachable
-            # log server shouldn't prevent the script from running at all;
-            # write() already no-ops when self.sock is None.
             logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
             self.sock = None
+            sys.exit(1)
 
     def write(self, message: str):
-        if not (self.sock and message.strip()):
-            return
-        try:
+        if self.sock and message.strip():
             for line in message.splitlines():
                 if line.strip():
                     self.sock.sendall(f"{self.app_name}:{line}\n".encode())
                 else:
                     self.sock.sendall(f"{self.app_name}:\n".encode())
-        except OSError as e:
-            logger.error(
-                f"Lost connection to log server, disabling remote logging: {e}"
-            )
-            self.sock = None
 
 
 # emr_failure.reason is part of a composite primary key (clientId, reason),
