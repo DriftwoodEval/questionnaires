@@ -11,9 +11,12 @@ from rich import print as rich_print
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
+from urllib3.exceptions import MaxRetryError
+from urllib3.exceptions import TimeoutError as Urllib3TimeoutError
 
 from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Config, Services
@@ -70,6 +73,7 @@ from utils.questionnaires import (
 from utils.selenium import (
     find_element,
     initialize_selenium,
+    restart_selenium,
 )
 from utils.task_tracker import track_task
 from utils.timezone import now_business
@@ -1240,6 +1244,21 @@ def main(
 
             except Exception as e:
                 logger.error(f"Error for {client['Client Name']}: {e}")
+                if isinstance(
+                    e, (WebDriverException, MaxRetryError, Urllib3TimeoutError)
+                ):
+                    # mhs.py/wps.py/therapyappointment.py have no per-flow
+                    # recovery of their own (unlike qglobal.py's
+                    # with_qglobal_recovery), so a wedged chromedriver
+                    # session surfaces here instead. Left alone, it would
+                    # stay wedged for every remaining client in this run.
+                    logger.warning(
+                        "Restarting Selenium after a browser automation error"
+                    )
+                    try:
+                        restart_selenium(driver)
+                    except Exception as restart_error:
+                        logger.error(f"Failed to restart Selenium: {restart_error}")
                 try:
                     add_failure(
                         config=config,
