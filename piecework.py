@@ -567,24 +567,16 @@ def generate_main_report(
             summary_sheet = writer.sheets["Summary Counts"]
 
             currency_format = '"$"#,##0.00'
+            currency_columns = {4: "UNIT", 5: "COST", 6: "TOTAL PAY"}
 
             for row_idx, row in enumerate(
                 summary_data, start=2
             ):  # start=2 to skip header
-                if row.get("UNIT"):
-                    summary_sheet.cell(
-                        row=row_idx, column=4
-                    ).number_format = currency_format
-
-                if row.get("COST"):
-                    summary_sheet.cell(
-                        row=row_idx, column=5
-                    ).number_format = currency_format
-
-                if row.get("TOTAL PAY"):
-                    summary_sheet.cell(
-                        row=row_idx, column=6
-                    ).number_format = currency_format
+                for column, field in currency_columns.items():
+                    if row.get(field):
+                        summary_sheet.cell(
+                            row=row_idx, column=column
+                        ).number_format = currency_format
 
             last_row = len(df_summary) + 1  # +1 for header row
 
