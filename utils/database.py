@@ -206,7 +206,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             -- every "Needed" client, so the outstanding-records state stays visible),
             -- but staff request their records manually instead of through this script.
             AND (
-                c.referralData IS NULL
+                JSON_UNQUOTE(JSON_EXTRACT(c.referralData, '$.privateSchool')) IS NULL
                 OR JSON_UNQUOTE(JSON_EXTRACT(c.referralData, '$.privateSchool')) != "yes"
             )
         """
