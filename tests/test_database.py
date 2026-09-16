@@ -117,8 +117,9 @@ class TestGetMostRecentFailure:
 
 
 class TestUpdateFailureInDb:
-    def _connection(self):
+    def _connection(self, previous_row: dict | None = None):
         cursor = MagicMock()
+        cursor.fetchone.return_value = previous_row
         conn = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cursor
         conn.cursor.return_value.__exit__.return_value = False
@@ -147,7 +148,14 @@ class TestUpdateFailureInDb:
         conn.commit.assert_called_once()
 
     def test_writes_audit_log_when_something_actually_changed(self, monkeypatch):
-        conn, cursor = self._connection()
+        conn, cursor = self._connection(
+            previous_row={
+                "daEval": "EVAL",
+                "reminded": 0,
+                "failedDate": date(2024, 1, 1),
+                "lastReminded": None,
+            }
+        )
         audit_calls = []
         monkeypatch.setattr("utils.database.get_db", lambda _config: conn)
         monkeypatch.setattr(
@@ -165,8 +173,38 @@ class TestUpdateFailureInDb:
         sql = cursor.execute.call_args[0][0]
         assert "updatedAt = NOW()" not in sql
         assert len(audit_calls) == 1
-        args, _ = audit_calls[0]
+        args, kwargs = audit_calls[0]
         assert args[1] == "internal.failure.update"
+        assert kwargs["detail"] == {
+            "reason": "portal not opened",
+            "reminded": {"from": 0, "to": 100},
+        }
+        conn.commit.assert_called_once()
+
+    def test_no_audit_log_when_resubmitted_value_is_unchanged(self, monkeypatch):
+        conn, _cursor = self._connection(
+            previous_row={
+                "daEval": "EVAL",
+                "reminded": 0,
+                "failedDate": date(2024, 1, 1),
+                "lastReminded": None,
+            }
+        )
+        audit_calls = []
+        monkeypatch.setattr("utils.database.get_db", lambda _config: conn)
+        monkeypatch.setattr(
+            "utils.database.record_audit_log",
+            lambda *args, **kwargs: audit_calls.append((args, kwargs)),
+        )
+
+        update_failure_in_db(
+            config=cast("Config", None),
+            client_id=1,
+            reason="portal not opened",
+            da_eval="EVAL",
+        )
+
+        assert audit_calls == []
         conn.commit.assert_called_once()
 
 
