@@ -811,8 +811,10 @@ def update_failure_in_db(
 ):
     """Updates the failure in the DB.
 
-    No-op (no DB write, no audit log entry) when none of the optional fields
-    are given, since there's nothing to change or record.
+    Always bumps updatedAt, even when none of the optional fields are given,
+    so it reflects when this failure was last checked. Only writes an audit
+    log entry when something meaningful actually changed, so a routine
+    check-in that finds the failure unchanged doesn't spam the audit log.
     """
     values = ()
 
@@ -837,8 +839,9 @@ def update_failure_in_db(
         updates.append("lastReminded=%s")
         values += (last_reminded,)
 
+    meaningful_change = bool(updates)
     if not updates:
-        return
+        updates.append("updatedAt = NOW()")
 
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
@@ -847,19 +850,20 @@ def update_failure_in_db(
         values += (client_id, reason)
 
         cursor.execute(sql, values)
-        record_audit_log(
-            db_connection,
-            "internal.failure.update",
-            client_id,
-            detail={
-                "reason": reason,
-                "daEval": da_eval,
-                "resolved": resolved,
-                "failedDate": failed_date,
-                "reminded": reminded,
-                "lastReminded": last_reminded,
-            },
-        )
+        if meaningful_change:
+            record_audit_log(
+                db_connection,
+                "internal.failure.update",
+                client_id,
+                detail={
+                    "reason": reason,
+                    "daEval": da_eval,
+                    "resolved": resolved,
+                    "failedDate": failed_date,
+                    "reminded": reminded,
+                    "lastReminded": last_reminded,
+                },
+            )
         db_connection.commit()
 
 
