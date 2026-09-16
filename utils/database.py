@@ -66,6 +66,18 @@ def record_audit_log(
         logger.exception(f"Failed to write audit log for action={action}")
 
 
+def _diff_fields(before: dict, after: dict) -> dict:
+    """Compares two flat dicts and returns only the keys whose values differ in
+    `after`, as {field: {"from": ..., "to": ...}}. Used so a bulk update logs
+    only what actually changed for each row, not its entire current state.
+    """
+    return {
+        key: {"from": before.get(key), "to": value}
+        for key, value in after.items()
+        if before.get(key) != value
+    }
+
+
 def get_db(config: Config):
     """Connect to the database and return a connection object."""
     db_url = urlparse(config.database_url)
@@ -728,12 +740,31 @@ def update_questionnaire_in_db(
 def update_questionnaires_in_db(
     config: Config, clients: list[ClientWithQuestionnaires]
 ):
-    """Update questionnaires in the database, setting status, reminded count, and last reminded date."""
+    """Update questionnaires in the database, setting status, reminded count, and last reminded date.
+
+    Only logs an audit entry for questionnaires whose status, reminded count,
+    or last-reminded date actually changed, and only the fields that changed,
+    rather than every questionnaire's full current state on every call.
+    """
     db_connection = get_db(config)
     with db_connection:
         with db_connection.cursor() as cursor:
             for client in clients:
+                changed_questionnaires = []
                 for questionnaire in client.questionnaires:
+                    cursor.execute(
+                        """
+                        SELECT status, reminded, lastReminded FROM `emr_questionnaire`
+                        WHERE clientId=%s AND sent=%s AND questionnaireType=%s
+                        """,
+                        (
+                            client.id,
+                            questionnaire["sent"],
+                            questionnaire["questionnaireType"],
+                        ),
+                    )
+                    previous = cursor.fetchone() or {}
+
                     sql = """
                         UPDATE `emr_questionnaire`
                         SET status=%s, reminded=%s, lastReminded=%s, updatedAt = NOW()
@@ -751,23 +782,30 @@ def update_questionnaires_in_db(
 
                     cursor.execute(sql, values)
 
-                record_audit_log(
-                    db_connection,
-                    "internal.questionnaire.bulkUpdate",
-                    client.id,
-                    detail={
-                        "questionnaires": [
+                    diff = _diff_fields(
+                        previous,
+                        {
+                            "status": questionnaire["status"],
+                            "reminded": questionnaire["reminded"],
+                            "lastReminded": questionnaire["lastReminded"],
+                        },
+                    )
+                    if diff:
+                        changed_questionnaires.append(
                             {
-                                "questionnaireType": q["questionnaireType"],
-                                "sent": q["sent"],
-                                "status": q["status"],
-                                "reminded": q["reminded"],
-                                "lastReminded": q["lastReminded"],
+                                "questionnaireType": questionnaire["questionnaireType"],
+                                "sent": questionnaire["sent"],
+                                **diff,
                             }
-                            for q in client.questionnaires
-                        ]
-                    },
-                )
+                        )
+
+                if changed_questionnaires:
+                    record_audit_log(
+                        db_connection,
+                        "internal.questionnaire.bulkUpdate",
+                        client.id,
+                        detail={"questionnaires": changed_questionnaires},
+                    )
         db_connection.commit()
 
 
