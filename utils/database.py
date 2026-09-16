@@ -550,6 +550,13 @@ def save_new_tracked_reports(
             [(cid, tracked_date) for cid in client_ids],
         )
         affected = cursor.rowcount
+        for client_id in client_ids:
+            record_audit_log(
+                db_connection,
+                "internal.piecework.trackReport",
+                client_id,
+                detail={"trackedDate": tracked_date},
+            )
         db_connection.commit()
     if affected < len(client_ids):
         logger.warning(
@@ -568,6 +575,12 @@ def update_tracking_writer(config: Config, client_id: int, writer_email: str) ->
         cursor.execute(
             "UPDATE emr_piecework_report_tracking SET writerEmail = %s WHERE clientId = %s",
             (writer_email, client_id),
+        )
+        record_audit_log(
+            db_connection,
+            "internal.piecework.setWriter",
+            client_id,
+            detail={"writerEmail": writer_email},
         )
         db_connection.commit()
         if cursor.rowcount == 0:
@@ -886,6 +899,15 @@ def log_referral_msg(
             "VALUES (%s, %s, %s, NOW())",
             (client_id, openphone_message_id, is_private_pay_outreach),
         )
+        record_audit_log(
+            db_connection,
+            "internal.referral.messageSent",
+            client_id,
+            detail={
+                "openphoneMessageId": openphone_message_id,
+                "isPrivatePayOutreach": is_private_pay_outreach,
+            },
+        )
         db_connection.commit()
 
 
@@ -902,6 +924,16 @@ def log_questionnaire_msg(
         cursor.execute(
             "INSERT IGNORE INTO emr_questionnaire_msg_logs (clientId, openphoneMessageId, isFailureReminder, failureReason, sentAt) VALUES (%s, %s, %s, %s, NOW())",
             (client_id, openphone_message_id, int(is_failure_reminder), failure_reason),
+        )
+        record_audit_log(
+            db_connection,
+            "internal.questionnaire.messageSent",
+            client_id,
+            detail={
+                "openphoneMessageId": openphone_message_id,
+                "isFailureReminder": is_failure_reminder,
+                "failureReason": failure_reason,
+            },
         )
         db_connection.commit()
 
