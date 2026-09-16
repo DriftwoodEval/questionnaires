@@ -300,8 +300,6 @@ def check_failures(
             if is_resolved:
                 update_failure_in_db(config, client_id, reason, resolved=True)
                 logger.info(f"Resolved failure for {client.fullName}")
-            else:
-                update_failure_in_db(config, client_id, reason)
 
         if progress_callback:
             progress_callback(done, total)
