@@ -291,7 +291,12 @@ def find_form_link_for_session(
             f"Newest '{link_text}' form (assigned {newest_assigned_at} UTC) is not completed"
         )
 
-    newest_completed_at, chosen_row = max(newest_batch, key=lambda pair: pair[0])
+    completed_batch: list[tuple[datetime, WebElement]] = [
+        (completed_at, row)
+        for completed_at, row in newest_batch
+        if completed_at is not None
+    ]
+    newest_completed_at, chosen_row = max(completed_batch, key=lambda pair: pair[0])
     if session_started_at is not None and newest_completed_at < session_started_at:
         raise NoSuchElementException(
             f"Newest '{link_text}' form completed {newest_completed_at} UTC, "

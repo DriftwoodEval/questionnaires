@@ -49,7 +49,9 @@ def driver():
 def test_returns_the_only_completed_copy(driver):
     driver.get(_page(_row(LINK_TEXT, "02/25/2026 11:31 AM", COMPLETED, "/forms/only")))
     link = find_form_link_for_session(driver, LINK_TEXT, None)
-    assert link.get_attribute("href").endswith("/forms/only")
+    href = link.get_attribute("href")
+    assert href is not None
+    assert href.endswith("/forms/only")
 
 
 def test_prefers_the_newest_assigned_copy(driver):
@@ -60,7 +62,9 @@ def test_prefers_the_newest_assigned_copy(driver):
         )
     )
     link = find_form_link_for_session(driver, LINK_TEXT, None)
-    assert link.get_attribute("href").endswith("/forms/new")
+    href = link.get_attribute("href")
+    assert href is not None
+    assert href.endswith("/forms/new")
 
 
 def test_raises_when_newest_copy_is_not_completed(driver):
