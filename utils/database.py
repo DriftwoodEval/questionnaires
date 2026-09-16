@@ -809,54 +809,61 @@ def update_failure_in_db(
     reminded: int | None = None,
     last_reminded: date | None = None,
 ):
-    """Updates the failure in the DB."""
+    """Updates the failure in the DB.
+
+    Always bumps updatedAt, even when none of the optional fields are given,
+    so it reflects when this failure was last checked. Only writes an audit
+    log entry when something meaningful actually changed, so a routine
+    check-in that finds the failure unchanged doesn't spam the audit log.
+    """
+    values = ()
+
+    updates = []
+    if da_eval is not None:
+        updates.append("daEval=%s")
+        values += (da_eval,)
+
+    if failed_date is not None:
+        updates.append("failedDate=%s")
+        values += (failed_date,)
+
+    if resolved is True:
+        # +100 marks a failure as resolved while preserving its reminder count.
+        # Readers filter on `reminded < 100` to find unresolved failures.
+        updates.append("reminded=reminded + 100")
+    elif reminded is not None:
+        updates.append("reminded=%s")
+        values += (reminded,)
+
+    if last_reminded is not None:
+        updates.append("lastReminded=%s")
+        values += (last_reminded,)
+
+    meaningful_change = bool(updates)
+    if not updates:
+        updates.append("updatedAt = NOW()")
+
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
-        sql = "UPDATE emr_failure SET "
-        values = ()
-
-        updates = []
-        if da_eval is not None:
-            updates.append("daEval=%s")
-            values += (da_eval,)
-
-        if failed_date is not None:
-            updates.append("failedDate=%s")
-            values += (failed_date,)
-
-        if resolved is True:
-            # +100 marks a failure as resolved while preserving its reminder count.
-            # Readers filter on `reminded < 100` to find unresolved failures.
-            updates.append("reminded=reminded + 100")
-        elif reminded is not None:
-            updates.append("reminded=%s")
-            values += (reminded,)
-
-        if last_reminded is not None:
-            updates.append("lastReminded=%s")
-            values += (last_reminded,)
-
-        if not updates:
-            updates.append("updatedAt = NOW()")
-
-        sql += ", ".join(updates)
+        sql = "UPDATE emr_failure SET " + ", ".join(updates)
         sql += " WHERE clientId=%s AND reason=%s"
         values += (client_id, reason)
 
         cursor.execute(sql, values)
-        record_audit_log(
-            db_connection,
-            "internal.failure.update",
-            client_id,
-            detail={
-                "reason": reason,
-                "daEval": da_eval,
-                "resolved": resolved,
-                "failedDate": failed_date,
-                "reminded": reminded,
-                "lastReminded": last_reminded,
-            },
-        )
+        if meaningful_change:
+            record_audit_log(
+                db_connection,
+                "internal.failure.update",
+                client_id,
+                detail={
+                    "reason": reason,
+                    "daEval": da_eval,
+                    "resolved": resolved,
+                    "failedDate": failed_date,
+                    "reminded": reminded,
+                    "lastReminded": last_reminded,
+                },
+            )
         db_connection.commit()
 
 
