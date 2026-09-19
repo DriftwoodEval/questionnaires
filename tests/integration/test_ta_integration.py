@@ -25,8 +25,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.ta]
 FAKE_CLIENT_ID = "6813026"
 
 PRIVATE_SCHOOL_FORMS = [
-    "Private School Receiving Release of Information",
-    "Private School Sending Release of Information",
+    "Charter School Receiving Release of Information",
+    "Charter School Sending Release of Information",
 ]
 
 

@@ -19,7 +19,7 @@ from utils.custom_types import (
     QuestionnaireStatus,
 )
 from utils.records import normalize_district
-from utils.timezone import now_business
+from utils.timezone import business_date_to_utc, now_business
 
 # Sentinel actor for audit rows written by this script's direct DB writes,
 # distinct from the internal-api sentinel used by winnonah's own HTTP
@@ -202,6 +202,14 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
+            -- Intake saying "private school" is not trusted on its own: those
+            -- clients wait until someone confirms it in winnonah, which sets
+            -- referralData.privateSchoolConfirmed.
+            AND (
+                c.referralData->>'$.privateSchool' IS NULL
+                OR c.referralData->>'$.privateSchool' != 'yes'
+                OR c.referralData->>'$.privateSchoolConfirmed' = 'true'
+            )
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -377,16 +385,27 @@ def diagnose_records_readiness(
         referral_data = client.get("referralData")
         if isinstance(referral_data, str):
             referral_data = json.loads(referral_data) if referral_data else None
-        if (referral_data or {}).get("privateSchool") == "yes":
-            checks.append(
-                (
-                    "INFO",
-                    "private school on intake: records-request.py auto-assigns "
-                    "the 'Private School Receiving/Sending Release of "
-                    "Information' consent forms (sessions on/after the cutoff "
-                    "only) and needs an isPrivate school contact",
+        referral_data = referral_data or {}
+        if referral_data.get("privateSchool") == "yes":
+            if referral_data.get("privateSchoolConfirmed") is True:
+                checks.append(
+                    (
+                        "INFO",
+                        "private school confirmed: records-request.py auto-assigns "
+                        "the 'Charter School Receiving/Sending Release of "
+                        "Information' consent forms (sessions on/after the cutoff "
+                        "only) and needs an isPrivate school contact",
+                    )
                 )
-            )
+            else:
+                checks.append(
+                    (
+                        "FAIL",
+                        "private school on intake but not confirmed in winnonah: "
+                        "records-request.py skips this client until someone "
+                        "confirms it",
+                    )
+                )
 
         cursor.execute(
             "SELECT 1 FROM emr_external_record WHERE clientId = %s AND content IS NOT NULL LIMIT 1",
@@ -910,6 +929,95 @@ def log_referral_msg(
             },
         )
         db_connection.commit()
+
+
+# Audit actions that track the private-school consent forms text. records-request.py
+# writes "assigned" when it assigns the forms; qreceive.py texts the client on a
+# later business day and then writes "texted" so it only ever texts once.
+PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION = "internal.records.privateSchoolFormsAssigned"
+PRIVATE_SCHOOL_FORMS_TEXTED_ACTION = "internal.records.privateSchoolFormsTexted"
+
+
+def log_private_school_forms_assigned(
+    config: Config, client_id: int, forms: list[str]
+) -> None:
+    """Record that private-school consent forms were assigned to a client in TA."""
+    db_connection = get_db(config)
+    with db_connection:
+        record_audit_log(
+            db_connection,
+            PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION,
+            client_id,
+            detail={"forms": forms},
+        )
+        db_connection.commit()
+
+
+def log_private_school_forms_texted(
+    config: Config, client_id: int, openphone_message_id: str
+) -> None:
+    """Record that a client was texted about their private-school consent forms."""
+    db_connection = get_db(config)
+    with db_connection:
+        record_audit_log(
+            db_connection,
+            PRIVATE_SCHOOL_FORMS_TEXTED_ACTION,
+            client_id,
+            detail={"openphoneMessageId": openphone_message_id},
+        )
+        db_connection.commit()
+
+
+def get_clients_to_text_about_private_school_forms(
+    config: Config,
+) -> list[ClientFromDB]:
+    """Clients whose private-school forms were assigned before today and not yet texted.
+
+    "Before today" is in business time, so forms assigned this afternoon are
+    texted tomorrow. A client assigned again after being texted (a later
+    "assigned" row than the "texted" row) is texted again.
+    """
+    today = now_business(config.business_timezone).date()
+    start_of_today = business_date_to_utc(today, config.business_timezone)
+    db_connection = get_db(config)
+    clients = []
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT c.*
+            FROM emr_client c
+            WHERE c.status IS NOT FALSE
+            AND c.pause IS NOT TRUE
+            AND c.autismStop IS NOT TRUE
+            AND LENGTH(c.id) != 5
+            AND EXISTS (
+                SELECT 1 FROM emr_audit_log a
+                WHERE a.clientId = c.id
+                AND a.action = %s
+                AND a.createdAt < %s
+                AND NOT EXISTS (
+                    SELECT 1 FROM emr_audit_log t
+                    WHERE t.clientId = c.id
+                    AND t.action = %s
+                    AND t.createdAt >= a.createdAt
+                )
+            )
+            """,
+            (
+                PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION,
+                start_of_today.replace(tzinfo=None),
+                PRIVATE_SCHOOL_FORMS_TEXTED_ACTION,
+            ),
+        )
+        for client_data in cursor.fetchall():
+            try:
+                client_data["questionnaires"] = None
+                clients.append(ClientFromDB(**client_data))
+            except Exception:
+                logger.exception(
+                    f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}"
+                )
+    return clients
 
 
 def log_questionnaire_msg(

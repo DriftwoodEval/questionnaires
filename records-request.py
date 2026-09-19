@@ -20,6 +20,7 @@ from utils.database import (
     diagnose_records_readiness,
     get_clients_needing_records,
     get_private_school_names,
+    log_private_school_forms_assigned,
     update_external_record_in_db,
     update_failure_in_db,
 )
@@ -64,13 +65,13 @@ logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB"
 WAIT_TIMEOUT = 15  # seconds
 
 # TherapyAppointment "Docs & Forms" link text for each consent form pair.
-# Private-school clients sign the "Private School ..." variants, where the
+# Private-school clients sign the "Charter School ..." variants, where the
 # school is entered under "To be provided to:" instead of a "School District"
 # label.
 STANDARD_RECEIVING = "Receiving Consent to Release of Information"
 STANDARD_SENDING = "Sending Consent to Release of Information"
-PRIVATE_RECEIVING = "Private School Receiving Release of Information"
-PRIVATE_SENDING = "Private School Sending Release of Information"
+PRIVATE_RECEIVING = "Charter School Receiving Release of Information"
+PRIVATE_SENDING = "Charter School Sending Release of Information"
 
 # Private-school consent forms are auto-assigned only for clients whose current
 # session started on or after this date. Older private-school clients were
@@ -82,7 +83,7 @@ app = typer.Typer()
 
 
 def ensure_private_school_forms_assigned(
-    driver: WebDriver, client: ClientFromDB, *, dry_run: bool = False
+    driver: WebDriver, client: ClientFromDB, config: Config, *, dry_run: bool = False
 ) -> None:
     """Assign the private-school consent forms to a private-school client.
 
@@ -120,6 +121,8 @@ def ensure_private_school_forms_assigned(
         raise RecordsRequestError(
             f"Could not assign private-school consent forms: {e}"
         ) from e
+    # qreceive.py texts the client about these forms on a later day.
+    log_private_school_forms_assigned(config, client.id, missing)
 
 
 def is_blank_school(value: str) -> bool:
@@ -167,7 +170,7 @@ def download_consent_forms(
 
     logger.info("Navigating to Docs & Forms...")
 
-    # Private-school clients sign the "Private School ..." consent forms; the
+    # Private-school clients sign the "Charter School ..." consent forms; the
     # standard forms only ever name a public district. Never request records
     # for a private-school client until those forms are available.
     use_private_forms = client.privateSchool
@@ -179,7 +182,7 @@ def download_consent_forms(
             # other unsigned document, instead of surfacing a hard failure.
             raise Exception("docs not signed")
         raise RecordsRequestError(
-            "Client is marked private school but has no Private School Release "
+            "Client is marked private school but has no Charter School Release "
             "of Information consent forms. Assign them in TherapyAppointment "
             "(older private-school clients are not assigned automatically)."
         )
@@ -234,7 +237,7 @@ def download_consent_forms(
     form_is_private = normalize_district(canonical_sending) in private_school_names
 
     if client.privateSchool:
-        # Signed the Private School consent forms. The school they entered must
+        # Signed the Charter School consent forms. The school they entered must
         # be a known private school; a public district here means the referral
         # flag and the form disagree, so leave it for manual review.
         if not form_is_private:
@@ -627,7 +630,7 @@ def main(
 
                         if client.privateSchool:
                             ensure_private_school_forms_assigned(
-                                driver, client, dry_run=dry_run
+                                driver, client, config, dry_run=dry_run
                             )
 
                         if not check_if_docs_signed(driver):

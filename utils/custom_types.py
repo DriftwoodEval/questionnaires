@@ -268,7 +268,7 @@ class _SharedClientFromDB(_ClientBase):
     secondaryInsurance: list[str] | None = None  # noqa: N815
     privatePay: bool = False  # noqa: N815
     # Derived from referralData.privateSchool ("yes"/"no") on the raw row.
-    # Private-school clients sign the "Private School ... Release of
+    # Private-school clients sign the "Charter School ... Release of
     # Information" consent forms instead of the standard ones.
     privateSchool: bool = False  # noqa: N815
 
