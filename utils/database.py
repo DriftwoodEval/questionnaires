@@ -18,7 +18,8 @@ from utils.custom_types import (
     Failure,
     QuestionnaireStatus,
 )
-from utils.timezone import now_business
+from utils.records import normalize_district
+from utils.timezone import business_date_to_utc, now_business
 
 # Sentinel actor for audit rows written by this script's direct DB writes,
 # distinct from the internal-api sentinel used by winnonah's own HTTP
@@ -213,13 +214,13 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
-            -- Private-school clients still get a pending emr_external_record_request
-            -- row (winnonah's ensurePendingExternalRecordRequest inserts one for
-            -- every "Needed" client, so the outstanding-records state stays visible),
-            -- but staff request their records manually instead of through this script.
+            -- Intake saying "private school" is not trusted on its own: those
+            -- clients wait until someone confirms it in winnonah, which sets
+            -- referralData.privateSchoolConfirmed.
             AND (
-                JSON_UNQUOTE(JSON_EXTRACT(c.referralData, '$.privateSchool')) IS NULL
-                OR JSON_UNQUOTE(JSON_EXTRACT(c.referralData, '$.privateSchool')) != "yes"
+                c.referralData->>'$.privateSchool' IS NULL
+                OR c.referralData->>'$.privateSchool' != 'yes'
+                OR c.referralData->>'$.privateSchoolConfirmed' = 'true'
             )
         """
         cursor.execute(sql)
@@ -238,13 +239,25 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     return clients_needing_records
 
 
+def get_private_school_names(config: Config) -> set[str]:
+    """Normalized names of every school flagged isPrivate in emr_school_district.
+
+    records-request.py compares the school resolved off a consent form against
+    this set to tell a private-school request from a public-district one.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute("SELECT fullName FROM emr_school_district WHERE isPrivate = 1")
+        return {normalize_district(row["fullName"]) for row in cursor.fetchall()}
+
+
 def get_record_ready_client_ids(config: Config) -> dict[str, str]:
     """Fetch client IDs and their record statuses.
 
     A status starting with "Ready" means the client is clear to send questionnaires;
     anything else blocks an automated qsend run. ADHD-only clients (no autism) are
     never blocked by outstanding records, but their status still says so. Private
-    school clients block until staff record the manual request.
+    school clients follow the same records gate as everyone else.
     """
     logger.info("Fetching record statuses from DB")
     db_connection = get_db(config)
@@ -257,7 +270,6 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
                 c.id,
                 c.recordsNeeded,
                 c.asdAdhd,
-                c.referralData->>'$.privateSchool' AS privateSchool,
                 er.content,
                 COUNT(CASE WHEN err.requestedDate IS NOT NULL
                     AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
@@ -267,7 +279,7 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             FROM emr_client c
             LEFT JOIN emr_external_record er ON c.id = er.clientId
             LEFT JOIN emr_external_record_request err ON c.id = err.clientId
-            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, privateSchool, er.content
+            GROUP BY c.id, c.recordsNeeded, c.asdAdhd, er.content
         """
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -283,7 +295,6 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             # ADHD without autism: records are still pursued, but an outstanding
             # request never blocks questionnaire sends. Autism always blocks.
             is_adhd_only = "ADHD" in asd_adhd and "ASD" not in asd_adhd
-            is_private_school = row["privateSchool"] == "yes"
 
             if records_needed == "Not Needed" or content is not None:
                 statuses[client_id] = "Ready"
@@ -296,10 +307,6 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
             elif sent_count == 1:
                 statuses[client_id] = (
                     f"Records needed, requested on {last_sent_date}, but not yet received"
-                )
-            elif is_private_school:
-                statuses[client_id] = (
-                    "Records needed - private school, staff must request manually"
                 )
             else:
                 statuses[client_id] = "Records needed but not yet requested"
@@ -390,14 +397,27 @@ def diagnose_records_readiness(
         referral_data = client.get("referralData")
         if isinstance(referral_data, str):
             referral_data = json.loads(referral_data) if referral_data else None
-        if (referral_data or {}).get("privateSchool") == "yes":
-            checks.append(
-                (
-                    "FAIL",
-                    "private school on intake: records-request.py skips this client, "
-                    "staff must request records manually",
+        referral_data = referral_data or {}
+        if referral_data.get("privateSchool") == "yes":
+            if referral_data.get("privateSchoolConfirmed") is True:
+                checks.append(
+                    (
+                        "INFO",
+                        "private school confirmed: records-request.py auto-assigns "
+                        "the 'Charter School Receiving/Sending Release of "
+                        "Information' consent forms (sessions on/after the cutoff "
+                        "only) and needs an isPrivate school contact",
+                    )
                 )
-            )
+            else:
+                checks.append(
+                    (
+                        "FAIL",
+                        "private school on intake but not confirmed in winnonah: "
+                        "records-request.py skips this client until someone "
+                        "confirms it",
+                    )
+                )
 
         cursor.execute(
             "SELECT 1 FROM emr_external_record WHERE clientId = %s AND content IS NOT NULL LIMIT 1",
@@ -974,6 +994,95 @@ def log_referral_msg(
             },
         )
         db_connection.commit()
+
+
+# Audit actions that track the private-school consent forms text. records-request.py
+# writes "assigned" when it assigns the forms; qreceive.py texts the client on a
+# later business day and then writes "texted" so it only ever texts once.
+PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION = "internal.records.privateSchoolFormsAssigned"
+PRIVATE_SCHOOL_FORMS_TEXTED_ACTION = "internal.records.privateSchoolFormsTexted"
+
+
+def log_private_school_forms_assigned(
+    config: Config, client_id: int, forms: list[str]
+) -> None:
+    """Record that private-school consent forms were assigned to a client in TA."""
+    db_connection = get_db(config)
+    with db_connection:
+        record_audit_log(
+            db_connection,
+            PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION,
+            client_id,
+            detail={"forms": forms},
+        )
+        db_connection.commit()
+
+
+def log_private_school_forms_texted(
+    config: Config, client_id: int, openphone_message_id: str
+) -> None:
+    """Record that a client was texted about their private-school consent forms."""
+    db_connection = get_db(config)
+    with db_connection:
+        record_audit_log(
+            db_connection,
+            PRIVATE_SCHOOL_FORMS_TEXTED_ACTION,
+            client_id,
+            detail={"openphoneMessageId": openphone_message_id},
+        )
+        db_connection.commit()
+
+
+def get_clients_to_text_about_private_school_forms(
+    config: Config,
+) -> list[ClientFromDB]:
+    """Clients whose private-school forms were assigned before today and not yet texted.
+
+    "Before today" is in business time, so forms assigned this afternoon are
+    texted tomorrow. A client assigned again after being texted (a later
+    "assigned" row than the "texted" row) is texted again.
+    """
+    today = now_business(config.business_timezone).date()
+    start_of_today = business_date_to_utc(today, config.business_timezone)
+    db_connection = get_db(config)
+    clients = []
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT c.*
+            FROM emr_client c
+            WHERE c.status IS NOT FALSE
+            AND c.pause IS NOT TRUE
+            AND c.autismStop IS NOT TRUE
+            AND LENGTH(c.id) != 5
+            AND EXISTS (
+                SELECT 1 FROM emr_audit_log a
+                WHERE a.clientId = c.id
+                AND a.action = %s
+                AND a.createdAt < %s
+                AND NOT EXISTS (
+                    SELECT 1 FROM emr_audit_log t
+                    WHERE t.clientId = c.id
+                    AND t.action = %s
+                    AND t.createdAt >= a.createdAt
+                )
+            )
+            """,
+            (
+                PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION,
+                start_of_today.replace(tzinfo=None),
+                PRIVATE_SCHOOL_FORMS_TEXTED_ACTION,
+            ),
+        )
+        for client_data in cursor.fetchall():
+            try:
+                client_data["questionnaires"] = None
+                clients.append(ClientFromDB(**client_data))
+            except Exception:
+                logger.exception(
+                    f"Failed to create ClientFromDB for ID {client_data.get('id', 'Unknown')}"
+                )
+    return clients
 
 
 def log_questionnaire_msg(
