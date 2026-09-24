@@ -18,9 +18,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from utils.custom_types import ClientFromDB, Config, RecordsContact
 from utils.database import (
     diagnose_records_readiness,
+    get_charter_school_names,
     get_clients_needing_records,
-    get_private_school_names,
-    log_private_school_forms_assigned,
+    log_charter_school_forms_assigned,
     update_external_record_in_db,
     update_failure_in_db,
 )
@@ -65,29 +65,29 @@ logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB"
 WAIT_TIMEOUT = 15  # seconds
 
 # TherapyAppointment "Docs & Forms" link text for each consent form pair.
-# Private-school clients sign the "Charter School ..." variants, where the
+# Charter-school clients sign the "Charter School ..." variants, where the
 # school is entered under "To be provided to:" instead of a "School District"
 # label.
 STANDARD_RECEIVING = "Receiving Consent to Release of Information"
 STANDARD_SENDING = "Sending Consent to Release of Information"
-PRIVATE_RECEIVING = "Charter School Receiving Release of Information"
-PRIVATE_SENDING = "Charter School Sending Release of Information"
+CHARTER_RECEIVING = "Charter School Receiving Release of Information"
+CHARTER_SENDING = "Charter School Sending Release of Information"
 
-# Private-school consent forms are auto-assigned only for clients whose current
-# session started on or after this date. Older private-school clients were
+# Charter-school consent forms are auto-assigned only for clients whose current
+# session started on or after this date. Older charter-school clients were
 # handled manually and their forms (if any) are the generic consent forms, so
 # leave them alone. Set to the deploy date.
-PRIVATE_SCHOOL_FORMS_START = date(2026, 9, 3)
+CHARTER_SCHOOL_FORMS_START = date(2026, 9, 3)
 
 app = typer.Typer()
 
 
-def ensure_private_school_forms_assigned(
+def ensure_charter_school_forms_assigned(
     driver: WebDriver, client: ClientFromDB, config: Config, *, dry_run: bool = False
 ) -> None:
-    """Assign the private-school consent forms to a private-school client.
+    """Assign the charter-school consent forms to a charter-school client.
 
-    No-op for clients whose session predates PRIVATE_SCHOOL_FORMS_START (handled
+    No-op for clients whose session predates CHARTER_SCHOOL_FORMS_START (handled
     manually, left alone) or who already have the forms. Assumes the client's
     page is open in TA.
     """
@@ -95,9 +95,9 @@ def ensure_private_school_forms_assigned(
     # lazy: a plain .date() on the UTC instant is close enough for a coarse
     # deploy-date gate; not worth a business-timezone conversion here.
     started_on = session_start.date() if session_start else client.addedDate
-    if started_on is None or started_on < PRIVATE_SCHOOL_FORMS_START:
+    if started_on is None or started_on < CHARTER_SCHOOL_FORMS_START:
         logger.info(
-            f"{client.fullName} predates private-school form automation "
+            f"{client.fullName} predates charter-school form automation "
             f"(session started {started_on}); not assigning forms."
         )
         return
@@ -105,7 +105,7 @@ def ensure_private_school_forms_assigned(
     click_element(driver, By.LINK_TEXT, "Docs & Forms")
     missing = [
         name
-        for name in (PRIVATE_RECEIVING, PRIVATE_SENDING)
+        for name in (CHARTER_RECEIVING, CHARTER_SENDING)
         if not form_row_present(driver, name)
     ]
     if not missing:
@@ -119,17 +119,17 @@ def ensure_private_school_forms_assigned(
         assign_online_forms(driver, missing)
     except Exception as e:
         raise RecordsRequestError(
-            f"Could not assign private-school consent forms: {e}"
+            f"Could not assign charter-school consent forms: {e}"
         ) from e
     # qreceive.py texts the client about these forms on a later day.
-    log_private_school_forms_assigned(config, client.id, missing)
+    log_charter_school_forms_assigned(config, client.id, missing)
 
 
 def is_blank_school(value: str) -> bool:
     """Whether an extracted school value means the form field was left empty."""
     value = value.lower().strip()
     # "Your relationship to client" is the next line on the standard form;
-    # "not found" is what the private-form extractor returns when the anchor
+    # "not found" is what the charter-form extractor returns when the anchor
     # text has no value after it.
     return value in ("", "not found") or "your relationship to client" in value
 
@@ -146,7 +146,7 @@ def download_consent_forms(
     driver: WebDriver,
     client: ClientFromDB,
     school_contacts: dict[str, RecordsContact],
-    private_school_names: set[str],
+    charter_school_names: set[str],
     config: Config,
     *,
     dry_run: bool = False,
@@ -170,24 +170,24 @@ def download_consent_forms(
 
     logger.info("Navigating to Docs & Forms...")
 
-    # Private-school clients sign the "Charter School ..." consent forms; the
+    # Charter-school clients sign the "Charter School ..." consent forms; the
     # standard forms only ever name a public district. Never request records
-    # for a private-school client until those forms are available.
-    use_private_forms = client.privateSchool
-    if use_private_forms and not form_link_present(driver, PRIVATE_RECEIVING):
-        if form_row_present(driver, PRIVATE_RECEIVING) or form_row_present(
-            driver, PRIVATE_SENDING
+    # for a charter-school client until those forms are available.
+    use_charter_forms = client.charterSchool
+    if use_charter_forms and not form_link_present(driver, CHARTER_RECEIVING):
+        if form_row_present(driver, CHARTER_RECEIVING) or form_row_present(
+            driver, CHARTER_SENDING
         ):
             # Assigned but not yet completed: retry on a later run like any
             # other unsigned document, instead of surfacing a hard failure.
             raise Exception("docs not signed")
         raise RecordsRequestError(
-            "Client is marked private school but has no Charter School Release "
+            "Client is marked charter school but has no Charter School Release "
             "of Information consent forms. Assign them in TherapyAppointment "
-            "(older private-school clients are not assigned automatically)."
+            "(older charter-school clients are not assigned automatically)."
         )
-    receiving_link = PRIVATE_RECEIVING if use_private_forms else STANDARD_RECEIVING
-    sending_link = PRIVATE_SENDING if use_private_forms else STANDARD_SENDING
+    receiving_link = CHARTER_RECEIVING if use_charter_forms else STANDARD_RECEIVING
+    sending_link = CHARTER_SENDING if use_charter_forms else STANDARD_SENDING
 
     receiving_stream, receiving_filename, receiving_school, receiving_drive_file = (
         save_document_as_pdf(
@@ -195,7 +195,7 @@ def download_consent_forms(
             receiving_link,
             client,
             config,
-            is_private=use_private_forms,
+            is_charter=use_charter_forms,
             dry_run=dry_run,
         )
     )
@@ -205,7 +205,7 @@ def download_consent_forms(
             sending_link,
             client,
             config,
-            is_private=use_private_forms,
+            is_charter=use_charter_forms,
             dry_run=dry_run,
         )
     )
@@ -234,20 +234,20 @@ def download_consent_forms(
             f"School found, {sending_school}, has no email address assigned."
         )
 
-    form_is_private = normalize_district(canonical_sending) in private_school_names
+    form_is_charter = normalize_district(canonical_sending) in charter_school_names
 
-    if client.privateSchool:
+    if client.charterSchool:
         # Signed the Charter School consent forms. The school they entered must
-        # be a known private school; a public district here means the referral
+        # be a known charter school; a public district here means the referral
         # flag and the form disagree, so leave it for manual review.
-        if not form_is_private:
+        if not form_is_charter:
             raise RecordsRequestError(
-                f"Client is marked private school but the consent form school "
-                f"({sending_school}) is not a known private school. Request "
+                f"Client is marked charter school but the consent form school "
+                f"({sending_school}) is not a known charter school. Request "
                 f"records manually."
             )
         logger.info(
-            f"Consent form names private school {canonical_sending!r}; "
+            f"Consent form names charter school {canonical_sending!r}; "
             "skipping public-district match."
         )
     else:
@@ -327,7 +327,7 @@ def upload_pdf_from_driver(
     filename: str,
     folder_id: str,
     *,
-    is_private: bool = False,
+    is_charter: bool = False,
     dry_run: bool = False,
 ) -> tuple[io.BytesIO, str, str, dict]:
     """Prints page as PDF (in memory) and uploads to Drive."""
@@ -339,7 +339,7 @@ def upload_pdf_from_driver(
     pdf_bytes = b64decode(pdf_base64)
     pdf_stream = io.BytesIO(pdf_bytes)
 
-    school = extract_school_name(pdf_stream, is_private)
+    school = extract_school_name(pdf_stream, is_charter)
 
     if dry_run:
         logger.info(f"[DRY RUN] Would upload {filename} to Drive folder {folder_id}")
@@ -363,10 +363,10 @@ def upload_pdf_from_driver(
     return pdf_stream, filename, school, uploaded_file
 
 
-def extract_school_name(pdf_stream: io.BytesIO, is_private: bool = False) -> str:
+def extract_school_name(pdf_stream: io.BytesIO, is_charter: bool = False) -> str:
     """Extract the school name a client entered on a consent form.
 
-    Standard forms label the field "School District"; the private-school forms
+    Standard forms label the field "School District"; the charter-school forms
     put it after "To be provided to:". Returns the normalized name, or
     "Not Found" if the anchor text has nothing usable after it.
     """
@@ -385,8 +385,8 @@ def extract_school_name(pdf_stream: io.BytesIO, is_private: bool = False) -> str
     # Reset stream position to 0 so it can be uploaded to Drive later
     pdf_stream.seek(0)
 
-    if is_private:
-        # lazy: assumes the private-school forms render "To be provided to:"
+    if is_charter:
+        # lazy: assumes the charter-school forms render "To be provided to:"
         # immediately above (or beside) the entered school name. Widen the
         # anchor if a real form prints it differently.
         m = re.search(r"To be provided to:?\s*\r?\n?(.+)", full_text)
@@ -419,7 +419,7 @@ def save_document_as_pdf(
     client: ClientFromDB,
     config: Config,
     *,
-    is_private: bool = False,
+    is_charter: bool = False,
     dry_run: bool = False,
 ) -> tuple[io.BytesIO, str, str, dict]:
     """Helper function to find, print, and save a single document."""
@@ -460,7 +460,7 @@ def save_document_as_pdf(
             driver,
             filename,
             config.records_folder_id,
-            is_private=is_private,
+            is_charter=is_charter,
             dry_run=dry_run,
         )
 
@@ -567,7 +567,7 @@ def main(
     school_contacts = config.records_emails
     school_contacts = {k.lower(): v for k, v in school_contacts.items()}
 
-    private_school_names = get_private_school_names(config)
+    charter_school_names = get_charter_school_names(config)
 
     clients_to_process = get_clients_needing_records(config)
 
@@ -628,8 +628,8 @@ def main(
                         if not check_if_opened_portal(driver):
                             raise Exception("portal not opened")
 
-                        if client.privateSchool:
-                            ensure_private_school_forms_assigned(
+                        if client.charterSchool:
+                            ensure_charter_school_forms_assigned(
                                 driver, client, config, dry_run=dry_run
                             )
 
@@ -640,7 +640,7 @@ def main(
                             driver,
                             client,
                             school_contacts,
-                            private_school_names,
+                            charter_school_names,
                             config,
                             dry_run=dry_run,
                         )

@@ -19,7 +19,7 @@ from utils.custom_types import (
     validate_questionnaires,
 )
 from utils.database import (
-    get_clients_to_text_about_private_school_forms,
+    get_clients_to_text_about_charter_school_forms,
     get_matched_client_ids,
     get_most_recent_eval_appointment_dates,
     get_most_recent_failure,
@@ -30,7 +30,7 @@ from utils.database import (
     get_reminder_templates,
     get_sent_referral_client_ids,
     has_requested_records_date,
-    log_private_school_forms_texted,
+    log_charter_school_forms_texted,
     log_questionnaire_msg,
     log_referral_msg,
     update_failure_in_db,
@@ -42,7 +42,7 @@ from utils.google import (
     send_gmail,
 )
 from utils.messages import (
-    PRIVATE_SCHOOL_FORMS_MESSAGE,
+    CHARTER_SCHOOL_FORMS_MESSAGE,
     build_referral_message,
     is_potential_private_pay,
     render_reminder_message,
@@ -971,28 +971,28 @@ def main(
             forms_messages_sent: list[tuple[ClientFromDB, str]] = []
 
             if send_referral_texts or dry_run:
-                for client in get_clients_to_text_about_private_school_forms(config):
+                for client in get_clients_to_text_about_charter_school_forms(config):
                     if not client.phoneNumber:
                         logger.warning(
-                            f"{client.fullName} was assigned private-school forms but has no phone number"
+                            f"{client.fullName} was assigned charter-school forms but has no phone number"
                         )
                         email_info["failed"].append(
-                            (client, "Private-school forms — no phone number")
+                            (client, "Charter-school forms — no phone number")
                         )
                         continue
                     if client.phoneNumber in numbers_sent:
                         logger.warning(
-                            f"Already messaged {client.fullName} today, skipping private-school forms msg"
+                            f"Already messaged {client.fullName} today, skipping charter-school forms msg"
                         )
                         continue
                     if not send_referral_texts:
                         logger.info(
-                            f"[DRY RUN] Would send private-school forms msg to {client.fullName} ({client.phoneNumber}):\n{PRIVATE_SCHOOL_FORMS_MESSAGE}"
+                            f"[DRY RUN] Would send charter-school forms msg to {client.fullName} ({client.phoneNumber}):\n{CHARTER_SCHOOL_FORMS_MESSAGE}"
                         )
                         continue
                     try:
                         attempt_text = quo.send_text(
-                            PRIVATE_SCHOOL_FORMS_MESSAGE,
+                            CHARTER_SCHOOL_FORMS_MESSAGE,
                             client.phoneNumber,
                             user_blame=quo.referral_user,
                             mark_done=True,
@@ -1002,22 +1002,22 @@ def main(
                             forms_messages_sent.append((client, attempt_text["id"]))
                         else:
                             logger.error(
-                                f"Failed to send private-school forms msg to {client.fullName}"
+                                f"Failed to send charter-school forms msg to {client.fullName}"
                             )
                             email_info["failed"].append(
-                                (client, "Private-school forms — failed to send text")
+                                (client, "Charter-school forms — failed to send text")
                             )
                     except InvalidPhoneNumberError as e:
                         logger.error(f"Invalid phone number for {client.fullName}: {e}")
                         email_info["failed"].append(
                             (
                                 client,
-                                f"Private-school forms — invalid phone number: {client.phoneNumber}",
+                                f"Charter-school forms — invalid phone number: {client.phoneNumber}",
                             )
                         )
                     except NotEnoughCreditsError:
                         logger.critical(
-                            "Aborting private-school forms messages due to insufficient credits."
+                            "Aborting charter-school forms messages due to insufficient credits."
                         )
                         email_info["errors"].append(
                             "Quo API needs more credits to send messages."
@@ -1139,22 +1139,22 @@ def main(
                 try:
                     if quo.check_text_delivered(message_id):
                         logger.success(
-                            f"Delivered private-school forms msg to {client.fullName} ({message_id})"
+                            f"Delivered charter-school forms msg to {client.fullName} ({message_id})"
                         )
-                        log_private_school_forms_texted(config, client.id, message_id)
+                        log_charter_school_forms_texted(config, client.id, message_id)
                     else:
                         logger.error(
-                            f"Failed to deliver private-school forms msg to {client.fullName} ({message_id})"
+                            f"Failed to deliver charter-school forms msg to {client.fullName} ({message_id})"
                         )
                         email_info["failed"].append(
                             (
                                 client,
-                                "Private-school forms — did not deliver within timeout",
+                                "Charter-school forms — did not deliver within timeout",
                             )
                         )
                 except Exception as e:
                     logger.error(
-                        f"Error checking private-school forms msg for {client.fullName} ({message_id}): {e}"
+                        f"Error checking charter-school forms msg for {client.fullName} ({message_id}): {e}"
                     )
 
             logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")

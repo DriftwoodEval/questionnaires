@@ -267,15 +267,15 @@ class _SharedClientFromDB(_ClientBase):
     primaryInsurance: str | None = None  # noqa: N815
     secondaryInsurance: list[str] | None = None  # noqa: N815
     privatePay: bool = False  # noqa: N815
-    # Derived from referralData.privateSchool ("yes"/"no") on the raw row.
-    # Private-school clients sign the "Charter School ... Release of
+    # Derived from referralData.charterSchool ("yes"/"no") on the raw row.
+    # Charter-school clients sign the "Charter School ... Release of
     # Information" consent forms instead of the standard ones.
-    privateSchool: bool = False  # noqa: N815
+    charterSchool: bool = False  # noqa: N815
 
     @model_validator(mode="before")
     @classmethod
-    def _derive_private_school(cls, data: object) -> object:
-        if not isinstance(data, dict) or "privateSchool" in data:
+    def _derive_charter_school(cls, data: object) -> object:
+        if not isinstance(data, dict) or "charterSchool" in data:
             return data
         referral = data.get("referralData")
         if isinstance(referral, str):
@@ -283,10 +283,10 @@ class _SharedClientFromDB(_ClientBase):
                 referral = json.loads(referral) if referral else None
             except json.JSONDecodeError:
                 referral = None
-        is_private = (
-            isinstance(referral, dict) and referral.get("privateSchool") == "yes"
+        is_charter = (
+            isinstance(referral, dict) and referral.get("charterSchool") == "yes"
         )
-        return {**data, "privateSchool": is_private}
+        return {**data, "charterSchool": is_charter}
 
     @field_validator("secondaryInsurance", mode="before")
     @classmethod

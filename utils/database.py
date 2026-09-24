@@ -202,13 +202,13 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
-            -- Intake saying "private school" is not trusted on its own: those
+            -- Intake saying "charter school" is not trusted on its own: those
             -- clients wait until someone confirms it in winnonah, which sets
-            -- referralData.privateSchoolConfirmed.
+            -- referralData.charterSchoolConfirmed.
             AND (
-                c.referralData->>'$.privateSchool' IS NULL
-                OR c.referralData->>'$.privateSchool' != 'yes'
-                OR c.referralData->>'$.privateSchoolConfirmed' = 'true'
+                c.referralData->>'$.charterSchool' IS NULL
+                OR c.referralData->>'$.charterSchool' != 'yes'
+                OR c.referralData->>'$.charterSchoolConfirmed' = 'true'
             )
         """
         cursor.execute(sql)
@@ -227,15 +227,15 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     return clients_needing_records
 
 
-def get_private_school_names(config: Config) -> set[str]:
-    """Normalized names of every school flagged isPrivate in emr_school_district.
+def get_charter_school_names(config: Config) -> set[str]:
+    """Normalized names of every school flagged isCharter in emr_school_district.
 
     records-request.py compares the school resolved off a consent form against
-    this set to tell a private-school request from a public-district one.
+    this set to tell a charter-school request from a public-district one.
     """
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
-        cursor.execute("SELECT fullName FROM emr_school_district WHERE isPrivate = 1")
+        cursor.execute("SELECT fullName FROM emr_school_district WHERE isCharter = 1")
         return {normalize_district(row["fullName"]) for row in cursor.fetchall()}
 
 
@@ -244,7 +244,7 @@ def get_record_ready_client_ids(config: Config) -> dict[str, str]:
 
     A status starting with "Ready" means the client is clear to send questionnaires;
     anything else blocks an automated qsend run. ADHD-only clients (no autism) are
-    never blocked by outstanding records, but their status still says so. Private
+    never blocked by outstanding records, but their status still says so. Charter
     school clients follow the same records gate as everyone else.
     """
     logger.info("Fetching record statuses from DB")
@@ -386,22 +386,22 @@ def diagnose_records_readiness(
         if isinstance(referral_data, str):
             referral_data = json.loads(referral_data) if referral_data else None
         referral_data = referral_data or {}
-        if referral_data.get("privateSchool") == "yes":
-            if referral_data.get("privateSchoolConfirmed") is True:
+        if referral_data.get("charterSchool") == "yes":
+            if referral_data.get("charterSchoolConfirmed") is True:
                 checks.append(
                     (
                         "INFO",
-                        "private school confirmed: records-request.py auto-assigns "
+                        "charter school confirmed: records-request.py auto-assigns "
                         "the 'Charter School Receiving/Sending Release of "
                         "Information' consent forms (sessions on/after the cutoff "
-                        "only) and needs an isPrivate school contact",
+                        "only) and needs an isCharter school contact",
                     )
                 )
             else:
                 checks.append(
                     (
                         "FAIL",
-                        "private school on intake but not confirmed in winnonah: "
+                        "charter school on intake but not confirmed in winnonah: "
                         "records-request.py skips this client until someone "
                         "confirms it",
                     )
@@ -931,47 +931,47 @@ def log_referral_msg(
         db_connection.commit()
 
 
-# Audit actions that track the private-school consent forms text. records-request.py
+# Audit actions that track the charter-school consent forms text. records-request.py
 # writes "assigned" when it assigns the forms; qreceive.py texts the client on a
 # later business day and then writes "texted" so it only ever texts once.
-PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION = "internal.records.privateSchoolFormsAssigned"
-PRIVATE_SCHOOL_FORMS_TEXTED_ACTION = "internal.records.privateSchoolFormsTexted"
+CHARTER_SCHOOL_FORMS_ASSIGNED_ACTION = "internal.records.charterSchoolFormsAssigned"
+CHARTER_SCHOOL_FORMS_TEXTED_ACTION = "internal.records.charterSchoolFormsTexted"
 
 
-def log_private_school_forms_assigned(
+def log_charter_school_forms_assigned(
     config: Config, client_id: int, forms: list[str]
 ) -> None:
-    """Record that private-school consent forms were assigned to a client in TA."""
+    """Record that charter-school consent forms were assigned to a client in TA."""
     db_connection = get_db(config)
     with db_connection:
         record_audit_log(
             db_connection,
-            PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION,
+            CHARTER_SCHOOL_FORMS_ASSIGNED_ACTION,
             client_id,
             detail={"forms": forms},
         )
         db_connection.commit()
 
 
-def log_private_school_forms_texted(
+def log_charter_school_forms_texted(
     config: Config, client_id: int, openphone_message_id: str
 ) -> None:
-    """Record that a client was texted about their private-school consent forms."""
+    """Record that a client was texted about their charter-school consent forms."""
     db_connection = get_db(config)
     with db_connection:
         record_audit_log(
             db_connection,
-            PRIVATE_SCHOOL_FORMS_TEXTED_ACTION,
+            CHARTER_SCHOOL_FORMS_TEXTED_ACTION,
             client_id,
             detail={"openphoneMessageId": openphone_message_id},
         )
         db_connection.commit()
 
 
-def get_clients_to_text_about_private_school_forms(
+def get_clients_to_text_about_charter_school_forms(
     config: Config,
 ) -> list[ClientFromDB]:
-    """Clients whose private-school forms were assigned before today and not yet texted.
+    """Clients whose charter-school forms were assigned before today and not yet texted.
 
     "Before today" is in business time, so forms assigned this afternoon are
     texted tomorrow. A client assigned again after being texted (a later
@@ -1004,9 +1004,9 @@ def get_clients_to_text_about_private_school_forms(
             )
             """,
             (
-                PRIVATE_SCHOOL_FORMS_ASSIGNED_ACTION,
+                CHARTER_SCHOOL_FORMS_ASSIGNED_ACTION,
                 start_of_today.replace(tzinfo=None),
-                PRIVATE_SCHOOL_FORMS_TEXTED_ACTION,
+                CHARTER_SCHOOL_FORMS_TEXTED_ACTION,
             ),
         )
         for client_data in cursor.fetchall():

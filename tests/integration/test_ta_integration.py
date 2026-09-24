@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.ta]
 
 FAKE_CLIENT_ID = "6813026"
 
-PRIVATE_SCHOOL_FORMS = [
+CHARTER_SCHOOL_FORMS = [
     "Charter School Receiving Release of Information",
     "Charter School Sending Release of Information",
 ]
@@ -39,8 +39,8 @@ def test_send_message(driver, real_config):
     send_message_ta(driver, client_url, "Integration test message, please ignore.")
 
 
-def test_assign_private_school_forms(driver, real_config):
-    """Assigns the private-school consent forms to the fake client.
+def test_assign_charter_school_forms(driver, real_config):
+    """Assigns the charter-school consent forms to the fake client.
 
     Ignores referral data / DB / client-existence checks: it just drives the
     TA UI directly against the fake client (or $TA_TEST_CLIENT_ID, if set, to
@@ -54,10 +54,10 @@ def test_assign_private_school_forms(driver, real_config):
     assert go_to_client(driver, services, client_id)
 
     click_element(driver, By.LINK_TEXT, "Docs & Forms")
-    missing = [n for n in PRIVATE_SCHOOL_FORMS if not form_row_present(driver, n)]
+    missing = [n for n in CHARTER_SCHOOL_FORMS if not form_row_present(driver, n)]
 
     if missing:
         assign_online_forms(driver, missing)
 
-    for name in PRIVATE_SCHOOL_FORMS:
+    for name in CHARTER_SCHOOL_FORMS:
         assert form_row_present(driver, name), f"{name} was not assigned"
