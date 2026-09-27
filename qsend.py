@@ -1,5 +1,6 @@
 import re
 import sys
+from collections import Counter
 from datetime import datetime
 from time import sleep, strftime, strptime
 
@@ -31,11 +32,13 @@ from utils.google import get_punch_list, update_punch_list
 from utils.messages import format_ta_message
 from utils.misc import (
     NetworkSink,
-    add_failure,
     json_log_format,
     load_config,
     load_local_settings,
     stderr_log_format,
+)
+from utils.misc import (
+    add_failure as _add_failure,
 )
 from utils.platforms.mhs import (
     check_and_login_mhs,
@@ -715,6 +718,17 @@ def main(
     ) as task:
         # exclusive=False means track_task always yields a handle, never None.
         assert task is not None
+
+        sent_count = 0
+        failure_reason_counts: Counter[str] = Counter()
+
+        def add_failure(*, error: str, **kwargs):
+            """Shadows the module-level add_failure for the rest of this run so
+            every failure is also tallied for the run summary, without touching
+            each of the many call sites below."""
+            failure_reason_counts[error] += 1
+            return _add_failure(error=error, **kwargs)
+
         for login in [
             check_and_login_ta,
             check_and_login_wps,
@@ -1233,6 +1247,7 @@ def main(
 
                     if client["Language"] != "Spanish":
                         send_message_ta(driver, client_url, message)
+                        sent_count += 1
                 if not send and questionnaires:
                     logger.warning(
                         f"Questionnaires were generated, but no message was sent: {questionnaires}"
@@ -1251,6 +1266,13 @@ def main(
                 )
 
         logger.info(f"Finished loop for {len(clients)} clients")
+        task.set_summary(
+            {
+                "sent": sent_count,
+                "failed": sum(failure_reason_counts.values()),
+                "errors": dict(failure_reason_counts),
+            }
+        )
         # Final newline for preventing overwriting last line on windows
         rich_print()
 

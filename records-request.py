@@ -3,6 +3,7 @@ import re
 import sys
 from base64 import b64decode
 from datetime import date
+from collections import Counter
 
 import pymupdf
 import typer
@@ -604,6 +605,7 @@ def main(
         today = now_business(config.business_timezone).date()
         new_success_count = 0
         new_failure_count = 0
+        failure_reason_counts: Counter[str] = Counter()
         total_clients = len(clients_to_process)
 
         driver = initialize_selenium()
@@ -673,6 +675,7 @@ def main(
                             daeval="Records",
                         )
                         new_failure_count += 1
+                        failure_reason_counts[error] += 1
 
                 else:
                     add_failure(
@@ -685,12 +688,20 @@ def main(
                         daeval="Records",
                     )
                     new_failure_count += 1
+                    failure_reason_counts["unable to find client"] += 1
         finally:
             logger.debug("Closing WebDriver.")
             driver.quit()
 
         logger.info(
             f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
+        )
+        task.set_summary(
+            {
+                "requested": new_success_count,
+                "failed": new_failure_count,
+                "errors": dict(failure_reason_counts),
+            }
         )
 
 

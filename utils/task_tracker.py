@@ -8,6 +8,7 @@ lock.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -59,6 +60,9 @@ class NoOpTaskHandle:
     ) -> None:
         pass
 
+    def set_summary(self, summary: dict) -> None:
+        pass
+
 
 class TaskHandle:
     def __init__(self, connection, task_id: int) -> None:
@@ -76,6 +80,16 @@ class TaskHandle:
                 WHERE id = %s
                 """,
                 (current, total, detail, self.task_id),
+            )
+        self._connection.commit()
+
+    def set_summary(self, summary: dict) -> None:
+        """Records domain-specific counts (sent, requested, errors by reason,
+        etc.) for the run summary shown in the app."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE emr_task SET summary = %s WHERE id = %s",
+                (json.dumps(summary, default=str), self.task_id),
             )
         self._connection.commit()
 
