@@ -2,8 +2,8 @@ import io
 import re
 import sys
 from base64 import b64decode
-from datetime import date
 from collections import Counter
+from datetime import date
 
 import pymupdf
 import typer
