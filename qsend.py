@@ -630,7 +630,7 @@ def diagnose_client(
                 ok("Portal opened")
             else:
                 warn("Portal not opened (retryable — send is deferred until it is)")
-            if check_if_docs_signed(driver):
+            if check_if_docs_signed(driver, age=age):
                 ok("Docs signed")
             else:
                 warn("Docs not signed (retryable — send is deferred until they are)")
@@ -895,7 +895,7 @@ def main(
                             resolved=True,
                         )
 
-                    if not check_if_docs_signed(driver):
+                    if not check_if_docs_signed(driver, age=client["Age"]):
                         logger.log(
                             "NOTICE", f"{client['Client Name']} has not signed docs"
                         )

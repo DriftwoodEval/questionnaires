@@ -38,6 +38,10 @@ from utils.misc import (
     load_local_settings,
 )
 from utils.platforms.therapyappointment import (
+    PRIVATE_RECEIVING,
+    PRIVATE_SENDING,
+    STANDARD_RECEIVING,
+    STANDARD_SENDING,
     assign_online_forms,
     check_and_login_ta,
     check_if_docs_signed,
@@ -64,15 +68,6 @@ logger.add(
 logger.add("logs/records-request.log", format=json_log_format, rotation="500 MB")
 
 WAIT_TIMEOUT = 15  # seconds
-
-# TherapyAppointment "Docs & Forms" link text for each consent form pair.
-# Private-school clients sign the "Charter School ..." variants, where the
-# school is entered under "To be provided to:" instead of a "School District"
-# label.
-STANDARD_RECEIVING = "Receiving Consent to Release of Information"
-STANDARD_SENDING = "Sending Consent to Release of Information"
-PRIVATE_RECEIVING = "Charter School Receiving Release of Information"
-PRIVATE_SENDING = "Charter School Sending Release of Information"
 
 # Private-school consent forms are auto-assigned only for clients whose current
 # session started on or after this date. Older private-school clients were

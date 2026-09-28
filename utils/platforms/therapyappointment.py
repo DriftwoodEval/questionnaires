@@ -14,13 +14,26 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
-from utils.constants import BUSINESS_TIMEZONE
+from utils.constants import BUSINESS_TIMEZONE, SCHOOL_RECORDS_ADULT_AGE
 from utils.custom_types import Services
 from utils.selenium import (
     click_element,
     find_element,
 )
 from utils.timezone import business_to_utc
+
+# TherapyAppointment "Docs & Forms" link text for each school-records consent
+# form pair. Private-school clients sign the "Charter School ..." variants,
+# where the school is entered under "To be provided to:" instead of a "School
+# District" label. Clients SCHOOL_RECORDS_ADULT_AGE or older never have these
+# assigned, and check_if_docs_signed ignores them if they are.
+STANDARD_RECEIVING = "Receiving Consent to Release of Information"
+STANDARD_SENDING = "Sending Consent to Release of Information"
+PRIVATE_RECEIVING = "Charter School Receiving Release of Information"
+PRIVATE_SENDING = "Charter School Sending Release of Information"
+SCHOOL_RECORDS_FORM_NAMES = frozenset(
+    {STANDARD_RECEIVING, STANDARD_SENDING, PRIVATE_RECEIVING, PRIVATE_SENDING}
+)
 
 
 def login_ta(
@@ -171,8 +184,26 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
         return False
 
 
-def check_if_docs_signed(driver: WebDriver) -> bool:
-    """Check if the TA docs have been signed by the client."""
+def _row_form_name(row: WebElement) -> str:
+    """Text of a Docs & Forms row's form-name cell, whether it's a link or plain text."""
+    try:
+        cell = row.find_element(
+            By.XPATH,
+            ".//td[@aria-label='Assigned online form name'] | "
+            ".//td/a[starts-with(@aria-label, 'Assigned online form name')]",
+        )
+    except NoSuchElementException:
+        return ""
+    return cell.text
+
+
+def check_if_docs_signed(driver: WebDriver, age: int | None = None) -> bool:
+    """Check if the TA docs have been signed by the client.
+
+    A client SCHOOL_RECORDS_ADULT_AGE or older is never sent for school
+    records, so an unsigned school consent-to-release form
+    (SCHOOL_RECORDS_FORM_NAMES) doesn't count against them here.
+    """
     logger.info("Checking if docs have been signed...")
     try:
         xpath = "//div[contains(normalize-space(.), 'has completed registration') or contains(normalize-space(.), 'has not completed registration')]"
@@ -188,13 +219,25 @@ def check_if_docs_signed(driver: WebDriver) -> bool:
     except TimeoutException:
         return False
 
-    status_cells = driver.find_elements(By.XPATH, "//td[@aria-label='Status']")
-    if not status_cells:
+    rows = driver.find_elements(By.XPATH, "//tr[.//td[@aria-label='Status']]")
+    if not rows:
         return False
 
-    unsigned = [
-        cell.text for cell in status_cells if not cell.text.startswith("Completed on")
-    ]
+    exempt_forms = (
+        SCHOOL_RECORDS_FORM_NAMES
+        if age is not None and age >= SCHOOL_RECORDS_ADULT_AGE
+        else frozenset()
+    )
+
+    unsigned = []
+    for row in rows:
+        status_text = row.find_element(By.XPATH, ".//td[@aria-label='Status']").text
+        if status_text.startswith("Completed on"):
+            continue
+        if exempt_forms and _row_form_name(row) in exempt_forms:
+            continue
+        unsigned.append(status_text)
+
     if unsigned:
         logger.info(f"Docs not fully signed. Unsigned statuses: {unsigned}")
         return False
