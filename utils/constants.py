@@ -22,3 +22,8 @@ TEST_NAMES: Final = [
     "Test Testerson",
 ]
 TEST_NAMES_LOWER: Final = {n.lower() for n in TEST_NAMES}
+
+# Clients this age or older don't need records requested from their school,
+# so records-request.py never picks them up, and an unsigned school
+# consent-to-release form doesn't count against them in check_if_docs_signed.
+SCHOOL_RECORDS_ADULT_AGE: Final = 22

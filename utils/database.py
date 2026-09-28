@@ -5,10 +5,11 @@ from typing import Literal, cast
 from urllib.parse import urlparse
 
 import pymysql.cursors
+from dateutil.relativedelta import relativedelta
 from loguru import logger
 from pymysql.constants import CLIENT
 
-from utils.constants import TEST_NAMES_LOWER
+from utils.constants import SCHOOL_RECORDS_ADULT_AGE, TEST_NAMES_LOWER
 from utils.custom_types import (
     Appointment,
     ClientFromDB,
@@ -201,7 +202,7 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
     db_connection = get_db(config)
     clients_needing_records = []
     with db_connection, db_connection.cursor() as cursor:
-        sql = """
+        sql = f"""
             SELECT c.*, err.customMessage AS pendingRequestMessage
             FROM emr_client c
             INNER JOIN emr_external_record_request err ON c.id = err.clientId
@@ -214,6 +215,9 @@ def get_clients_needing_records(config: Config) -> list[ClientFromDB]:
             AND c.language = "English"
             AND LENGTH(c.id) != 5  -- 5-digit IDs are shell clients, not real records
             AND (c.sessionStartedAt IS NULL OR err.createdAt >= c.sessionStartedAt)
+            -- Clients this age or older don't need records requested from
+            -- their school.
+            AND TIMESTAMPDIFF(YEAR, c.dob, CURDATE()) < {SCHOOL_RECORDS_ADULT_AGE}
             -- Intake saying "private school" is not trusted on its own: those
             -- clients wait until someone confirms it in winnonah, which sets
             -- referralData.privateSchoolConfirmed.
@@ -383,6 +387,22 @@ def diagnose_records_readiness(
             checks.append(
                 ("FAIL", "client ID is 5 digits (shell client, not real records)")
             )
+
+        dob = client["dob"]
+        if dob is None:
+            checks.append(("WARN", "dob is not set: cannot check the age cutoff"))
+        else:
+            age = relativedelta(today, dob).years
+            if age < SCHOOL_RECORDS_ADULT_AGE:
+                checks.append(("PASS", f"age {age} (under {SCHOOL_RECORDS_ADULT_AGE})"))
+            else:
+                checks.append(
+                    (
+                        "FAIL",
+                        f"age {age}: clients {SCHOOL_RECORDS_ADULT_AGE}+ don't need "
+                        "school records requested",
+                    )
+                )
 
         asd_adhd = client["asdAdhd"] or ""
         if "ADHD" in asd_adhd and "ASD" not in asd_adhd:

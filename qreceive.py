@@ -287,7 +287,12 @@ def check_failures(
                 if reason == "portal not opened":
                     is_resolved = check_if_opened_portal(driver)
                 elif reason == "docs not signed":
-                    is_resolved = check_if_docs_signed(driver)
+                    age = (
+                        relativedelta(date.today(), client.dob).years
+                        if client.dob is not None
+                        else None
+                    )
+                    is_resolved = check_if_docs_signed(driver, age=age)
 
             elif reason == "too young for asd" and client.dob is not None:
                 is_resolved = client.dob < two_years_ago
