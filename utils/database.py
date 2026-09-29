@@ -255,6 +255,18 @@ def get_private_school_names(config: Config) -> set[str]:
         return {normalize_district(row["fullName"]) for row in cursor.fetchall()}
 
 
+def get_client_id_to_hash_map(config: Config) -> dict[int, str]:
+    """Fetch a dictionary mapping client ID (int) to their hash (str)."""
+    logger.info("Fetching client ID to hash map from DB")
+    db_connection = get_db(config)
+
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute("SELECT id, hash FROM emr_client")
+        results = cursor.fetchall()
+
+    return {row["id"]: row["hash"] for row in results if row["hash"]}
+
+
 def get_record_ready_client_ids(config: Config) -> dict[str, str]:
     """Fetch client IDs and their record statuses.
 

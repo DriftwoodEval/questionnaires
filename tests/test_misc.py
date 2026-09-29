@@ -68,6 +68,10 @@ class TestCleanFailureReason:
             ),
             # Case-insensitive: qsend re-adds prior reasons lowercased.
             ("message: \n", "browser automation error (no detail)"),
+            (
+                "message: element not interactable\nstacktrace:\n\tat foo (bar.js:1)\n",
+                "element not interactable",
+            ),
             # Ordinary reasons pass through untouched.
             ("portal not opened", "portal not opened"),
             ("too young", "too young"),

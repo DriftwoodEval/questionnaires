@@ -189,7 +189,9 @@ _SELENIUM_MESSAGE_PREFIX = re.compile(r"^\s*message:\s*", re.IGNORECASE)
 def clean_failure_reason(reason: str) -> str:
     """Strip Selenium's 'Message:/Stacktrace:' wrapper from an error string,
     falling back to a readable label when nothing meaningful is left."""
-    without_trace = re.split(r"\n\s*Stacktrace:", reason, maxsplit=1)[0]
+    without_trace = re.split(
+        r"\n\s*Stacktrace:", reason, maxsplit=1, flags=re.IGNORECASE
+    )[0]
     if not _SELENIUM_MESSAGE_PREFIX.match(without_trace):
         return reason
     body = _SELENIUM_MESSAGE_PREFIX.sub("", without_trace).strip()

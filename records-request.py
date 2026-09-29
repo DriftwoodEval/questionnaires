@@ -2,7 +2,7 @@ import io
 import re
 import sys
 from base64 import b64decode
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date
 
 import pymupdf
@@ -601,6 +601,7 @@ def main(
         new_success_count = 0
         new_failure_count = 0
         failure_reason_counts: Counter[str] = Counter()
+        failure_reason_clients: defaultdict[str, list[dict]] = defaultdict(list)
         total_clients = len(clients_to_process)
 
         driver = initialize_selenium()
@@ -671,6 +672,9 @@ def main(
                         )
                         new_failure_count += 1
                         failure_reason_counts[error] += 1
+                        failure_reason_clients[error].append(
+                            {"hash": client.hash, "name": client_name}
+                        )
 
                 else:
                     add_failure(
@@ -684,6 +688,9 @@ def main(
                     )
                     new_failure_count += 1
                     failure_reason_counts["unable to find client"] += 1
+                    failure_reason_clients["unable to find client"].append(
+                        {"hash": client.hash, "name": client_name}
+                    )
         finally:
             logger.debug("Closing WebDriver.")
             driver.quit()
@@ -695,7 +702,13 @@ def main(
             {
                 "requested": new_success_count,
                 "failed": new_failure_count,
-                "errors": dict(failure_reason_counts),
+                "errors": {
+                    reason: {
+                        "count": count,
+                        "clients": failure_reason_clients.get(reason, []),
+                    }
+                    for reason, count in failure_reason_counts.items()
+                },
             }
         )
 

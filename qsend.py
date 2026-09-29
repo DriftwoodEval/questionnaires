@@ -1,6 +1,6 @@
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime
 from time import sleep, strftime, strptime
 
@@ -19,6 +19,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Config, Services
 from utils.database import (
+    get_client_id_to_hash_map,
     get_most_recent_eval_appointment_dates,
     get_previous_clients,
     get_questionnaire_rules,
@@ -721,13 +722,22 @@ def main(
 
         sent_count = 0
         failure_reason_counts: Counter[str] = Counter()
+        failure_reason_clients: defaultdict[str, list[dict]] = defaultdict(list)
+        client_id_to_hash = get_client_id_to_hash_map(config)
 
-        def add_failure(*, error: str, **kwargs):
+        def add_failure(*, error: str, client_id, full_name: str, **kwargs):
             """Shadows the module-level add_failure for the rest of this run so
             every failure is also tallied for the run summary, without touching
             each of the many call sites below."""
             failure_reason_counts[error] += 1
-            return _add_failure(error=error, **kwargs)
+            client_hash = client_id_to_hash.get(int(client_id))
+            if client_hash:
+                failure_reason_clients[error].append(
+                    {"hash": client_hash, "name": full_name}
+                )
+            return _add_failure(
+                error=error, client_id=client_id, full_name=full_name, **kwargs
+            )
 
         for login in [
             check_and_login_ta,
@@ -1270,7 +1280,13 @@ def main(
             {
                 "sent": sent_count,
                 "failed": sum(failure_reason_counts.values()),
-                "errors": dict(failure_reason_counts),
+                "errors": {
+                    reason: {
+                        "count": count,
+                        "clients": failure_reason_clients.get(reason, []),
+                    }
+                    for reason, count in failure_reason_counts.items()
+                },
             }
         )
         # Final newline for preventing overwriting last line on windows

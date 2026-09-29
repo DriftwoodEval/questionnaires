@@ -237,6 +237,7 @@ class FailedClient(TypedDict):
 
 class _ClientBase(BaseModel):
     id: int
+    hash: str
     dob: date
     firstName: str  # noqa: N815
     lastName: str  # noqa: N815
