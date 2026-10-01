@@ -46,6 +46,7 @@ from utils.messages import (
     build_referral_message,
     is_potential_private_pay,
     render_reminder_message,
+    resolve_reminder_variant,
 )
 from utils.misc import check_distance, json_log_format, load_config
 from utils.platforms.therapyappointment import (
@@ -831,6 +832,14 @@ def main(
                                                 client.id,
                                                 attempt_text["id"],
                                                 is_failure_reminder=False,
+                                                reminder_index=most_recent_q[
+                                                    "reminded"
+                                                ],
+                                                variant=resolve_reminder_variant(
+                                                    client
+                                                ),
+                                                used_override=override_message
+                                                is not None,
                                             )
                                         except Exception as log_err:
                                             logger.error(

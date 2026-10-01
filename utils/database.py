@@ -1121,10 +1121,19 @@ def log_questionnaire_msg(
     config: Config,
     client_id: int,
     openphone_message_id: str,
+    *,
     is_failure_reminder: bool = False,
     failure_reason: str | None = None,
+    reminder_index: int | None = None,
+    variant: str | None = None,
+    used_override: bool = False,
 ) -> None:
-    """Logs an automated questionnaire or failure reminder message to the DB."""
+    """Logs an automated questionnaire or failure reminder message to the DB.
+
+    `reminder_index`/`variant` identify which `emr_questionnaire_reminder_template`
+    row (see `render_reminder_message`) was used for a non-failure reminder, so
+    the app's per-client history can show which template went out.
+    """
     db_connection = get_db(config)
     with db_connection, db_connection.cursor() as cursor:
         cursor.execute(
@@ -1139,6 +1148,9 @@ def log_questionnaire_msg(
                 "openphoneMessageId": openphone_message_id,
                 "isFailureReminder": is_failure_reminder,
                 "failureReason": failure_reason,
+                "reminderIndex": reminder_index,
+                "variant": variant,
+                "usedOverride": used_override,
             },
         )
         db_connection.commit()

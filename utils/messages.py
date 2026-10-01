@@ -160,6 +160,18 @@ DEFAULT_REMINDER_TEMPLATES: dict[tuple[int, str], str] = {
 }
 
 
+def resolve_reminder_variant(client: ClientWithQuestionnaires) -> str:
+    """Picks the (postda/posteval) template variant for a client's current questionnaire statuses. Shared between `render_reminder_message` and the qreceive call site that needs the variant for audit logging, so the two stay in sync."""
+    is_postda = any(q["status"] == "POSTDA_PENDING" for q in client.questionnaires)
+    is_posteval = any(q["status"] == "POSTEVAL_PENDING" for q in client.questionnaires)
+
+    if is_posteval and is_postda:
+        return "POSTDA"
+    if is_posteval:
+        return "POSTEVAL"
+    return "DEFAULT"
+
+
 def render_reminder_message(
     templates: dict[tuple[int, str], str],
     settings: dict,
@@ -193,15 +205,7 @@ def render_reminder_message(
     completed_count = len(
         [q for q in client.questionnaires if q["status"] == "COMPLETED"]
     )
-    is_postda = any(q["status"] == "POSTDA_PENDING" for q in client.questionnaires)
-    is_posteval = any(q["status"] == "POSTEVAL_PENDING" for q in client.questionnaires)
-
-    if is_posteval and is_postda:
-        variant = "POSTDA"
-    elif is_posteval:
-        variant = "POSTEVAL"
-    else:
-        variant = "DEFAULT"
+    variant = resolve_reminder_variant(client)
 
     reminded_count = most_recent_q["reminded"]
     if override is not None:
