@@ -48,10 +48,10 @@ def format_ta_message(questionnaires: list[dict]) -> str:
     return message
 
 
-PRIVATE_SCHOOL_FORMS_MESSAGE = (
+CHARTER_SCHOOL_FORMS_MESSAGE = (
     "This is Driftwood Evaluation Center. We recently sent you two consent forms "
     "in our patient portal so we can request your child's records from their "
-    "charter or private school. Please complete them when you can. Thank you!"
+    "charter school. Please complete them when you can. Thank you!"
 )
 
 

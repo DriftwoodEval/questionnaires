@@ -5,8 +5,8 @@ import pytest
 from selenium.common.exceptions import NoSuchElementException
 
 from utils.platforms.therapyappointment import (
-    PRIVATE_RECEIVING,
-    PRIVATE_SENDING,
+    CHARTER_RECEIVING,
+    CHARTER_SENDING,
     STANDARD_RECEIVING,
     STANDARD_SENDING,
     check_if_docs_signed,
@@ -135,7 +135,7 @@ def test_docs_not_signed_when_a_form_is_unsigned(driver):
 
 @pytest.mark.parametrize(
     "school_form_name",
-    [STANDARD_RECEIVING, STANDARD_SENDING, PRIVATE_RECEIVING, PRIVATE_SENDING],
+    [STANDARD_RECEIVING, STANDARD_SENDING, CHARTER_RECEIVING, CHARTER_SENDING],
 )
 def test_unsigned_school_form_ignored_for_client_22_or_older(driver, school_form_name):
     driver.get(

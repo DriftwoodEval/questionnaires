@@ -23,16 +23,16 @@ from utils.selenium import (
 from utils.timezone import business_to_utc
 
 # TherapyAppointment "Docs & Forms" link text for each school-records consent
-# form pair. Private-school clients sign the "Charter School ..." variants,
+# form pair. Charter-school clients sign the "Charter School ..." variants,
 # where the school is entered under "To be provided to:" instead of a "School
 # District" label. Clients SCHOOL_RECORDS_ADULT_AGE or older never have these
 # assigned, and check_if_docs_signed ignores them if they are.
 STANDARD_RECEIVING = "Receiving Consent to Release of Information"
 STANDARD_SENDING = "Sending Consent to Release of Information"
-PRIVATE_RECEIVING = "Charter School Receiving Release of Information"
-PRIVATE_SENDING = "Charter School Sending Release of Information"
+CHARTER_RECEIVING = "Charter School Receiving Release of Information"
+CHARTER_SENDING = "Charter School Sending Release of Information"
 SCHOOL_RECORDS_FORM_NAMES = frozenset(
-    {STANDARD_RECEIVING, STANDARD_SENDING, PRIVATE_RECEIVING, PRIVATE_SENDING}
+    {STANDARD_RECEIVING, STANDARD_SENDING, CHARTER_RECEIVING, CHARTER_SENDING}
 )
 
 
