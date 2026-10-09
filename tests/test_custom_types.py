@@ -57,6 +57,7 @@ def make_client_from_db(client_id: int, questionnaires=None) -> ClientFromDB:
     return ClientFromDB.model_validate(
         {
             "id": client_id,
+            "hash": "testhash",
             "dob": date(2015, 1, 1),
             "firstName": "Test",
             "lastName": "Client",

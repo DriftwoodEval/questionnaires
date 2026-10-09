@@ -577,6 +577,7 @@ def make_failed_client(client_id: int = 1, failure: list[dict] | None = None):
     return FailedClientFromDB.model_validate(
         {
             "id": client_id,
+            "hash": "testhash",
             "dob": date(2015, 1, 1),
             "firstName": "Test",
             "lastName": "Client",
@@ -606,6 +607,7 @@ def make_client_from_db(client_id: int = 1, questionnaires=None):
     return ClientFromDB.model_validate(
         {
             "id": client_id,
+            "hash": "testhash",
             "dob": date(2015, 1, 1),
             "firstName": "Test",
             "lastName": "Client",

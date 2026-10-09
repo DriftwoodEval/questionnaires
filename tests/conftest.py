@@ -45,6 +45,7 @@ def make_client(
     return ClientWithQuestionnaires.model_validate(
         {
             "id": client_id,
+            "hash": "testhash",
             "dob": dob,
             "firstName": "Test",
             "lastName": "Client",
@@ -77,6 +78,7 @@ def make_referral_client(
     return ClientFromDB.model_validate(
         {
             "id": client_id,
+            "hash": "testhash",
             "dob": dob,
             "firstName": "Test",
             "lastName": "Client",

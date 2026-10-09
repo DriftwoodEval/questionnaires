@@ -20,6 +20,7 @@ def make_failed_client(client_id: int, reason: str = "portal not opened"):
     return FailedClientFromDB.model_validate(
         {
             "id": client_id,
+            "hash": "testhash",
             "dob": date(2015, 1, 1),
             "firstName": "Test",
             "lastName": "Client",
