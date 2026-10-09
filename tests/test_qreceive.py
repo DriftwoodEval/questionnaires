@@ -1,4 +1,6 @@
-from datetime import date
+from datetime import UTC, date, datetime
+from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -7,9 +9,12 @@ from qreceive import (
     _merge_email_infos,
     _serialize_email_info,
     build_failure_message,
+    mark_questionnaires_reminded,
+    reconcile_reminders_from_history,
+    sent_reminder_recently,
     should_send_reminder,
 )
-from utils.custom_types import AdminEmailInfo, FailedClientFromDB
+from utils.custom_types import AdminEmailInfo, FailedClientFromDB, Questionnaire
 
 
 def make_empty_email_info() -> AdminEmailInfo:
@@ -142,3 +147,161 @@ class TestEmailInfoSerializationRoundTrip:
         assert isinstance(round_tripped["call"][1], FailedClientFromDB)
         assert round_tripped["failed"] == [(failed_client, "portal not opened")]
         assert round_tripped["errors"] == ["some error"]
+
+
+class TestMarkQuestionnairesReminded:
+    def test_only_pending_questionnaires_are_counted(self):
+        client = MagicMock()
+        client.questionnaires = [
+            {"status": "PENDING", "reminded": 1, "lastReminded": None},
+            {"status": "COMPLETED", "reminded": 1, "lastReminded": None},
+        ]
+        mark_questionnaires_reminded(client)
+        assert client.questionnaires[0]["reminded"] == 2
+        assert client.questionnaires[0]["lastReminded"] == date.today()
+        assert client.questionnaires[1]["reminded"] == 1
+        assert client.questionnaires[1]["lastReminded"] is None
+
+
+class TestReconcileRemindersFromHistory:
+    @staticmethod
+    def _setup(reminded, last_reminded, sent_texts):
+        client = MagicMock()
+        client.id = 7
+        client.phoneNumber = "8435550100"
+        q = cast(
+            "Questionnaire",
+            {
+                "status": "PENDING",
+                "sent": date(2026, 1, 1),
+                "reminded": reminded,
+                "lastReminded": last_reminded,
+            },
+        )
+        client.questionnaires = [q]
+        quo = MagicMock()
+        quo.get_sent_texts.return_value = sent_texts
+        config = MagicMock(business_timezone="America/New_York")
+        return config, quo, client, q
+
+    @staticmethod
+    def _stage_one_text():
+        return (
+            "Hello, this is Dr A with Driftwood Evaluation Center. We are waiting "
+            "for you to complete the questionnaire sent to you on 01/01 (5 days "
+            "ago). We are unable to schedule your appointment until it is "
+            "completed in its entirety. You can find it in the messages tab in "
+            "our patient portal: https://portal.therapyappointment.com Please "
+            "reply to this text with any questions. Thank you for your help."
+        )
+
+    def test_raises_count_from_template_not_text_count(self, monkeypatch):
+        monkeypatch.setattr("qreceive.update_questionnaires_in_db", MagicMock())
+        text = self._stage_one_text()
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        # The same stage-2 reminder went out three times: the count is still 2.
+        config, quo, client, q = self._setup(1, date(2026, 1, 1), [(text, sent)] * 3)
+        assert reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        assert q["reminded"] == 2
+        assert q["lastReminded"] == date(2026, 1, 6)
+
+    def test_never_lowers_a_higher_stored_count(self, monkeypatch):
+        update = MagicMock()
+        monkeypatch.setattr("qreceive.update_questionnaires_in_db", update)
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        config, quo, client, q = self._setup(
+            2, date(2026, 1, 8), [(self._stage_one_text(), sent)]
+        )
+        assert not reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        assert q["reminded"] == 2
+        assert q["lastReminded"] == date(2026, 1, 8)
+        update.assert_not_called()
+
+    def test_unrelated_texts_change_nothing(self):
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        config, quo, client, q = self._setup(0, None, [("See you Tuesday!", sent)])
+        assert not reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        assert q["reminded"] == 0
+
+    def test_skips_quo_lookup_when_count_already_maxed(self):
+        config, quo, client, q = self._setup(3, date(2026, 1, 8), [])
+        assert not reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        quo.get_sent_texts.assert_not_called()
+
+
+class TestSentReminderRecently:
+    @staticmethod
+    def _call(texts, message, distance=5):
+        client = MagicMock()
+        client.phoneNumber = "8435550100"
+        quo = MagicMock()
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        quo.get_sent_texts.return_value = [(t, sent) for t in texts]
+        return quo, client, distance, message
+
+    def test_matches_text_rendered_for_an_earlier_day(self, monkeypatch):
+        quo, client, distance, message = self._call(
+            ["yesterday text"], "today text", distance=5
+        )
+
+        def fake_render(*_args, days_ago, **_kwargs):
+            return "yesterday text" if days_ago == 1 else f"text {days_ago}"
+
+        monkeypatch.setattr("qreceive.render_reminder_message", fake_render)
+        assert sent_reminder_recently(
+            quo,
+            MagicMock(),
+            client,
+            cast("Questionnaire", {}),
+            message,
+            templates={},
+            settings={},
+            override=None,
+            distance=distance,
+            today=date(2026, 1, 6),
+        )
+
+    def test_no_match_when_nothing_sent_matches(self, monkeypatch):
+        quo, client, distance, message = self._call(["unrelated"], "today text")
+        monkeypatch.setattr(
+            "qreceive.render_reminder_message",
+            lambda *_a, days_ago, **_k: str(days_ago),
+        )
+        assert not sent_reminder_recently(
+            quo,
+            MagicMock(),
+            client,
+            cast("Questionnaire", {}),
+            message,
+            templates={},
+            settings={},
+            override=None,
+            distance=distance,
+            today=date(2026, 1, 6),
+        )
+
+    def test_does_not_look_back_before_the_batch_was_sent(self, monkeypatch):
+        quo, client, distance, message = self._call(["old"], "today text", distance=0)
+        render = MagicMock(return_value="old")
+        monkeypatch.setattr("qreceive.render_reminder_message", render)
+        assert not sent_reminder_recently(
+            quo,
+            MagicMock(),
+            client,
+            cast("Questionnaire", {}),
+            message,
+            templates={},
+            settings={},
+            override=None,
+            distance=distance,
+            today=date(2026, 1, 6),
+        )
+        render.assert_not_called()

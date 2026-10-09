@@ -15,6 +15,7 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     FailedClientFromDB,
+    Questionnaire,
     Services,
     validate_questionnaires,
 )
@@ -43,7 +44,9 @@ from utils.google import (
 )
 from utils.messages import (
     CHARTER_SCHOOL_FORMS_MESSAGE,
+    REMINDER_STAGES,
     build_referral_message,
+    infer_reminder_progress,
     is_potential_private_pay,
     render_reminder_message,
     resolve_reminder_variant,
@@ -69,7 +72,7 @@ from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
-from utils.timezone import now_business
+from utils.timezone import now_business, utc_to_business
 
 logger.remove()
 logger.add(
@@ -242,6 +245,113 @@ def build_failure_message(config: Config, client: FailedClientFromDB) -> str | N
             return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
 
     return None
+
+
+def reconcile_reminders_from_history(
+    config: Config,
+    quo: Quo,
+    client: ClientWithQuestionnaires,
+    most_recent_q: Questionnaire,
+    *,
+    templates: dict[tuple[int, str], str],
+    overrides: dict[tuple[int, date, int], str],
+    dry_run: bool,
+) -> bool:
+    """Catches the stored reminder count up with the reminders Quo shows we already sent.
+
+    The stage is read from which reminder template each text fits, not from how
+    many texts went out, and the stored count and last-reminded date are only
+    ever raised, never lowered. Returns True when the stored state changed.
+    """
+    if most_recent_q["reminded"] >= len(REMINDER_STAGES) or not client.phoneNumber:
+        return False
+
+    sent_texts = quo.get_sent_texts(client.phoneNumber, since=most_recent_q["sent"])
+    stage_overrides = {
+        stage: message
+        for (client_id, batch_sent, stage), message in overrides.items()
+        if client_id == client.id and batch_sent == most_recent_q["sent"]
+    }
+    progress = infer_reminder_progress(sent_texts, templates, stage_overrides)
+    if progress is None or progress[0] <= most_recent_q["reminded"]:
+        return False
+
+    reminded, last_sent = progress
+    last_reminded = utc_to_business(last_sent, config.business_timezone).date()
+    logger.warning(
+        f"Quo history shows {client.fullName} already got reminder stage {reminded} on {last_reminded}, "
+        f"but the stored count is {most_recent_q['reminded']}. Raising it."
+    )
+    for q in client.questionnaires:
+        if q["status"] not in ("PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"):
+            continue
+        q["reminded"] = max(q["reminded"], reminded)
+        if q["lastReminded"] is None or q["lastReminded"] < last_reminded:
+            q["lastReminded"] = last_reminded
+    if not dry_run:
+        update_questionnaires_in_db(config, [client])
+    return True
+
+
+RECENT_REMINDER_DAYS = 3
+
+
+def sent_reminder_recently(
+    quo: Quo,
+    config: Config,
+    client: ClientWithQuestionnaires,
+    most_recent_q: Questionnaire,
+    message: str,
+    *,
+    templates: dict[tuple[int, str], str],
+    settings: dict,
+    override: str | None,
+    distance: int,
+    today: date,
+) -> bool:
+    """Whether Quo shows we already sent this reminder within the last few days.
+
+    The text changes from day to day ("sent on 01/01 (5 days ago)", the
+    deadline date), so it is re-rendered as it would have read on each of
+    the last few days and each version is compared with what we actually sent.
+    """
+    if not client.phoneNumber:
+        return False
+    recent_texts = {
+        " ".join(text.split())
+        for text, _ in quo.get_sent_texts(
+            client.phoneNumber, since=today - timedelta(days=RECENT_REMINDER_DAYS)
+        )
+    }
+    for days_ago in range(RECENT_REMINDER_DAYS + 1):
+        # Before the questionnaires were sent there was nothing to remind about.
+        if days_ago > distance:
+            break
+        rendered = (
+            message
+            if days_ago == 0
+            else render_reminder_message(
+                templates,
+                settings,
+                config,
+                client,
+                most_recent_q=most_recent_q,
+                distance=distance - days_ago,
+                override=override,
+                days_ago=days_ago,
+            )
+        )
+        if rendered and " ".join(rendered.split()) in recent_texts:
+            return True
+    return False
+
+
+def mark_questionnaires_reminded(client: ClientWithQuestionnaires) -> None:
+    """Counts one more reminder sent today against the client's pending questionnaires."""
+    for q in client.questionnaires:
+        if q["status"] in ("PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"):
+            q["reminded"] += 1
+            q["lastReminded"] = date.today()
 
 
 def should_send_reminder(
@@ -514,7 +624,8 @@ def main(
             messages_sent: list[
                 tuple[FailedClientFromDB | ClientWithQuestionnaires, str, str | None]
             ] = []
-            numbers_sent = []
+            numbers_sent: list[str] = []
+            today_business = now_business(config.business_timezone).date()
 
             completed_ids = {c.id for c in email_info["completed"]}
             if failed_clients and not skip_failures:
@@ -571,9 +682,9 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged_today = client.phoneNumber in numbers_sent
+                        already_messaged = client.phoneNumber in numbers_sent
 
-                        if already_messaged_today:
+                        if already_messaged:
                             logger.warning(
                                 f"Already messaged {client.fullName} at {client.phoneNumber} today"
                             )
@@ -596,7 +707,7 @@ def main(
 
                         elif (
                             reminded_count < 3
-                            and not already_messaged_today
+                            and not already_messaged
                             and client.phoneNumber
                         ):
                             if should_send_reminder(
@@ -605,6 +716,34 @@ def main(
                                 reminder_settings,
                             ):
                                 logger.info(f"Sending reminder TO {client.fullName}")
+                                message = build_failure_message(config, client)
+                                # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                                if not message:
+                                    logger.error(
+                                        f"Failed to build message for {client.fullName}"
+                                    )
+                                    continue
+
+                                # Quo already has this exact text from today: an earlier run
+                                # sent it but never recorded it. Record it now instead of
+                                # texting again.
+                                if (send_texts or dry_run) and quo.has_sent_message(
+                                    client.phoneNumber, message, since=today_business
+                                ):
+                                    logger.warning(
+                                        f"Quo history shows {client.fullName} already got this failure reminder today, recording it instead of resending"
+                                    )
+                                    numbers_sent.append(client.phoneNumber)
+                                    if send_texts:
+                                        update_failure_in_db(
+                                            config,
+                                            client.id,
+                                            reason,
+                                            reminded=reminded_count + 1,
+                                            last_reminded=date.today(),
+                                        )
+                                    continue
+
                                 if reason == "portal not opened":
                                     if send_texts:
                                         try:
@@ -627,14 +766,6 @@ def main(
                                         logger.info(
                                             f"[DRY RUN] Would resend portal invite for {client.fullName}"
                                         )
-
-                                message = build_failure_message(config, client)
-                                # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                                if not message:
-                                    logger.error(
-                                        f"Failed to build message for {client.fullName}"
-                                    )
-                                    continue
 
                                 if send_texts:
                                     try:
@@ -735,9 +866,24 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged_today = client.phoneNumber in numbers_sent
+                        if (send_texts or dry_run) and reconcile_reminders_from_history(
+                            config,
+                            quo,
+                            client,
+                            most_recent_q,
+                            templates=reminder_templates,
+                            overrides=reminder_overrides,
+                            dry_run=dry_run,
+                        ):
+                            reconciled_last_reminded = most_recent_q["lastReminded"]
+                            if reconciled_last_reminded is not None:
+                                last_reminded_distance = check_distance(
+                                    reconciled_last_reminded
+                                )
 
-                        if already_messaged_today:
+                        already_messaged = client.phoneNumber in numbers_sent
+
+                        if already_messaged:
                             logger.warning(
                                 f"Already messaged {client.fullName} at {client.phoneNumber} today"
                             )
@@ -751,7 +897,7 @@ def main(
 
                         elif (
                             most_recent_q["reminded"] < 3
-                            and not already_messaged_today
+                            and not already_messaged
                             and client.phoneNumber
                             and should_send_reminder(
                                 most_recent_q["reminded"],
@@ -812,6 +958,23 @@ def main(
                             if not message:
                                 logger.error(
                                     f"Failed to build message for {client.fullName}"
+                                )
+                                continue
+
+                            if (send_texts or dry_run) and sent_reminder_recently(
+                                quo,
+                                config,
+                                client,
+                                most_recent_q,
+                                message,
+                                templates=reminder_templates,
+                                settings=reminder_settings,
+                                override=override_message,
+                                distance=distance,
+                                today=today_business,
+                            ):
+                                logger.warning(
+                                    f"Not texting {client.fullName}: this reminder was already sent in the last {RECENT_REMINDER_DAYS} days"
                                 )
                                 continue
 
@@ -1043,51 +1206,44 @@ def main(
             clients_to_update_db = []
 
             for client, message_id, failure_reason in messages_sent:
-                try:
-                    delivered = quo.check_text_delivered(message_id)
+                # Quo accepted the message, so the reminder counts as sent whether
+                # or not delivery is confirmed. Recording it only on confirmed
+                # delivery re-sends the same reminder every run for a number whose
+                # delivery status never settles. Delivery problems are reported to
+                # staff instead.
+                if failure_reason is not None and isinstance(
+                    client, FailedClientFromDB
+                ):
+                    failure_to_update = next(
+                        (
+                            f
+                            for f in client.failure
+                            if f.get("reason") == failure_reason
+                        ),
+                        None,
+                    )
+                    if failure_to_update:
+                        clients_to_update_db.append(
+                            (
+                                client.id,
+                                failure_reason,
+                                failure_to_update["reminded"] + 1,
+                                date.today(),
+                            )
+                        )
+                    else:
+                        logger.error(
+                            f"Sent message for unknown failure reason '{failure_reason}' for {client.fullName}"
+                        )
+                elif isinstance(client, ClientWithQuestionnaires):
+                    mark_questionnaires_reminded(client)
+                    clients_to_update_db.append(client)
 
-                    if delivered:
+                try:
+                    if quo.check_text_delivered(message_id):
                         logger.success(
                             f"Successfully delivered message to {client.fullName} ({message_id})"
                         )
-
-                        if failure_reason is not None and isinstance(
-                            client, FailedClientFromDB
-                        ):
-                            failure_to_update = next(
-                                (
-                                    f
-                                    for f in client.failure
-                                    if f.get("reason") == failure_reason
-                                ),
-                                None,
-                            )
-                            if failure_to_update:
-                                new_reminded_count = failure_to_update["reminded"] + 1
-                                today = date.today()
-
-                                clients_to_update_db.append(
-                                    (
-                                        client.id,
-                                        failure_reason,
-                                        new_reminded_count,
-                                        today,
-                                    )
-                                )
-                            else:
-                                logger.error(
-                                    f"Delivered message for unknown failure reason '{failure_reason}' for {client.fullName}"
-                                )
-                        elif isinstance(client, ClientWithQuestionnaires):
-                            for q in client.questionnaires:
-                                if (
-                                    q["status"] == "PENDING"
-                                    or q["status"] == "POSTDA_PENDING"
-                                    or q["status"] == "POSTEVAL_PENDING"
-                                ):
-                                    q["reminded"] += 1
-                                    q["lastReminded"] = date.today()
-                            clients_to_update_db.append(client)
                     else:
                         logger.error(
                             f"Failed to deliver message to {client.fullName} ({message_id})"

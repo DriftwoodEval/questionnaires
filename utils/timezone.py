@@ -29,6 +29,15 @@ def business_date_to_utc(business_date: date, business_timezone: str) -> datetim
     )
 
 
+def utc_to_business(dt: datetime, business_timezone: str) -> datetime:
+    """Convert a UTC datetime to business-local time.
+
+    Accepts either a naive datetime (interpreted as UTC) or an aware one.
+    """
+    aware_utc = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+    return aware_utc.astimezone(ZoneInfo(business_timezone))
+
+
 def now_utc() -> datetime:
     """The current instant, as a genuine UTC-aware datetime."""
     return datetime.now(UTC)
