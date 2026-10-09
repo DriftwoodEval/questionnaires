@@ -55,6 +55,8 @@ omit = ["tests/*", ".venv/*", "conftest.py"]
 # which points COVERAGE_FILE at .coverage.integration) never clobbers it -
 # `mise run coverage` combines both into .coverage for the HTML report.
 data_file = ".coverage.unit"
+# sysmon (the default on Python 3.14) does not support dynamic contexts.
+core = "ctrace"
 
 [tool.coverage.html]
 show_contexts = true
