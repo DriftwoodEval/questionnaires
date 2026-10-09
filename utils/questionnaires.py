@@ -497,6 +497,62 @@ def check_client_previous(
     return None
 
 
+# Human-readable labels for the "Previous Error" values that `check_client_failed`
+# carries through to the retry attempt that resolves them (see the exempt list in
+# qsend.py's main loop). Anything else falls back to the raw reason string.
+_RESOLVED_REASON_LABELS: dict[str, str] = {
+    "too young": "client is now old enough",
+    "portal not opened": "client opened the TA portal",
+    "docs not signed": "client signed required documents",
+    "not in db": "client was found in the system",
+    "no dob": "client's date of birth was added",
+    "unable to find client": "client was found on the platform",
+    "unknown questionnaire needs": "questionnaire needs were resolved",
+}
+
+
+def determine_send_reason(
+    client_info: pd.Series,
+    client_from_db: ClientFromDB,
+    previous_questionnaires: list | None,
+    prev_failed_clients: dict[int, FailedClientFromDB],
+) -> str:
+    """Determines why a client is being sent a questionnaire on this run, for display
+    in winnonah's referral/questionnaire history (see `internal.questionnaire.create`).
+
+    Checked in priority order: an ASD/ADHD reclassification (which can newly include
+    a client in the EVAL-needed filter in `get_clients_to_send`) is the most specific
+    and surprising reason when it applies, ahead of a previously-failing gate (portal,
+    docs, age, etc.) that this run found resolved, ahead of this being the client's
+    first-ever questionnaire. Falls back to "Automated send" when none of those apply,
+    which mainly covers a client freshly pushed to the punch list.
+    """
+    current_asd_adhd = client_info.get("For")
+    if (
+        client_from_db.asdAdhd
+        and current_asd_adhd
+        and (client_from_db.asdAdhd != current_asd_adhd)
+    ):
+        return (
+            f"ASD/ADHD status changed ({client_from_db.asdAdhd} to {current_asd_adhd})"
+        )
+
+    previous_error = client_info.get("Previous Error")
+    # A real "Previous Error" is only ever set by `check_client_failed` as a
+    # string; a missing/unset value can come back as None or (if the Series
+    # was built with a None in that column) NaN, which `pd.Series.get`
+    # otherwise returns as a truthy float.
+    if isinstance(previous_error, str) and previous_error:
+        label = _RESOLVED_REASON_LABELS.get(previous_error)
+        return f"Resolved: {label or previous_error}"
+
+    client_id = int(client_info["Client ID"])
+    if not previous_questionnaires and client_id not in prev_failed_clients:
+        return "New on list"
+
+    return "Automated send"
+
+
 def _resolve_wanted_diagnoses(asd_adhd: str | None) -> set[str]:
     """Convert a client's asdAdhd field to a set of diagnosis strings for rule matching."""
     if not asd_adhd:

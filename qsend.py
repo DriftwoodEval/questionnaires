@@ -71,6 +71,7 @@ from utils.platforms.wps import check_and_login_wps, gen_dp4
 from utils.questionnaires import (
     check_client_failed,
     check_client_previous,
+    determine_send_reason,
     normalize_q_name,
 )
 from utils.selenium import (
@@ -1022,6 +1023,7 @@ def main(
                     continue
 
                 just_added_questionnaires = []
+                previous_questionnaires = None
 
                 if prev_clients:
                     previous_questionnaires = check_client_previous(
@@ -1147,6 +1149,9 @@ def main(
                     continue
 
                 send = True
+                send_reason = determine_send_reason(
+                    client, client_from_db, previous_questionnaires, prev_failed_clients
+                )
                 for questionnaire in questionnaires_to_generate:
                     logger.debug(f"Questionnaires so far: {questionnaires}")
                     try:
@@ -1185,6 +1190,7 @@ def main(
                             qtype=questionnaire,
                             sent_date=today_str,
                             status="JUST_ADDED",
+                            reason=send_reason,
                         )
 
                     except Exception as e:
@@ -1246,6 +1252,11 @@ def main(
                         if had_matching_recent_appointment
                         else "PENDING"
                     )
+                    status_reason = (
+                        f"had a matching {daeval} appointment on {matching_appointment_date}"
+                        if had_matching_recent_appointment
+                        else None
+                    )
 
                     if client["Language"] != "Spanish":
                         for questionnaire in questionnaires:
@@ -1255,6 +1266,7 @@ def main(
                                 questionnaire["type"],
                                 today_str,
                                 send_status,
+                                reason=status_reason,
                             )
 
                     message = format_ta_message(questionnaires)

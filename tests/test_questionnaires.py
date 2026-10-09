@@ -16,6 +16,7 @@ from utils.questionnaires import (
     check_client_failed,
     check_client_previous,
     check_if_ignoring,
+    determine_send_reason,
     filter_inactive_and_not_pending,
     generate_screenshot_filename,
     get_most_recent_not_done,
@@ -750,3 +751,60 @@ class TestCheckClientPrevious:
         ]
         prev_clients = {1: make_client_from_db(1, questionnaires=questionnaires)}
         assert check_client_previous(prev_clients, client_info) == questionnaires
+
+
+class TestDetermineSendReason:
+    def test_asd_adhd_change_takes_priority(self):
+        client_info = pd.Series(
+            {"Client ID": "1", "For": "ASD", "Previous Error": "docs not signed"}
+        )
+        client_from_db = make_client_from_db(1, questionnaires=[])
+        client_from_db.asdAdhd = "ADHD"
+        reason = determine_send_reason(client_info, client_from_db, [], {})
+        assert reason == "ASD/ADHD status changed (ADHD to ASD)"
+
+    def test_unchanged_asd_adhd_is_not_a_reason(self):
+        client_info = pd.Series(
+            {"Client ID": "1", "For": "ASD", "Previous Error": None}
+        )
+        client_from_db = make_client_from_db(1, questionnaires=[])
+        client_from_db.asdAdhd = "ASD"
+        reason = determine_send_reason(client_info, client_from_db, [], {1: object()})
+        assert reason == "Automated send"
+
+    @pytest.mark.parametrize(
+        ("previous_error", "expected"),
+        [
+            ("portal not opened", "Resolved: client opened the TA portal"),
+            ("docs not signed", "Resolved: client signed required documents"),
+            ("some unmapped reason", "Resolved: some unmapped reason"),
+        ],
+    )
+    def test_resolved_previous_error(self, previous_error, expected):
+        client_info = pd.Series(
+            {"Client ID": "1", "For": "ASD", "Previous Error": previous_error}
+        )
+        client_from_db = make_client_from_db(1, questionnaires=[])
+        client_from_db.asdAdhd = "ASD"
+        reason = determine_send_reason(client_info, client_from_db, [], {1: object()})
+        assert reason == expected
+
+    def test_new_on_list_when_no_prior_record(self):
+        client_info = pd.Series(
+            {"Client ID": "1", "For": "ASD", "Previous Error": None}
+        )
+        client_from_db = make_client_from_db(1, questionnaires=[])
+        client_from_db.asdAdhd = "ASD"
+        reason = determine_send_reason(client_info, client_from_db, None, {})
+        assert reason == "New on list"
+
+    def test_automated_send_fallback(self):
+        client_info = pd.Series(
+            {"Client ID": "1", "For": "ASD", "Previous Error": None}
+        )
+        client_from_db = make_client_from_db(1, questionnaires=[])
+        client_from_db.asdAdhd = "ASD"
+        reason = determine_send_reason(
+            client_info, client_from_db, ["some prior q"], {}
+        )
+        assert reason == "Automated send"

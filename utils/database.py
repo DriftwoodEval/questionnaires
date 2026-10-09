@@ -736,8 +736,15 @@ def put_questionnaire_in_db(
     qtype: str,
     sent_date: str,
     status: QuestionnaireStatus,
+    reason: str | None = None,
 ):
-    """Insert a questionnaire into the database."""
+    """Insert a questionnaire into the database.
+
+    `reason` is why qsend picked this client up on this run (see
+    `determine_send_reason`), logged alongside the write so winnonah's
+    questionnaire/referral history views can show it instead of a bare
+    "Added (automated)".
+    """
     db_connection = get_db(config)
 
     with db_connection:
@@ -751,11 +758,14 @@ def put_questionnaire_in_db(
             values = (int(client_id), link, qtype, sent_date, status)
 
             cursor.execute(sql, values)
+        detail = {"questionnaireType": qtype, "sent": sent_date, "status": status}
+        if reason:
+            detail["reason"] = reason
         record_audit_log(
             db_connection,
             "internal.questionnaire.create",
             int(client_id),
-            detail={"questionnaireType": qtype, "sent": sent_date, "status": status},
+            detail=detail,
         )
         db_connection.commit()
 
@@ -766,8 +776,15 @@ def update_questionnaire_in_db(
     qtype: str,
     sent_date: str,
     status: QuestionnaireStatus,
+    *,
+    reason: str | None = None,
 ):
-    """Update a questionnaire in the database."""
+    """Update a questionnaire in the database.
+
+    `reason` explains an automated status change (e.g. a recent matching
+    appointment moving it straight to POSTEVAL_PENDING/POSTDA_PENDING), for
+    winnonah's questionnaire history view.
+    """
     db_connection = get_db(config)
 
     with db_connection:
@@ -780,11 +797,14 @@ def update_questionnaire_in_db(
 
             values = (status, int(client_id), sent_date, qtype)
             cursor.execute(sql, values)
+        detail = {"questionnaireType": qtype, "sent": sent_date, "status": status}
+        if reason:
+            detail["reason"] = reason
         record_audit_log(
             db_connection,
             "internal.questionnaire.update",
             int(client_id),
-            detail={"questionnaireType": qtype, "sent": sent_date, "status": status},
+            detail=detail,
         )
         db_connection.commit()
 
