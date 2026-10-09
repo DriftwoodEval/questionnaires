@@ -182,6 +182,7 @@ def render_reminder_message(
     most_recent_q: Questionnaire,
     distance: int,
     override: str | None = None,
+    days_ago: int = 0,
 ) -> str | None:
     """Renders the reminder message for a client's most recent pending questionnaire.
 
@@ -189,6 +190,10 @@ def render_reminder_message(
     `override` text is given for this client's batch/stage, then substitutes
     $PLACEHOLDER tokens (in either the default template or the override) with
     values computed for this client/batch.
+
+    `days_ago` renders the message as it would have read that many days ago:
+    the caller passes the `distance` from that day, and the deadline date is
+    counted from that day too. Used to recognize a reminder we already sent.
     """
     if not most_recent_q["sent"]:
         logger.warning(
@@ -240,7 +245,9 @@ def render_reminder_message(
         distance_phrase = f"on {date_str} ({days_ago} days ago)"
 
     escalation_days = settings["escalationSilenceDays"]
-    deadline_date = (datetime.now() + timedelta(days=escalation_days)).strftime("%m/%d")
+    deadline_date = (
+        datetime.now() - timedelta(days=days_ago) + timedelta(days=escalation_days)
+    ).strftime("%m/%d")
 
     substitutions = {
         "$CLIENT_FIRST_NAME": client.firstName,

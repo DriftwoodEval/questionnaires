@@ -293,6 +293,59 @@ def reconcile_reminders_from_history(
     return True
 
 
+RECENT_REMINDER_DAYS = 3
+
+
+def sent_reminder_recently(
+    quo: Quo,
+    config: Config,
+    client: ClientWithQuestionnaires,
+    most_recent_q: Questionnaire,
+    message: str,
+    *,
+    templates: dict[tuple[int, str], str],
+    settings: dict,
+    override: str | None,
+    distance: int,
+    today: date,
+) -> bool:
+    """Whether Quo shows we already sent this reminder within the last few days.
+
+    The text changes from day to day ("sent on 01/01 (5 days ago)", the
+    deadline date), so it is re-rendered as it would have read on each of
+    the last few days and each version is compared with what we actually sent.
+    """
+    if not client.phoneNumber:
+        return False
+    recent_texts = {
+        " ".join(text.split())
+        for text, _ in quo.get_sent_texts(
+            client.phoneNumber, since=today - timedelta(days=RECENT_REMINDER_DAYS)
+        )
+    }
+    for days_ago in range(RECENT_REMINDER_DAYS + 1):
+        # Before the questionnaires were sent there was nothing to remind about.
+        if days_ago > distance:
+            break
+        rendered = (
+            message
+            if days_ago == 0
+            else render_reminder_message(
+                templates,
+                settings,
+                config,
+                client,
+                most_recent_q=most_recent_q,
+                distance=distance - days_ago,
+                override=override,
+                days_ago=days_ago,
+            )
+        )
+        if rendered and " ".join(rendered.split()) in recent_texts:
+            return True
+    return False
+
+
 def mark_questionnaires_reminded(client: ClientWithQuestionnaires) -> None:
     """Counts one more reminder sent today against the client's pending questionnaires."""
     for q in client.questionnaires:
@@ -905,6 +958,23 @@ def main(
                             if not message:
                                 logger.error(
                                     f"Failed to build message for {client.fullName}"
+                                )
+                                continue
+
+                            if (send_texts or dry_run) and sent_reminder_recently(
+                                quo,
+                                config,
+                                client,
+                                most_recent_q,
+                                message,
+                                templates=reminder_templates,
+                                settings=reminder_settings,
+                                override=override_message,
+                                distance=distance,
+                                today=today_business,
+                            ):
+                                logger.warning(
+                                    f"Not texting {client.fullName}: this reminder was already sent in the last {RECENT_REMINDER_DAYS} days"
                                 )
                                 continue
 
