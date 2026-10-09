@@ -244,18 +244,12 @@ def build_failure_message(config: Config, client: FailedClientFromDB) -> str | N
     return None
 
 
-def already_messaged_today(
-    quo: Quo, numbers_sent: list[str], phone_number: str, today: date
-) -> bool:
-    """Whether this number was texted earlier in this run or earlier today by anyone.
-
-    Quo's message history is checked in addition to this run's sends, so a
-    reminder whose state was never recorded (a crash, a failed DB write, an
-    overlapping run) can't go out a second time in the same day.
-    """
-    return phone_number in numbers_sent or quo.has_texted_client(
-        phone_number, since=today
-    )
+def mark_questionnaires_reminded(client: ClientWithQuestionnaires) -> None:
+    """Counts one more reminder sent today against the client's pending questionnaires."""
+    for q in client.questionnaires:
+        if q["status"] in ("PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"):
+            q["reminded"] += 1
+            q["lastReminded"] = date.today()
 
 
 def should_send_reminder(
@@ -586,9 +580,7 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged = already_messaged_today(
-                            quo, numbers_sent, client.phoneNumber, today_business
-                        )
+                        already_messaged = client.phoneNumber in numbers_sent
 
                         if already_messaged:
                             logger.warning(
@@ -622,6 +614,34 @@ def main(
                                 reminder_settings,
                             ):
                                 logger.info(f"Sending reminder TO {client.fullName}")
+                                message = build_failure_message(config, client)
+                                # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                                if not message:
+                                    logger.error(
+                                        f"Failed to build message for {client.fullName}"
+                                    )
+                                    continue
+
+                                # Quo already has this exact text from today: an earlier run
+                                # sent it but never recorded it. Record it now instead of
+                                # texting again.
+                                if (send_texts or dry_run) and quo.has_sent_message(
+                                    client.phoneNumber, message, since=today_business
+                                ):
+                                    logger.warning(
+                                        f"Quo history shows {client.fullName} already got this failure reminder today, recording it instead of resending"
+                                    )
+                                    numbers_sent.append(client.phoneNumber)
+                                    if send_texts:
+                                        update_failure_in_db(
+                                            config,
+                                            client.id,
+                                            reason,
+                                            reminded=reminded_count + 1,
+                                            last_reminded=date.today(),
+                                        )
+                                    continue
+
                                 if reason == "portal not opened":
                                     if send_texts:
                                         try:
@@ -644,14 +664,6 @@ def main(
                                         logger.info(
                                             f"[DRY RUN] Would resend portal invite for {client.fullName}"
                                         )
-
-                                message = build_failure_message(config, client)
-                                # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                                if not message:
-                                    logger.error(
-                                        f"Failed to build message for {client.fullName}"
-                                    )
-                                    continue
 
                                 if send_texts:
                                     try:
@@ -752,9 +764,7 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged = already_messaged_today(
-                            quo, numbers_sent, client.phoneNumber, today_business
-                        )
+                        already_messaged = client.phoneNumber in numbers_sent
 
                         if already_messaged:
                             logger.warning(
@@ -832,6 +842,21 @@ def main(
                                 logger.error(
                                     f"Failed to build message for {client.fullName}"
                                 )
+                                continue
+
+                            # Quo already has this exact text from today: an earlier run
+                            # sent it but never recorded it. Record it now instead of
+                            # texting again.
+                            if (send_texts or dry_run) and quo.has_sent_message(
+                                client.phoneNumber, message, since=today_business
+                            ):
+                                logger.warning(
+                                    f"Quo history shows {client.fullName} already got this reminder today, recording it instead of resending"
+                                )
+                                numbers_sent.append(client.phoneNumber)
+                                if send_texts:
+                                    mark_questionnaires_reminded(client)
+                                    update_questionnaires_in_db(config, [client])
                                 continue
 
                             if send_texts:
@@ -1092,14 +1117,7 @@ def main(
                             f"Sent message for unknown failure reason '{failure_reason}' for {client.fullName}"
                         )
                 elif isinstance(client, ClientWithQuestionnaires):
-                    for q in client.questionnaires:
-                        if q["status"] in (
-                            "PENDING",
-                            "POSTDA_PENDING",
-                            "POSTEVAL_PENDING",
-                        ):
-                            q["reminded"] += 1
-                            q["lastReminded"] = date.today()
+                    mark_questionnaires_reminded(client)
                     clients_to_update_db.append(client)
 
                 try:

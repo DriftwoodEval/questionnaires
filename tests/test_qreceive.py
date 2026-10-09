@@ -7,8 +7,8 @@ from qreceive import (
     _deserialize_email_info,
     _merge_email_infos,
     _serialize_email_info,
-    already_messaged_today,
     build_failure_message,
+    mark_questionnaires_reminded,
     should_send_reminder,
 )
 from utils.custom_types import AdminEmailInfo, FailedClientFromDB
@@ -146,19 +146,15 @@ class TestEmailInfoSerializationRoundTrip:
         assert round_tripped["errors"] == ["some error"]
 
 
-class TestAlreadyMessagedToday:
-    def test_true_when_sent_earlier_this_run(self):
-        quo = MagicMock()
-        assert already_messaged_today(quo, ["555"], "555", date(2026, 1, 1))
-        quo.has_texted_client.assert_not_called()
-
-    def test_true_when_quo_history_shows_outgoing_today(self):
-        quo = MagicMock()
-        quo.has_texted_client.return_value = True
-        assert already_messaged_today(quo, [], "555", date(2026, 1, 1))
-        quo.has_texted_client.assert_called_once_with("555", since=date(2026, 1, 1))
-
-    def test_false_when_no_send_anywhere(self):
-        quo = MagicMock()
-        quo.has_texted_client.return_value = False
-        assert not already_messaged_today(quo, ["999"], "555", date(2026, 1, 1))
+class TestMarkQuestionnairesReminded:
+    def test_only_pending_questionnaires_are_counted(self):
+        client = MagicMock()
+        client.questionnaires = [
+            {"status": "PENDING", "reminded": 1, "lastReminded": None},
+            {"status": "COMPLETED", "reminded": 1, "lastReminded": None},
+        ]
+        mark_questionnaires_reminded(client)
+        assert client.questionnaires[0]["reminded"] == 2
+        assert client.questionnaires[0]["lastReminded"] == date.today()
+        assert client.questionnaires[1]["reminded"] == 1
+        assert client.questionnaires[1]["lastReminded"] is None

@@ -181,19 +181,26 @@ class Quo:
         """Return True if the client has sent us an incoming message, optionally since a given date."""
         return self._has_message(client_phone, "incoming", since)
 
-    def has_texted_client(self, client_phone: str, since: date | None = None) -> bool:
-        """Return True if we have sent the client an outgoing message, optionally since a given date.
+    def has_sent_message(
+        self, client_phone: str, content: str, since: date | None = None
+    ) -> bool:
+        """Return True if we already sent the client this exact text, optionally since a given date.
 
         Reads Quo's message history, so it catches sends our own DB never
         recorded (e.g. a failed state write after an earlier run's text).
         """
-        return self._has_message(client_phone, "outgoing", since)
+        return self._has_message(client_phone, "outgoing", since, content=content)
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return " ".join(text.split())
 
     def _has_message(
         self,
         client_phone: str,
         direction: Literal["incoming", "outgoing"],
         since: date | None,
+        content: str | None = None,
     ) -> bool:
         phone_number_id = self._get_phone_number_id()
         if not phone_number_id:
@@ -229,6 +236,14 @@ class Quo:
             response = self.session.get(url, params=params)
             response.raise_for_status()
             data = response.json().get("data", [])
+
+            if content is not None:
+                wanted = self._normalize_text(content)
+                data = [
+                    msg
+                    for msg in data
+                    if self._normalize_text(msg.get("text") or "") == wanted
+                ]
 
             if since_dt is None:
                 return len(data) > 0
