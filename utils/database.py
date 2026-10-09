@@ -1214,6 +1214,31 @@ def get_assessment_types(config: Config) -> list[dict]:
     ]
 
 
+def _get_most_recent_appointment_dates(
+    config: Config, daeval_types: tuple[str, ...]
+) -> dict[int, date]:
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        placeholders = ", ".join(["%s"] * len(daeval_types))
+        sql = f"""
+            SELECT clientId, MAX(startTime) AS mostRecent
+            FROM emr_appointment
+            WHERE daEval IN ({placeholders})
+              AND cancelled = 0
+              AND billingOnly = 0
+              AND placeholder = 0
+            GROUP BY clientId
+        """
+        cursor.execute(sql, daeval_types)
+        rows = cursor.fetchall()
+
+    return {
+        row["clientId"]: row["mostRecent"].date()
+        for row in rows
+        if row["mostRecent"] is not None
+    }
+
+
 def get_most_recent_eval_appointment_dates(config: Config) -> dict[int, date]:
     """Return a map of clientId to the start date of their most recent eval appointment.
 
@@ -1221,25 +1246,17 @@ def get_most_recent_eval_appointment_dates(config: Config) -> dict[int, date]:
     eligibility: their age at their most recent eval appointment if they have
     one, otherwise their current age.
     """
-    db_connection = get_db(config)
-    with db_connection, db_connection.cursor() as cursor:
-        sql = """
-            SELECT clientId, MAX(startTime) AS mostRecentEval
-            FROM emr_appointment
-            WHERE daEval IN ('EVAL', 'DAEVAL')
-              AND cancelled = 0
-              AND billingOnly = 0
-              AND placeholder = 0
-            GROUP BY clientId
-        """
-        cursor.execute(sql)
-        rows = cursor.fetchall()
+    return _get_most_recent_appointment_dates(config, ("EVAL", "DAEVAL"))
 
-    return {
-        row["clientId"]: row["mostRecentEval"].date()
-        for row in rows
-        if row["mostRecentEval"] is not None
-    }
+
+def get_most_recent_da_appointment_dates(config: Config) -> dict[int, date]:
+    """Return a map of clientId to the start date of their most recent DA appointment."""
+    return _get_most_recent_appointment_dates(config, ("DA", "DAEVAL"))
+
+
+def get_most_recent_daeval_appointment_dates(config: Config) -> dict[int, date]:
+    """Return a map of clientId to the start date of their most recent DAEVAL appointment."""
+    return _get_most_recent_appointment_dates(config, ("DAEVAL",))
 
 
 def get_self_report_writer_for_client(config: Config, client_id: int) -> str | None:

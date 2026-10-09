@@ -20,6 +20,8 @@ from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Config, Services
 from utils.database import (
     get_client_id_to_hash_map,
+    get_most_recent_da_appointment_dates,
+    get_most_recent_daeval_appointment_dates,
     get_most_recent_eval_appointment_dates,
     get_previous_clients,
     get_questionnaire_rules,
@@ -709,6 +711,8 @@ def main(
     prev_clients, prev_failed_clients = get_previous_clients(config, failed=True)
     questionnaire_rules = get_questionnaire_rules(config)
     eval_dates = get_most_recent_eval_appointment_dates(config)
+    da_dates = get_most_recent_da_appointment_dates(config)
+    daeval_dates = get_most_recent_daeval_appointment_dates(config)
 
     if clients is None or clients.empty:
         logger.critical("No clients marked to send, exiting")
@@ -1223,6 +1227,26 @@ def main(
                         update_punch_list(config, client_id, "DA Qs Sent", "TRUE")
                         update_punch_list(config, client_id, "EVAL Qs Sent", "TRUE")
 
+                    if daeval == "EVAL":
+                        matching_appointment_date = eval_dates.get(client_from_db.id)
+                        postpending_status = "POSTEVAL_PENDING"
+                    elif daeval == "DA":
+                        matching_appointment_date = da_dates.get(client_from_db.id)
+                        postpending_status = "POSTDA_PENDING"
+                    else:
+                        matching_appointment_date = daeval_dates.get(client_from_db.id)
+                        postpending_status = "POSTEVAL_PENDING"
+
+                    had_matching_recent_appointment = (
+                        matching_appointment_date is not None
+                        and (today - matching_appointment_date).days <= 30
+                    )
+                    send_status = (
+                        postpending_status
+                        if had_matching_recent_appointment
+                        else "PENDING"
+                    )
+
                     if client["Language"] != "Spanish":
                         for questionnaire in questionnaires:
                             update_questionnaire_in_db(
@@ -1230,7 +1254,7 @@ def main(
                                 client["Client ID"],
                                 questionnaire["type"],
                                 today_str,
-                                "PENDING",
+                                send_status,
                             )
 
                     message = format_ta_message(questionnaires)
