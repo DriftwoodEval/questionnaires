@@ -15,6 +15,7 @@ from utils.custom_types import (
     ClientWithQuestionnaires,
     Config,
     FailedClientFromDB,
+    Questionnaire,
     Services,
     validate_questionnaires,
 )
@@ -43,7 +44,9 @@ from utils.google import (
 )
 from utils.messages import (
     CHARTER_SCHOOL_FORMS_MESSAGE,
+    REMINDER_STAGES,
     build_referral_message,
+    infer_reminder_progress,
     is_potential_private_pay,
     render_reminder_message,
     resolve_reminder_variant,
@@ -69,7 +72,7 @@ from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
-from utils.timezone import now_business
+from utils.timezone import now_business, utc_to_business
 
 logger.remove()
 logger.add(
@@ -242,6 +245,52 @@ def build_failure_message(config: Config, client: FailedClientFromDB) -> str | N
             return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
 
     return None
+
+
+def reconcile_reminders_from_history(
+    config: Config,
+    quo: Quo,
+    client: ClientWithQuestionnaires,
+    most_recent_q: Questionnaire,
+    *,
+    templates: dict[tuple[int, str], str],
+    overrides: dict[tuple[int, date, int], str],
+    dry_run: bool,
+) -> bool:
+    """Catches the stored reminder count up with the reminders Quo shows we already sent.
+
+    The stage is read from which reminder template each text fits, not from how
+    many texts went out, and the stored count and last-reminded date are only
+    ever raised, never lowered. Returns True when the stored state changed.
+    """
+    if most_recent_q["reminded"] >= len(REMINDER_STAGES) or not client.phoneNumber:
+        return False
+
+    sent_texts = quo.get_sent_texts(client.phoneNumber, since=most_recent_q["sent"])
+    stage_overrides = {
+        stage: message
+        for (client_id, batch_sent, stage), message in overrides.items()
+        if client_id == client.id and batch_sent == most_recent_q["sent"]
+    }
+    progress = infer_reminder_progress(sent_texts, templates, stage_overrides)
+    if progress is None or progress[0] <= most_recent_q["reminded"]:
+        return False
+
+    reminded, last_sent = progress
+    last_reminded = utc_to_business(last_sent, config.business_timezone).date()
+    logger.warning(
+        f"Quo history shows {client.fullName} already got reminder stage {reminded} on {last_reminded}, "
+        f"but the stored count is {most_recent_q['reminded']}. Raising it."
+    )
+    for q in client.questionnaires:
+        if q["status"] not in ("PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"):
+            continue
+        q["reminded"] = max(q["reminded"], reminded)
+        if q["lastReminded"] is None or q["lastReminded"] < last_reminded:
+            q["lastReminded"] = last_reminded
+    if not dry_run:
+        update_questionnaires_in_db(config, [client])
+    return True
 
 
 def mark_questionnaires_reminded(client: ClientWithQuestionnaires) -> None:
@@ -764,6 +813,21 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
+                        if (send_texts or dry_run) and reconcile_reminders_from_history(
+                            config,
+                            quo,
+                            client,
+                            most_recent_q,
+                            templates=reminder_templates,
+                            overrides=reminder_overrides,
+                            dry_run=dry_run,
+                        ):
+                            reconciled_last_reminded = most_recent_q["lastReminded"]
+                            if reconciled_last_reminded is not None:
+                                last_reminded_distance = check_distance(
+                                    reconciled_last_reminded
+                                )
+
                         already_messaged = client.phoneNumber in numbers_sent
 
                         if already_messaged:
@@ -842,21 +906,6 @@ def main(
                                 logger.error(
                                     f"Failed to build message for {client.fullName}"
                                 )
-                                continue
-
-                            # Quo already has this exact text from today: an earlier run
-                            # sent it but never recorded it. Record it now instead of
-                            # texting again.
-                            if (send_texts or dry_run) and quo.has_sent_message(
-                                client.phoneNumber, message, since=today_business
-                            ):
-                                logger.warning(
-                                    f"Quo history shows {client.fullName} already got this reminder today, recording it instead of resending"
-                                )
-                                numbers_sent.append(client.phoneNumber)
-                                if send_texts:
-                                    mark_questionnaires_reminded(client)
-                                    update_questionnaires_in_db(config, [client])
                                 continue
 
                             if send_texts:

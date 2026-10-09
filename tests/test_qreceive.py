@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import UTC, date, datetime
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,9 +10,10 @@ from qreceive import (
     _serialize_email_info,
     build_failure_message,
     mark_questionnaires_reminded,
+    reconcile_reminders_from_history,
     should_send_reminder,
 )
-from utils.custom_types import AdminEmailInfo, FailedClientFromDB
+from utils.custom_types import AdminEmailInfo, FailedClientFromDB, Questionnaire
 
 
 def make_empty_email_info() -> AdminEmailInfo:
@@ -158,3 +160,77 @@ class TestMarkQuestionnairesReminded:
         assert client.questionnaires[0]["lastReminded"] == date.today()
         assert client.questionnaires[1]["reminded"] == 1
         assert client.questionnaires[1]["lastReminded"] is None
+
+
+class TestReconcileRemindersFromHistory:
+    @staticmethod
+    def _setup(reminded, last_reminded, sent_texts):
+        client = MagicMock()
+        client.id = 7
+        client.phoneNumber = "8435550100"
+        q = cast(
+            "Questionnaire",
+            {
+                "status": "PENDING",
+                "sent": date(2026, 1, 1),
+                "reminded": reminded,
+                "lastReminded": last_reminded,
+            },
+        )
+        client.questionnaires = [q]
+        quo = MagicMock()
+        quo.get_sent_texts.return_value = sent_texts
+        config = MagicMock(business_timezone="America/New_York")
+        return config, quo, client, q
+
+    @staticmethod
+    def _stage_one_text():
+        return (
+            "Hello, this is Dr A with Driftwood Evaluation Center. We are waiting "
+            "for you to complete the questionnaire sent to you on 01/01 (5 days "
+            "ago). We are unable to schedule your appointment until it is "
+            "completed in its entirety. You can find it in the messages tab in "
+            "our patient portal: https://portal.therapyappointment.com Please "
+            "reply to this text with any questions. Thank you for your help."
+        )
+
+    def test_raises_count_from_template_not_text_count(self, monkeypatch):
+        monkeypatch.setattr("qreceive.update_questionnaires_in_db", MagicMock())
+        text = self._stage_one_text()
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        # The same stage-2 reminder went out three times: the count is still 2.
+        config, quo, client, q = self._setup(1, date(2026, 1, 1), [(text, sent)] * 3)
+        assert reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        assert q["reminded"] == 2
+        assert q["lastReminded"] == date(2026, 1, 6)
+
+    def test_never_lowers_a_higher_stored_count(self, monkeypatch):
+        update = MagicMock()
+        monkeypatch.setattr("qreceive.update_questionnaires_in_db", update)
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        config, quo, client, q = self._setup(
+            2, date(2026, 1, 8), [(self._stage_one_text(), sent)]
+        )
+        assert not reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        assert q["reminded"] == 2
+        assert q["lastReminded"] == date(2026, 1, 8)
+        update.assert_not_called()
+
+    def test_unrelated_texts_change_nothing(self):
+        sent = datetime(2026, 1, 6, 15, tzinfo=UTC)
+        config, quo, client, q = self._setup(0, None, [("See you Tuesday!", sent)])
+        assert not reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        assert q["reminded"] == 0
+
+    def test_skips_quo_lookup_when_count_already_maxed(self):
+        config, quo, client, q = self._setup(3, date(2026, 1, 8), [])
+        assert not reconcile_reminders_from_history(
+            config, quo, client, q, templates={}, overrides={}, dry_run=False
+        )
+        quo.get_sent_texts.assert_not_called()

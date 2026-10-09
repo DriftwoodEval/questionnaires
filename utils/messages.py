@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -261,3 +262,60 @@ def render_reminder_message(
     for placeholder, value in substitutions.items():
         message = message.replace(placeholder, value)
     return message
+
+
+_PLACEHOLDER = re.compile(r"\$[A-Z_]+")
+REMINDER_STAGES = (0, 1, 2)
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _template_pattern(template: str) -> re.Pattern[str]:
+    """Compiles a reminder template into a regex where each $PLACEHOLDER matches any text."""
+    literals = _PLACEHOLDER.split(_normalize_text(template))
+    return re.compile(".+?".join(re.escape(literal) for literal in literals), re.DOTALL)
+
+
+def infer_reminder_progress(
+    sent_texts: list[tuple[str, datetime]],
+    templates: dict[tuple[int, str], str],
+    overrides: dict[int, str],
+) -> tuple[int, datetime] | None:
+    """Works out how far through the reminder stages a client already is, from texts we sent them.
+
+    A text counts as a stage's reminder when it fits any template for that
+    stage (any variant, or the client's override for it) with its
+    placeholders filled in. The reminder count is the highest stage seen plus
+    one, so repeated sends of the same stage never raise it. Returns that
+    count and when the latest text of that stage was sent, or None if no sent
+    text fits a template.
+    """
+    all_templates = {**DEFAULT_REMINDER_TEMPLATES, **templates}
+    patterns_by_stage = {
+        stage: [
+            _template_pattern(template)
+            for (index, _variant), template in all_templates.items()
+            if index == stage
+        ]
+        + ([_template_pattern(overrides[stage])] if stage in overrides else [])
+        for stage in REMINDER_STAGES
+    }
+
+    latest: tuple[int, datetime] | None = None
+    for text, sent_at in sent_texts:
+        normalized = _normalize_text(text)
+        for stage in REMINDER_STAGES:
+            if not any(p.fullmatch(normalized) for p in patterns_by_stage[stage]):
+                continue
+            if (
+                latest is None
+                or stage > latest[0]
+                or (stage == latest[0] and sent_at > latest[1])
+            ):
+                latest = (stage, sent_at)
+            break
+    if latest is None:
+        return None
+    return latest[0] + 1, latest[1]

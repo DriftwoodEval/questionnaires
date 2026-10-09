@@ -179,32 +179,44 @@ class Quo:
 
     def has_client_replied(self, client_phone: str, since: date | None = None) -> bool:
         """Return True if the client has sent us an incoming message, optionally since a given date."""
-        return self._has_message(client_phone, "incoming", since)
+        return len(self._get_messages(client_phone, "incoming", since)) > 0
+
+    def get_sent_texts(
+        self, client_phone: str, since: date | None = None
+    ) -> list[tuple[str, datetime]]:
+        """Return the (text, sent time) of messages we sent the client, optionally since a given date.
+
+        Reads Quo's message history, so it includes texts our own DB never
+        recorded (e.g. a failed state write after an earlier run's text).
+        """
+        return [
+            (msg.get("text") or "", sent_at)
+            for msg, sent_at in self._get_messages(client_phone, "outgoing", since)
+        ]
 
     def has_sent_message(
         self, client_phone: str, content: str, since: date | None = None
     ) -> bool:
-        """Return True if we already sent the client this exact text, optionally since a given date.
+        """Return True if we already sent the client this exact text, optionally since a given date."""
+        wanted = " ".join(content.split())
+        return any(
+            " ".join(text.split()) == wanted
+            for text, _ in self.get_sent_texts(client_phone, since)
+        )
 
-        Reads Quo's message history, so it catches sends our own DB never
-        recorded (e.g. a failed state write after an earlier run's text).
-        """
-        return self._has_message(client_phone, "outgoing", since, content=content)
-
-    @staticmethod
-    def _normalize_text(text: str) -> str:
-        return " ".join(text.split())
-
-    def _has_message(
+    def _get_messages(
         self,
         client_phone: str,
         direction: Literal["incoming", "outgoing"],
         since: date | None,
-        content: str | None = None,
-    ) -> bool:
+    ) -> list[tuple[dict, datetime]]:
+        """Fetch recent messages in one direction as (message, created time) pairs, newest-window of 25.
+
+        Returns an empty list when the lookup fails or the number is malformed.
+        """
         phone_number_id = self._get_phone_number_id()
         if not phone_number_id:
-            return False
+            return []
 
         digits = "".join(filter(str.isdigit, client_phone))
         if len(digits) == 10:
@@ -215,7 +227,7 @@ class Quo:
             logger.warning(
                 f"Cannot check {direction} messages for malformed number: {client_phone}"
             )
-            return False
+            return []
 
         try:
             url = f"{API_BASE}messages"
@@ -235,21 +247,9 @@ class Quo:
 
             response = self.session.get(url, params=params)
             response.raise_for_status()
-            data = response.json().get("data", [])
 
-            if content is not None:
-                wanted = self._normalize_text(content)
-                data = [
-                    msg
-                    for msg in data
-                    if self._normalize_text(msg.get("text") or "") == wanted
-                ]
-
-            if since_dt is None:
-                return len(data) > 0
-
-            # Client-side filter as a fallback in case the API ignores createdAfter
-            for msg in data:
+            messages = []
+            for msg in response.json().get("data", []):
                 created_at = msg.get("createdAt") or msg.get("createdAtMs")
                 if created_at is None:
                     continue
@@ -257,14 +257,15 @@ class Quo:
                     msg_dt = datetime.fromtimestamp(created_at / 1000, tz=UTC)
                 else:
                     msg_dt = datetime.fromisoformat(str(created_at))
-                if msg_dt >= since_dt:
-                    return True
-            return False
+                # Client-side filter as a fallback in case the API ignores createdAfter
+                if since_dt is None or msg_dt >= since_dt:
+                    messages.append((msg, msg_dt))
+            return messages
         except Exception as e:
             logger.error(
                 f"Failed to check {direction} messages for {client_phone}: {e}"
             )
-            return False
+            return []
 
     @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
     @_retry_network
