@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -6,6 +7,7 @@ from qreceive import (
     _deserialize_email_info,
     _merge_email_infos,
     _serialize_email_info,
+    already_messaged_today,
     build_failure_message,
     should_send_reminder,
 )
@@ -142,3 +144,21 @@ class TestEmailInfoSerializationRoundTrip:
         assert isinstance(round_tripped["call"][1], FailedClientFromDB)
         assert round_tripped["failed"] == [(failed_client, "portal not opened")]
         assert round_tripped["errors"] == ["some error"]
+
+
+class TestAlreadyMessagedToday:
+    def test_true_when_sent_earlier_this_run(self):
+        quo = MagicMock()
+        assert already_messaged_today(quo, ["555"], "555", date(2026, 1, 1))
+        quo.has_texted_client.assert_not_called()
+
+    def test_true_when_quo_history_shows_outgoing_today(self):
+        quo = MagicMock()
+        quo.has_texted_client.return_value = True
+        assert already_messaged_today(quo, [], "555", date(2026, 1, 1))
+        quo.has_texted_client.assert_called_once_with("555", since=date(2026, 1, 1))
+
+    def test_false_when_no_send_anywhere(self):
+        quo = MagicMock()
+        quo.has_texted_client.return_value = False
+        assert not already_messaged_today(quo, ["999"], "555", date(2026, 1, 1))

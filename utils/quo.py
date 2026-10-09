@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from typing import Literal
 
 import requests
 from loguru import logger
@@ -178,6 +179,22 @@ class Quo:
 
     def has_client_replied(self, client_phone: str, since: date | None = None) -> bool:
         """Return True if the client has sent us an incoming message, optionally since a given date."""
+        return self._has_message(client_phone, "incoming", since)
+
+    def has_texted_client(self, client_phone: str, since: date | None = None) -> bool:
+        """Return True if we have sent the client an outgoing message, optionally since a given date.
+
+        Reads Quo's message history, so it catches sends our own DB never
+        recorded (e.g. a failed state write after an earlier run's text).
+        """
+        return self._has_message(client_phone, "outgoing", since)
+
+    def _has_message(
+        self,
+        client_phone: str,
+        direction: Literal["incoming", "outgoing"],
+        since: date | None,
+    ) -> bool:
         phone_number_id = self._get_phone_number_id()
         if not phone_number_id:
             return False
@@ -188,7 +205,9 @@ class Quo:
         elif len(digits) == 11 and digits.startswith("1"):
             clean_phone = "+" + digits
         else:
-            logger.warning(f"Cannot check replies for malformed number: {client_phone}")
+            logger.warning(
+                f"Cannot check {direction} messages for malformed number: {client_phone}"
+            )
             return False
 
         try:
@@ -196,7 +215,7 @@ class Quo:
             params: list[tuple[str, str]] = [
                 ("phoneNumberId", phone_number_id),
                 ("participants", clean_phone),
-                ("direction", "incoming"),
+                ("direction", direction),
                 ("maxResults", "25"),
             ]
             since_dt = (
@@ -227,7 +246,9 @@ class Quo:
                     return True
             return False
         except Exception as e:
-            logger.error(f"Failed to check incoming messages for {client_phone}: {e}")
+            logger.error(
+                f"Failed to check {direction} messages for {client_phone}: {e}"
+            )
             return False
 
     @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)

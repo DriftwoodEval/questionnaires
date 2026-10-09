@@ -244,6 +244,20 @@ def build_failure_message(config: Config, client: FailedClientFromDB) -> str | N
     return None
 
 
+def already_messaged_today(
+    quo: Quo, numbers_sent: list[str], phone_number: str, today: date
+) -> bool:
+    """Whether this number was texted earlier in this run or earlier today by anyone.
+
+    Quo's message history is checked in addition to this run's sends, so a
+    reminder whose state was never recorded (a crash, a failed DB write, an
+    overlapping run) can't go out a second time in the same day.
+    """
+    return phone_number in numbers_sent or quo.has_texted_client(
+        phone_number, since=today
+    )
+
+
 def should_send_reminder(
     reminded_count: int, last_reminded_distance: int, settings: dict
 ) -> bool:
@@ -514,7 +528,8 @@ def main(
             messages_sent: list[
                 tuple[FailedClientFromDB | ClientWithQuestionnaires, str, str | None]
             ] = []
-            numbers_sent = []
+            numbers_sent: list[str] = []
+            today_business = now_business(config.business_timezone).date()
 
             completed_ids = {c.id for c in email_info["completed"]}
             if failed_clients and not skip_failures:
@@ -571,9 +586,11 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged_today = client.phoneNumber in numbers_sent
+                        already_messaged = already_messaged_today(
+                            quo, numbers_sent, client.phoneNumber, today_business
+                        )
 
-                        if already_messaged_today:
+                        if already_messaged:
                             logger.warning(
                                 f"Already messaged {client.fullName} at {client.phoneNumber} today"
                             )
@@ -596,7 +613,7 @@ def main(
 
                         elif (
                             reminded_count < 3
-                            and not already_messaged_today
+                            and not already_messaged
                             and client.phoneNumber
                         ):
                             if should_send_reminder(
@@ -735,9 +752,11 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged_today = client.phoneNumber in numbers_sent
+                        already_messaged = already_messaged_today(
+                            quo, numbers_sent, client.phoneNumber, today_business
+                        )
 
-                        if already_messaged_today:
+                        if already_messaged:
                             logger.warning(
                                 f"Already messaged {client.fullName} at {client.phoneNumber} today"
                             )
@@ -751,7 +770,7 @@ def main(
 
                         elif (
                             most_recent_q["reminded"] < 3
-                            and not already_messaged_today
+                            and not already_messaged
                             and client.phoneNumber
                             and should_send_reminder(
                                 most_recent_q["reminded"],
@@ -1043,51 +1062,51 @@ def main(
             clients_to_update_db = []
 
             for client, message_id, failure_reason in messages_sent:
-                try:
-                    delivered = quo.check_text_delivered(message_id)
+                # Quo accepted the message, so the reminder counts as sent whether
+                # or not delivery is confirmed. Recording it only on confirmed
+                # delivery re-sends the same reminder every run for a number whose
+                # delivery status never settles. Delivery problems are reported to
+                # staff instead.
+                if failure_reason is not None and isinstance(
+                    client, FailedClientFromDB
+                ):
+                    failure_to_update = next(
+                        (
+                            f
+                            for f in client.failure
+                            if f.get("reason") == failure_reason
+                        ),
+                        None,
+                    )
+                    if failure_to_update:
+                        clients_to_update_db.append(
+                            (
+                                client.id,
+                                failure_reason,
+                                failure_to_update["reminded"] + 1,
+                                date.today(),
+                            )
+                        )
+                    else:
+                        logger.error(
+                            f"Sent message for unknown failure reason '{failure_reason}' for {client.fullName}"
+                        )
+                elif isinstance(client, ClientWithQuestionnaires):
+                    for q in client.questionnaires:
+                        if q["status"] in (
+                            "PENDING",
+                            "POSTDA_PENDING",
+                            "POSTEVAL_PENDING",
+                        ):
+                            q["reminded"] += 1
+                            q["lastReminded"] = date.today()
+                    clients_to_update_db.append(client)
 
-                    if delivered:
+                try:
+                    if quo.check_text_delivered(message_id):
                         logger.success(
                             f"Successfully delivered message to {client.fullName} ({message_id})"
                         )
-
-                        if failure_reason is not None and isinstance(
-                            client, FailedClientFromDB
-                        ):
-                            failure_to_update = next(
-                                (
-                                    f
-                                    for f in client.failure
-                                    if f.get("reason") == failure_reason
-                                ),
-                                None,
-                            )
-                            if failure_to_update:
-                                new_reminded_count = failure_to_update["reminded"] + 1
-                                today = date.today()
-
-                                clients_to_update_db.append(
-                                    (
-                                        client.id,
-                                        failure_reason,
-                                        new_reminded_count,
-                                        today,
-                                    )
-                                )
-                            else:
-                                logger.error(
-                                    f"Delivered message for unknown failure reason '{failure_reason}' for {client.fullName}"
-                                )
-                        elif isinstance(client, ClientWithQuestionnaires):
-                            for q in client.questionnaires:
-                                if (
-                                    q["status"] == "PENDING"
-                                    or q["status"] == "POSTDA_PENDING"
-                                    or q["status"] == "POSTEVAL_PENDING"
-                                ):
-                                    q["reminded"] += 1
-                                    q["lastReminded"] = date.today()
-                            clients_to_update_db.append(client)
                     else:
                         logger.error(
                             f"Failed to deliver message to {client.fullName} ({message_id})"
