@@ -166,7 +166,7 @@ class Quo:
         response = self.session.get(url)
         response.raise_for_status()
         for pn in response.json().get("data", []):
-            if pn.get("phoneNumber") == self.main_number:
+            if pn.get("number") == self.main_number:
                 return pn["id"]
         logger.warning(f"Could not find phone number ID for {self.main_number}")
         return None
