@@ -8,6 +8,9 @@ Automation for Driftwood Evaluation Center's client questionnaire workflow: send
 
 ## Testing
 - Prefer `pytest.mark.parametrize` over near-duplicate test methods that only vary in input/expected values. Only keep separate test methods when the setup or assertions genuinely differ.
+- When changing a function's signature, return shape, or behavior, grep its test files for every call site and check whether existing tests still hold, not just whether they still pass. If a change will break a test, say so and either update the test yourself or flag it with the specific test name and why, don't leave it for CI to discover. Don't delete or weaken a test to make it pass; fix the test's expectations to match the new intended behavior, or fix the code if the test caught a real regression.
+- Run `mise run check` after editing Python, ahead of pytest: a ruff failure (unused import, bad type annotation) is often the faster signal, and trust its output over your own assumptions about Python syntax validity.
+- This repo has no live browser or end-to-end tests to stand up; verify changes via pytest and `mise run check` only.
 
 ## Architecture
 
