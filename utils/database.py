@@ -27,7 +27,7 @@ from utils.timezone import business_date_to_utc, now_business
 # endpoints (this path uses the script's own DB credentials, not the
 # API_KEY-authed internal API).
 AUDIT_LOG_ACTOR_ID = "system:questionnaires-db"
-AUDIT_LOG_ACTOR_EMAIL = "questionnaires (direct DB write)"
+AUDIT_LOG_ACTOR_EMAIL = "Questionnaires app (DB write)"
 
 
 def record_audit_log(
