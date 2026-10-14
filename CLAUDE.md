@@ -4,7 +4,7 @@ Automation for Driftwood Evaluation Center's client questionnaire workflow: send
 - No AI-isms (filler, hedging, "as an AI"), no em dashes, no overly clever/terse one-liners. Keep it simple and DRY.
 
 ## Commands
-- `mise run check` to lint. Trust its output over your own assumptions about Python syntax validity.
+- `mise run check` to lint. Trust its output over your own assumptions about Python syntax validity. deptry runs as part of it but is advisory: it prints findings and never fails the check or the pre-commit hook.
 
 ## Testing
 - Prefer `pytest.mark.parametrize` over near-duplicate test methods that only vary in input/expected values. Only keep separate test methods when the setup or assertions genuinely differ.
