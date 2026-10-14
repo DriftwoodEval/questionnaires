@@ -478,8 +478,11 @@ wheels = [
 [[package]]
 name = "driftwood-common"
 version = "0.1.0"
-source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F5-log-format#9b06ffa8eef449390f38a8f958a3cf9f12c78ab1" }
+source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F6-gmail#c18f62262fc121734324ca9a5705a0d96c296e68" }
 dependencies = [
+    { name = "google-api-python-client" },
+    { name = "google-auth-httplib2" },
+    { name = "httplib2" },
     { name = "loguru" },
     { name = "ratelimit" },
     { name = "requests" },
@@ -1305,7 +1308,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "driftwood-common", git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F5-log-format" },
+    { name = "driftwood-common", git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F6-gmail" },
     { name = "google", specifier = ">=3.0.0" },
     { name = "google-api-python-client", specifier = ">=2.194.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.1" },

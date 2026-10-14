@@ -1,16 +1,16 @@
-import base64
 import mimetypes
 import os
 import re
 import time
 from collections.abc import Sequence
 from datetime import date
-from email.message import EmailMessage
 from functools import cache
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from driftwood_common import gmail
+from driftwood_common.google_service import build_google_service
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -94,6 +94,11 @@ def google_authenticate():
     return creds
 
 
+def _gmail_service():
+    """A Gmail service with a request timeout, using the authenticated credentials."""
+    return build_google_service("gmail", "v1", google_authenticate())
+
+
 def send_gmail(
     message_text: str,
     subject: str,
@@ -114,71 +119,29 @@ def send_gmail(
         cc_addr (Optional[str]): The CC recipient's email address, can be a comma-separated list (optional)
         html (Optional[str]): The HTML version of the message (optional)
         attachments (Optional[list[dict]]): A list of attachments, where each attachment is a dict with "stream" and "filename" keys (optional)
+
+    Returns Gmail's response, or None if sending failed.
     """
-    creds = google_authenticate()
+    shared_attachments = [
+        (attachment["stream"].getvalue(), attachment["filename"])
+        for attachment in attachments or []
+        if attachment.get("stream") and attachment.get("filename")
+    ]
 
     try:
-        service = build("gmail", "v1", credentials=creds)
-
-        message = EmailMessage()
-        message.set_content(message_text)
-        message["Subject"] = subject
-        message["To"] = to_addr
-        message["From"] = from_addr
-        if cc_addr:
-            message["Cc"] = cc_addr
-
-        if html:
-            message.add_alternative(html, subtype="html")
-
-        if attachments:
-            for attachment in attachments:
-                if attachment.get("stream") and attachment.get("filename"):
-                    pdf_bytes = attachment["stream"].getvalue()
-                    message.add_attachment(
-                        pdf_bytes,
-                        maintype="application",
-                        subtype="pdf",
-                        filename=attachment["filename"],
-                    )
-
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
-        create_message = {"raw": encoded_message}
-
-        send_message = (
-            service.users().messages().send(userId="me", body=create_message).execute()
+        return gmail.send_email(
+            _gmail_service(),
+            message_text,
+            subject,
+            to_addr,
+            from_addr,
+            cc_addr=cc_addr,
+            html=html,
+            attachments=shared_attachments,
         )
-
-        logger.info(f"Sent email to {to_addr}: {subject}")
-
     except Exception:
         logger.exception("Failed to send email")
-        send_message = None
-    return send_message
-
-
-def _get_message_body(payload: dict) -> tuple[str | None, str | None]:
-    """Walk a Gmail message payload's MIME parts, returning (text_plain, text_html)."""
-    text_plain = None
-    text_html = None
-
-    def decode(data: str) -> str:
-        return base64.urlsafe_b64decode(data.encode()).decode("utf-8", errors="replace")
-
-    def walk(part: dict) -> None:
-        nonlocal text_plain, text_html
-        mime_type = part.get("mimeType", "")
-        body_data = part.get("body", {}).get("data")
-        if mime_type == "text/plain" and body_data and text_plain is None:
-            text_plain = decode(body_data)
-        elif mime_type == "text/html" and body_data and text_html is None:
-            text_html = decode(body_data)
-        for subpart in part.get("parts", []):
-            walk(subpart)
-
-    walk(payload)
-    return text_plain, text_html
+        return None
 
 
 def list_gmail_messages(
@@ -191,28 +154,7 @@ def list_gmail_messages(
     Paginates until max_results is reached. Returns the raw {"id", "threadId"}
     stubs; use get_gmail_message() to fetch full content.
     """
-    creds = google_authenticate()
-    service = build("gmail", "v1", credentials=creds)
-    messages: list[dict] = []
-    page_token = None
-    while len(messages) < max_results:
-        response = (
-            service.users()
-            .messages()
-            .list(
-                userId="me",
-                q=query,
-                labelIds=label_ids,
-                pageToken=page_token,
-                maxResults=min(max_results - len(messages), 500),
-            )
-            .execute()
-        )
-        messages.extend(response.get("messages", []))
-        page_token = response.get("nextPageToken")
-        if page_token is None:
-            break
-    return messages[:max_results]
+    return gmail.list_message_stubs(_gmail_service(), query, label_ids, max_results)
 
 
 def get_gmail_message(message_id: str) -> dict:
@@ -220,39 +162,12 @@ def get_gmail_message(message_id: str) -> dict:
 
     Returns a dict with subject, from, to, date, snippet, body_text, body_html.
     """
-    creds = google_authenticate()
-    service = build("gmail", "v1", credentials=creds)
-    message = (
-        service.users()
-        .messages()
-        .get(userId="me", id=message_id, format="full")
-        .execute()
-    )
-
-    payload = message.get("payload", {})
-    headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
-    body_text, body_html = _get_message_body(payload)
-
-    return {
-        "id": message["id"],
-        "thread_id": message.get("threadId"),
-        "subject": headers.get("subject"),
-        "from": headers.get("from"),
-        "to": headers.get("to"),
-        "date": headers.get("date"),
-        "snippet": message.get("snippet"),
-        "body_text": body_text,
-        "body_html": body_html,
-    }
+    return gmail.get_message(_gmail_service(), message_id)
 
 
 def mark_gmail_message_read(message_id: str) -> None:
     """Remove the UNREAD label from a Gmail message."""
-    creds = google_authenticate()
-    service = build("gmail", "v1", credentials=creds)
-    service.users().messages().modify(
-        userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
-    ).execute()
+    gmail.mark_read(_gmail_service(), message_id)
 
 
 PEARSON_VERIFICATION_QUERY = (
