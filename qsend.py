@@ -624,6 +624,15 @@ def diagnose_client(
     try:
         check_and_login_ta(driver, services, first_time=True)
 
+        questionnaire_rules = get_questionnaire_rules(config)
+        questionnaires_needed = get_questionnaires(
+            age, client["For"], computed_daeval, questionnaire_rules
+        )
+        if isinstance(questionnaires_needed, str):
+            fail(f"Questionnaire battery: {questionnaires_needed}")
+        else:
+            ok(f"Questionnaire battery: {questionnaires_needed}")
+
         if lang != "Spanish":
             client_url = go_to_client(driver, services, str(client_id_raw))
             if not client_url:
@@ -640,15 +649,6 @@ def diagnose_client(
                 warn("Docs not signed (retryable — send is deferred until they are)")
         else:
             logger.info("Spanish-speaking, portal/docs checks skipped")
-
-        questionnaire_rules = get_questionnaire_rules(config)
-        questionnaires_needed = get_questionnaires(
-            age, client["For"], computed_daeval, questionnaire_rules
-        )
-        if isinstance(questionnaires_needed, str):
-            fail(f"Questionnaire battery: {questionnaires_needed}")
-        else:
-            ok(f"Questionnaire battery: {questionnaires_needed}")
     finally:
         driver.quit()
 
@@ -862,6 +862,63 @@ def main(
                     logger.log("NOTICE", f"{client['Client Name']} has been paused")
                     continue
 
+                questionnaires_needed = get_questionnaires(
+                    client["Age"],
+                    client["For"],
+                    client["daeval"],
+                    questionnaire_rules,
+                )
+
+                if str(questionnaires_needed) == "Too young":
+                    logger.log(
+                        "NOTICE",
+                        f"{client['Client Name']} is too young (age {client['Age']})",
+                    )
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="too young",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
+
+                if client.get("Previous Error") == "too young":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason=client["Previous Error"],
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
+
+                if str(questionnaires_needed) == "Too old":
+                    logger.log(
+                        "NOTICE",
+                        f"{client['Client Name']} is too old (age {client['Age']})",
+                    )
+                    add_failure(
+                        config=config,
+                        client_id=client["Client ID"],
+                        error="too old",
+                        failed_date=today,
+                        full_name=client["Client Name"],
+                        asd_adhd=client["For"],
+                        daeval=client["daeval"],
+                    )
+                    continue
+
+                if client.get("Previous Error") == "too old":
+                    update_failure_in_db(
+                        config=config,
+                        client_id=client["Client ID"],
+                        reason=client["Previous Error"],
+                        da_eval=client["daeval"],
+                        resolved=True,
+                    )
+
                 client_url = ""
                 if client["Language"] != "Spanish":
                     # Spanish-speaking clients will never open the portal, so we don't need to check if they have signed in
@@ -949,63 +1006,6 @@ def main(
 
             try:
                 accounts_created = {}
-
-                questionnaires_needed = get_questionnaires(
-                    client["Age"],
-                    client["For"],
-                    client["daeval"],
-                    questionnaire_rules,
-                )
-
-                if str(questionnaires_needed) == "Too young":
-                    logger.log(
-                        "NOTICE",
-                        f"{client['Client Name']} is too young (age {client['Age']})",
-                    )
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error="too young",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                    )
-                    continue
-
-                if client.get("Previous Error") == "too young":
-                    update_failure_in_db(
-                        config=config,
-                        client_id=client["Client ID"],
-                        reason=client["Previous Error"],
-                        da_eval=client["daeval"],
-                        resolved=True,
-                    )
-
-                if str(questionnaires_needed) == "Too old":
-                    logger.log(
-                        "NOTICE",
-                        f"{client['Client Name']} is too old (age {client['Age']})",
-                    )
-                    add_failure(
-                        config=config,
-                        client_id=client["Client ID"],
-                        error="too old",
-                        failed_date=today,
-                        full_name=client["Client Name"],
-                        asd_adhd=client["For"],
-                        daeval=client["daeval"],
-                    )
-                    continue
-
-                if client.get("Previous Error") == "too old":
-                    update_failure_in_db(
-                        config=config,
-                        client_id=client["Client ID"],
-                        reason=client["Previous Error"],
-                        da_eval=client["daeval"],
-                        resolved=True,
-                    )
 
                 if isinstance(questionnaires_needed, str):
                     logger.error(
