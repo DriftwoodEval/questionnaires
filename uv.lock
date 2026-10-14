@@ -478,9 +478,12 @@ wheels = [
 [[package]]
 name = "driftwood-common"
 version = "0.1.0"
-source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F3-quo-helpers#b8581df2a32e1cd85a9c30976ac642e3fa9d473a" }
+source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F4-quo-client#7e79face66f7167c05acd1921fb03db566de184a" }
 dependencies = [
     { name = "loguru" },
+    { name = "ratelimit" },
+    { name = "requests" },
+    { name = "tenacity" },
 ]
 
 [[package]]
@@ -1281,11 +1284,9 @@ dependencies = [
     { name = "pymysql", extra = ["rsa"] },
     { name = "python-dateutil" },
     { name = "pyyaml" },
-    { name = "ratelimit" },
     { name = "requests" },
     { name = "rich" },
     { name = "selenium" },
-    { name = "tenacity" },
     { name = "typer" },
     { name = "urllib3" },
 ]
@@ -1304,7 +1305,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "driftwood-common", git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F3-quo-helpers" },
+    { name = "driftwood-common", git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F4-quo-client" },
     { name = "google", specifier = ">=3.0.0" },
     { name = "google-api-python-client", specifier = ">=2.194.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.1" },
@@ -1317,11 +1318,9 @@ requires-dist = [
     { name = "pymysql", extras = ["rsa"], specifier = ">=1.1.1" },
     { name = "python-dateutil", specifier = ">=2.9.0.post0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "ratelimit", specifier = ">=2.2.1" },
     { name = "requests", specifier = ">=2.33.1" },
     { name = "rich", specifier = ">=15.0.0" },
     { name = "selenium", specifier = ">=4.28.1" },
-    { name = "tenacity", specifier = ">=9.1.2" },
     { name = "typer", specifier = ">=0.21.1" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]
