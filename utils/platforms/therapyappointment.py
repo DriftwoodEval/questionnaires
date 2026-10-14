@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from time import sleep
 
+from driftwood_common.constants import BUSINESS_TIMEZONE
+from driftwood_common.timezone import business_to_utc
 from loguru import logger
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -14,13 +16,12 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 
-from utils.constants import BUSINESS_TIMEZONE, SCHOOL_RECORDS_ADULT_AGE
+from utils.constants import SCHOOL_RECORDS_ADULT_AGE
 from utils.custom_types import Services
 from utils.selenium import (
     click_element,
     find_element,
 )
-from utils.timezone import business_to_utc
 
 # TherapyAppointment "Docs & Forms" link text for each school-records consent
 # form pair. Charter-school clients sign the "Charter School ..." variants,

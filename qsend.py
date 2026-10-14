@@ -7,6 +7,8 @@ from time import sleep, strftime, strptime
 import pandas as pd
 import typer
 from dateutil.relativedelta import relativedelta
+from driftwood_common.constants import BUSINESS_TIMEZONE
+from driftwood_common.timezone import now_business
 from loguru import logger
 from rich import print as rich_print
 from selenium.common.exceptions import (
@@ -16,7 +18,6 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 
-from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import Config, Services
 from utils.database import (
     get_client_id_to_hash_map,
@@ -79,7 +80,6 @@ from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
-from utils.timezone import now_business
 
 app = typer.Typer()
 

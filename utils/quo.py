@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Literal
 
 import requests
+from driftwood_common.timezone import business_date_to_utc
 from loguru import logger
 from ratelimit import RateLimitException, limits
 from tenacity import (
@@ -14,7 +15,6 @@ from tenacity import (
 )
 
 from utils.custom_types import Config, Services
-from utils.timezone import business_date_to_utc
 
 API_BASE = "https://api.quo.com/v1/"
 RATE_LIMIT_CALLS = 10

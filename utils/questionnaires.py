@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
+from driftwood_common.constants import BUSINESS_TIMEZONE
+from driftwood_common.timezone import business_date_to_utc
 from loguru import logger
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -19,7 +21,6 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
-from utils.constants import BUSINESS_TIMEZONE
 from utils.custom_types import (
     ClientFromDB,
     ClientWithQuestionnaires,
@@ -37,7 +38,6 @@ from utils.selenium import (
     wait_for_page_load,
     wait_for_url_stability,
 )
-from utils.timezone import business_date_to_utc
 
 MAX_WORKERS = 5
 

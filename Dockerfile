@@ -1,5 +1,9 @@
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
+# git is needed by `uv sync` to fetch the driftwood-common dependency.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM builder AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
