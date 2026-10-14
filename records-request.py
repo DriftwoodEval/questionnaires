@@ -7,6 +7,7 @@ from datetime import date
 
 import pymupdf
 import typer
+from driftwood_common.log_format import json_log_format
 from driftwood_common.timezone import now_business
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -34,7 +35,6 @@ from utils.google import (
 from utils.misc import (
     NetworkSink,
     add_failure,
-    json_log_format,
     load_config,
     load_local_settings,
 )

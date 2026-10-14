@@ -36,7 +36,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-driftwood-common = { git = "https://github.com/DriftwoodEval/winnonah", subdirectory = "python/common", branch = "shared/4-quo-client" }
+driftwood-common = { git = "https://github.com/DriftwoodEval/winnonah", subdirectory = "python/common", branch = "shared/5-log-format" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

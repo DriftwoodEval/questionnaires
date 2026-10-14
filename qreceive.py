@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 from dateutil.relativedelta import relativedelta
+from driftwood_common.log_format import json_log_format
 from driftwood_common.quo import InvalidPhoneNumberError
 from driftwood_common.quo_client import NotEnoughCreditsError
 from driftwood_common.timezone import now_business, utc_to_business
@@ -54,7 +55,7 @@ from utils.messages import (
     render_reminder_message,
     resolve_reminder_variant,
 )
-from utils.misc import check_distance, json_log_format, load_config
+from utils.misc import check_distance, load_config
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
     check_if_opened_portal,

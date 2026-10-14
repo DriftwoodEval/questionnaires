@@ -8,6 +8,7 @@ import pandas as pd
 import typer
 from dateutil.relativedelta import relativedelta
 from driftwood_common.constants import BUSINESS_TIMEZONE
+from driftwood_common.log_format import json_log_format
 from driftwood_common.timezone import now_business
 from loguru import logger
 from rich import print as rich_print
@@ -36,7 +37,6 @@ from utils.google import get_punch_list, update_punch_list
 from utils.messages import format_ta_message
 from utils.misc import (
     NetworkSink,
-    json_log_format,
     load_config,
     load_local_settings,
     stderr_log_format,
