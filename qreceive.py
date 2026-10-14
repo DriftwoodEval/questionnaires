@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 from dateutil.relativedelta import relativedelta
+from driftwood_common.quo import InvalidPhoneNumberError
 from driftwood_common.timezone import now_business, utc_to_business
 from loguru import logger
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -68,7 +69,7 @@ from utils.questionnaires import (
     filter_inactive_and_not_pending,
     get_most_recent_not_done,
 )
-from utils.quo import InvalidPhoneNumberError, NotEnoughCreditsError, Quo
+from utils.quo import NotEnoughCreditsError, Quo
 from utils.selenium import (
     initialize_selenium,
 )

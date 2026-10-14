@@ -1,7 +1,15 @@
-from datetime import UTC, date, datetime
-from typing import Literal
+from datetime import date, datetime
 
 import requests
+from driftwood_common.quo import (
+    API_BASE,
+    InvalidPhoneNumberError,
+    MessageDirection,
+    build_messages_query,
+    build_send_payload,
+    parse_messages,
+    to_e164,
+)
 from driftwood_common.timezone import business_date_to_utc
 from loguru import logger
 from ratelimit import RateLimitException, limits
@@ -16,7 +24,6 @@ from tenacity import (
 
 from utils.custom_types import Config, Services
 
-API_BASE = "https://api.quo.com/v1/"
 RATE_LIMIT_CALLS = 10
 RATE_LIMIT_PERIOD = 1
 
@@ -59,13 +66,6 @@ class NotEnoughCreditsError(requests.HTTPError):
     """Custom exception for payment/credit limits."""
 
     def __init__(self, message="Organization has insufficient prepaid credits."):
-        super().__init__(message)
-
-
-class InvalidPhoneNumberError(ValueError):
-    """Custom exception for invalid phone numbers."""
-
-    def __init__(self, message="Invalid phone number format."):
         super().__init__(message)
 
 
@@ -207,7 +207,7 @@ class Quo:
     def _get_messages(
         self,
         client_phone: str,
-        direction: Literal["incoming", "outgoing"],
+        direction: MessageDirection,
         since: date | None,
     ) -> list[tuple[dict, datetime]]:
         """Fetch recent messages in one direction as (message, created time) pairs, newest-window of 25.
@@ -218,49 +218,27 @@ class Quo:
         if not phone_number_id:
             return []
 
-        digits = "".join(filter(str.isdigit, client_phone))
-        if len(digits) == 10:
-            clean_phone = "+1" + digits
-        elif len(digits) == 11 and digits.startswith("1"):
-            clean_phone = "+" + digits
-        else:
+        try:
+            clean_phone = to_e164(client_phone)
+        except InvalidPhoneNumberError:
             logger.warning(
                 f"Cannot check {direction} messages for malformed number: {client_phone}"
             )
             return []
 
         try:
-            url = f"{API_BASE}messages"
-            params: list[tuple[str, str]] = [
-                ("phoneNumberId", phone_number_id),
-                ("participants", clean_phone),
-                ("direction", direction),
-                ("maxResults", "25"),
-            ]
             since_dt = (
                 business_date_to_utc(since, self.config.business_timezone)
                 if since is not None
                 else None
             )
-            if since_dt is not None:
-                params.append(("createdAfter", since_dt.isoformat()))
-
-            response = self.session.get(url, params=params)
+            params = build_messages_query(
+                phone_number_id, clean_phone, direction=direction, since=since_dt
+            )
+            response = self.session.get(f"{API_BASE}messages", params=params)
             response.raise_for_status()
-
-            messages = []
-            for msg in response.json().get("data", []):
-                created_at = msg.get("createdAt") or msg.get("createdAtMs")
-                if created_at is None:
-                    continue
-                if isinstance(created_at, (int, float)):
-                    msg_dt = datetime.fromtimestamp(created_at / 1000, tz=UTC)
-                else:
-                    msg_dt = datetime.fromisoformat(str(created_at))
-                # Client-side filter as a fallback in case the API ignores createdAfter
-                if since_dt is None or msg_dt >= since_dt:
-                    messages.append((msg, msg_dt))
-            return messages
+            # Client-side filter as a fallback in case the API ignores createdAfter
+            return parse_messages(response.json().get("data", []), since_dt)
         except Exception as e:
             logger.error(
                 f"Failed to check {direction} messages for {client_phone}: {e}"
@@ -283,36 +261,16 @@ class Quo:
         if user_blame is None:
             user_blame = self.default_user
 
-        digits = "".join(filter(str.isdigit, to_number))
-
-        if len(digits) == 10:
-            if digits.startswith("1"):
-                raise InvalidPhoneNumberError(
-                    f"10-digit number starts with 1: {to_number}"
-                )
-            to_number_clean = "+1" + digits
-        elif len(digits) == 11:
-            if not digits.startswith("1"):
-                raise InvalidPhoneNumberError(
-                    f"11-digit number does not start with 1: {to_number}"
-                )
-            to_number_clean = "+" + digits
-        else:
-            raise InvalidPhoneNumberError(
-                f"Phone number has invalid length ({len(digits)}): {to_number}"
-            )
+        to_number_clean = to_e164(to_number)
 
         url = f"{API_BASE}messages"
-
-        payload = {
-            "content": message,
-            "from": from_number,
-            "to": [to_number_clean],
-            "userId": user_blame,
-        }
-
-        if mark_done:
-            payload["setInboxStatus"] = "done"
+        payload = build_send_payload(
+            message,
+            from_number,
+            to_number_clean,
+            user_id=user_blame,
+            mark_done=mark_done,
+        )
 
         try:
             logger.info(f"Sending message to {to_number_clean}...")

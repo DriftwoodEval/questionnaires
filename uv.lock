@@ -478,7 +478,7 @@ wheels = [
 [[package]]
 name = "driftwood-common"
 version = "0.1.0"
-source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F2-task-tracker#622a60766d1a1ffeb6c06eead3ad094dfbfca24b" }
+source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F3-quo-helpers#b8581df2a32e1cd85a9c30976ac642e3fa9d473a" }
 dependencies = [
     { name = "loguru" },
 ]
@@ -1304,7 +1304,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "driftwood-common", git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F2-task-tracker" },
+    { name = "driftwood-common", git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon&branch=shared%2F3-quo-helpers" },
     { name = "google", specifier = ">=3.0.0" },
     { name = "google-api-python-client", specifier = ">=2.194.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.1" },
