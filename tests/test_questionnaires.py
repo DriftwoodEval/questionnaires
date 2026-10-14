@@ -769,7 +769,9 @@ class TestDetermineSendReason:
         )
         client_from_db = make_client_from_db(1, questionnaires=[])
         client_from_db.asdAdhd = "ASD"
-        reason = determine_send_reason(client_info, client_from_db, [], {1: object()})
+        reason = determine_send_reason(
+            client_info, client_from_db, [], {1: make_failed_client()}
+        )
         assert reason == "Automated send"
 
     @pytest.mark.parametrize(
@@ -786,7 +788,9 @@ class TestDetermineSendReason:
         )
         client_from_db = make_client_from_db(1, questionnaires=[])
         client_from_db.asdAdhd = "ASD"
-        reason = determine_send_reason(client_info, client_from_db, [], {1: object()})
+        reason = determine_send_reason(
+            client_info, client_from_db, [], {1: make_failed_client()}
+        )
         assert reason == expected
 
     def test_new_on_list_when_no_prior_record(self):
