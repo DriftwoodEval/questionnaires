@@ -1,5 +1,4 @@
 import mimetypes
-import os
 import re
 import time
 from collections.abc import Sequence
@@ -10,11 +9,8 @@ from typing import Any
 
 import pandas as pd
 from driftwood_common import gmail
+from driftwood_common.google_auth import authenticate
 from driftwood_common.google_service import build_google_service
-from google.auth.exceptions import RefreshError
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from loguru import logger
@@ -39,59 +35,17 @@ SCOPES = [
 def google_authenticate():
     """Authenticate with Google using the credentials in ./config/credentials.json (obtained from Google Cloud Console) and ./config/token.json (user-specific).
 
-    If the credentials are not valid, the user is prompted to log in.
-    The credentials are then saved to ./config/token.json for the next run.
-    Returns the authenticated credentials.
+    If the credentials are not valid, the user is prompted to log in. A
+    headless host (the qreceive container) raises instead, to be retried once a
+    human has refreshed config/token.json. The credentials are then saved to
+    ./config/token.json for the next run. Returns the authenticated credentials.
     """
-    creds = None
-    token_path = Path("config/token.json")
-    if Path.exists(token_path):
-        creds = Credentials.from_authorized_user_file("./config/token.json", SCOPES)
-        if creds and set(creds.scopes or []) != set(SCOPES):
-            logger.info("Scopes have changed, re-authenticating...")
-            creds = None
-
-    # If the credentials are invalid or have expired, refresh the credentials
-    if not creds or not creds.valid:
-        refreshed = False
-        if creds and creds.expired and creds.refresh_token:
-            # The refresh token is long-lived; a failure here is usually a
-            # transient network/endpoint blip, so retry a few times before
-            # concluding the token is actually dead.
-            for attempt in range(3):
-                try:
-                    creds.refresh(Request())
-                    refreshed = True
-                    break
-                except RefreshError as e:
-                    logger.warning(f"Token refresh attempt {attempt + 1} failed: {e}")
-                    if attempt < 2:
-                        time.sleep(2**attempt)
-            if not refreshed:
-                logger.warning("Token refresh failed, falling back to manual login")
-        # If there are no usable credentials, start the manual login. This opens
-        # a local browser, so it only works interactively - a headless server
-        # (qreceive container) must fail loudly instead and be retried once a
-        # human has refreshed config/token.json.
-        if not refreshed:
-            if os.getenv("HEADLESS") == "true":
-                raise RuntimeError(
-                    "Google credentials are invalid and interactive login is "
-                    "unavailable on a headless host. Refresh config/token.json "
-                    "from an interactive machine and redeploy."
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "./config/credentials.json", SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-    # Save the credentials for the next run. Every branch above either keeps
-    # a valid `creds` or reassigns it via refresh/login, so it's never None here.
-    assert creds is not None
-    with Path.open(token_path, "w") as token:
-        token.write(creds.to_json())
-
-    return creds
+    return authenticate(
+        SCOPES,
+        "./config/credentials.json",
+        "config/token.json",
+        require_exact_scopes=True,
+    )
 
 
 def _gmail_service():

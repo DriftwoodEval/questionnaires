@@ -4,9 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
   "driftwood-common",
-  "google>=3.0.0",
   "google-api-python-client>=2.194.0",
-  "google-auth-oauthlib>=1.2.1",
   "inquirer>=3.4.1",
   "loguru>=0.7.3",
   "openpyxl>=3.1.5",
@@ -36,7 +34,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-driftwood-common = { git = "https://github.com/DriftwoodEval/winnonah", subdirectory = "python/common", branch = "shared/6-gmail" }
+driftwood-common = { git = "https://github.com/DriftwoodEval/winnonah", subdirectory = "python/common", branch = "shared/7-google-auth" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
