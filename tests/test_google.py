@@ -1,4 +1,5 @@
 import io
+from unittest.mock import MagicMock
 
 import pytest
 from google.auth.exceptions import RefreshError
@@ -121,11 +122,10 @@ class TestGmailWrappers:
         assert sent["kwargs"]["attachments"] == [(b"%PDF", "report.pdf")]
 
     def test_send_gmail_returns_none_when_sending_fails(self, monkeypatch):
-        def fail(*args, **kwargs):
-            raise RuntimeError("quota")
-
         monkeypatch.setattr(google, "_gmail_service", lambda: "service")
-        monkeypatch.setattr(google.gmail, "send_email", fail)
+        monkeypatch.setattr(
+            google.gmail, "send_email", MagicMock(side_effect=RuntimeError("quota"))
+        )
 
         assert (
             google.send_gmail("Body", "Subject", "to@example.com", "from@example.com")
@@ -133,11 +133,12 @@ class TestGmailWrappers:
         )
 
     def test_listing_lets_api_errors_raise(self, monkeypatch):
-        def fail(*args, **kwargs):
-            raise RuntimeError("quota")
-
         monkeypatch.setattr(google, "_gmail_service", lambda: "service")
-        monkeypatch.setattr(google.gmail, "list_message_stubs", fail)
+        monkeypatch.setattr(
+            google.gmail,
+            "list_message_stubs",
+            MagicMock(side_effect=RuntimeError("quota")),
+        )
 
         with pytest.raises(RuntimeError, match="quota"):
             google.list_gmail_messages("is:unread")
