@@ -6,6 +6,10 @@ from pathlib import Path
 
 import typer
 from dateutil.relativedelta import relativedelta
+from driftwood_common.log_format import json_log_format
+from driftwood_common.quo import InvalidPhoneNumberError
+from driftwood_common.quo_client import NotEnoughCreditsError
+from driftwood_common.timezone import now_business, utc_to_business
 from loguru import logger
 from selenium.webdriver.remote.webdriver import WebDriver
 
@@ -51,7 +55,7 @@ from utils.messages import (
     render_reminder_message,
     resolve_reminder_variant,
 )
-from utils.misc import check_distance, json_log_format, load_config
+from utils.misc import check_distance, load_config
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
     check_if_opened_portal,
@@ -67,12 +71,11 @@ from utils.questionnaires import (
     filter_inactive_and_not_pending,
     get_most_recent_not_done,
 )
-from utils.quo import InvalidPhoneNumberError, NotEnoughCreditsError, Quo
+from utils.quo import Quo
 from utils.selenium import (
     initialize_selenium,
 )
 from utils.task_tracker import track_task
-from utils.timezone import now_business, utc_to_business
 
 logger.remove()
 logger.add(

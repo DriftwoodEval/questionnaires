@@ -2,6 +2,7 @@ import re
 from datetime import date, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
+from driftwood_common.quo import fill_placeholders
 from loguru import logger
 
 from utils.custom_types import (
@@ -265,10 +266,7 @@ def render_reminder_message(
         "$REMAINING_COUNT": str(link_count),
     }
 
-    message = template
-    for placeholder, value in substitutions.items():
-        message = message.replace(placeholder, value)
-    return message
+    return fill_placeholders(template, substitutions)
 
 
 _PLACEHOLDER = re.compile(r"\$[A-Z_]+")
