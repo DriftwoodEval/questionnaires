@@ -908,16 +908,19 @@ def main(
                                 reminder_settings,
                             )
                         ):
-                            if (
-                                most_recent_q["reminded"] == 2
-                                and most_recent_q["sent"] is not None
-                            ):
+                            # Only a reply to our latest text counts, not one
+                            # we already followed up on with an earlier reminder.
+                            last_text_date = (
+                                most_recent_q.get("lastReminded")
+                                or most_recent_q["sent"]
+                            )
+                            if most_recent_q["reminded"] == 2 and last_text_date:
                                 has_replied = quo.has_client_replied(
-                                    client.phoneNumber, since=most_recent_q["sent"]
+                                    client.phoneNumber, since=last_text_date
                                 )
                                 if has_replied:
                                     logger.info(
-                                        f"{client.fullName} has replied since questionnaires were sent — skipping final reminder, setting questionnaires to IGNORING"
+                                        f"{client.fullName} has replied since our last reminder — skipping final reminder, setting questionnaires to RESPONDED"
                                     )
                                     for q in client.questionnaires:
                                         if q["status"] in (
@@ -925,12 +928,12 @@ def main(
                                             "POSTDA_PENDING",
                                             "POSTEVAL_PENDING",
                                         ):
-                                            q["status"] = "IGNORING"
+                                            q["status"] = "RESPONDED"
                                     if not dry_run:
                                         update_questionnaires_in_db(config, [client])
                                     else:
                                         logger.info(
-                                            f"[DRY RUN] Would set {client.fullName}'s questionnaires to IGNORING"
+                                            f"[DRY RUN] Would set {client.fullName}'s questionnaires to RESPONDED"
                                         )
                                     email_info["ignoring"].append(client)
                                     continue

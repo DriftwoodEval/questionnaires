@@ -188,6 +188,7 @@ QuestionnaireStatus = Literal[
     "PENDING",
     "COMPLETED",
     "IGNORING",
+    "RESPONDED",
     "POSTDA_PENDING",
     "POSTEVAL_PENDING",
     "SPANISH",

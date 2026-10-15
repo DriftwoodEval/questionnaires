@@ -90,6 +90,7 @@ def filter_inactive_and_not_pending(
                 "POSTDA_PENDING",
                 "POSTEVAL_PENDING",
                 "IGNORING",
+                "RESPONDED",
             ]
             for q in client.questionnaires
             if isinstance(q, dict) and _in_current_session(client, q)
@@ -98,9 +99,11 @@ def filter_inactive_and_not_pending(
 
 
 def check_if_ignoring(client: ClientWithQuestionnaires) -> bool:
-    """Check if any questionnaire for the given client is being ignored."""
+    """Check if any questionnaire for the given client is being ignored or has a reply."""
     return any(
-        q["status"] == "IGNORING" for q in client.questionnaires if isinstance(q, dict)
+        q["status"] in ("IGNORING", "RESPONDED")
+        for q in client.questionnaires
+        if isinstance(q, dict)
     )
 
 

@@ -166,10 +166,9 @@ class TestFilterInactiveAndNotPending:
 
 
 class TestCheckIfIgnoring:
-    def test_ignoring(self, client_factory, questionnaire_factory):
-        client = client_factory(
-            questionnaires=[questionnaire_factory(status="IGNORING")]
-        )
+    @pytest.mark.parametrize("status", ["IGNORING", "RESPONDED"])
+    def test_ignoring(self, client_factory, questionnaire_factory, status):
+        client = client_factory(questionnaires=[questionnaire_factory(status=status)])
         assert check_if_ignoring(client) is True
 
     def test_none_ignoring(self, client_factory, questionnaire_factory):
