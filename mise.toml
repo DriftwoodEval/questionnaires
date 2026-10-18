@@ -90,7 +90,3 @@ run = "uv run piecework.py"
 [tasks."records-request"]
 description = "Automatic records request form downloads and sending"
 run = "uv run records-request.py"
-
-[tasks."log-server"]
-description = "Start the log server that collects logs from the other scripts"
-run = "uv run log-server.py"

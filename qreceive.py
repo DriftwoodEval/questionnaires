@@ -55,7 +55,7 @@ from utils.messages import (
     render_reminder_message,
     resolve_reminder_variant,
 )
-from utils.misc import check_distance, load_config
+from utils.misc import add_run_log_sink, check_distance, load_config, set_log_client
 from utils.platforms.therapyappointment import (
     check_if_docs_signed,
     check_if_opened_portal,
@@ -392,6 +392,7 @@ def check_failures(
 
     total = len(failed_clients)
     for done, (client_id, client) in enumerate(failed_clients.items(), start=1):
+        set_log_client(client_id)
         for failure_data in client.failure:
             reason = failure_data["reason"]
             is_resolved = False
@@ -427,6 +428,7 @@ def check_failures(
 
         if progress_callback:
             progress_callback(done, total)
+    set_log_client(None)
 
 
 @app.command()
@@ -633,6 +635,7 @@ def main(
             completed_ids = {c.id for c in email_info["completed"]}
             if failed_clients and not skip_failures:
                 for client in failed_clients.values():
+                    set_log_client(client.id)
                     if any(
                         failure["reason"] in ["portal not opened", "docs not signed"]
                         for failure in client.failure
@@ -823,10 +826,12 @@ def main(
                                     logger.info(
                                         f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
                                     )
+                set_log_client(None)
 
             if clients:
                 clients = validate_questionnaires(clients)
                 for client in clients.values():
+                    set_log_client(client.id)
                     done = all_questionnaires_done(client)
 
                     if check_if_ignoring(client):
@@ -1047,6 +1052,7 @@ def main(
                         logger.info(
                             f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                         )
+                set_log_client(None)
 
             referral_messages_sent: list[tuple[ClientFromDB, str, bool]] = []
 
@@ -1074,6 +1080,7 @@ def main(
                     f"Found {len(new_clients)} new client(s) to send referral message"
                 )
                 for client in new_clients:
+                    set_log_client(client.id)
                     if not client.phoneNumber:
                         logger.warning(
                             f"{client.fullName} is a new client but has no phone number"
@@ -1150,11 +1157,13 @@ def main(
                         logger.info(
                             f"[DRY RUN] Would send referral msg to {client.fullName} ({client.phoneNumber}):\n{referral_msg}"
                         )
+                set_log_client(None)
 
             forms_messages_sent: list[tuple[ClientFromDB, str]] = []
 
             if send_referral_texts or dry_run:
                 for client in get_clients_to_text_about_charter_school_forms(config):
+                    set_log_client(client.id)
                     if not client.phoneNumber:
                         logger.warning(
                             f"{client.fullName} was assigned charter-school forms but has no phone number"
@@ -1206,12 +1215,14 @@ def main(
                             "Quo API needs more credits to send messages."
                         )
                         break
+                set_log_client(None)
 
             logger.info(f"Starting status check for {len(messages_sent)} messages.")
 
             clients_to_update_db = []
 
             for client, message_id, failure_reason in messages_sent:
+                set_log_client(client.id)
                 # Quo accepted the message, so the reminder counts as sent whether
                 # or not delivery is confirmed. Recording it only on confirmed
                 # delivery re-sends the same reminder every run for a number whose
@@ -1264,6 +1275,7 @@ def main(
                     email_info["errors"].append(
                         f"Error checking message status for {client.fullName}: {e}"
                     )
+            set_log_client(None)
 
             for client in clients_to_update_db:
                 if isinstance(client, ClientWithQuestionnaires):
@@ -1282,6 +1294,7 @@ def main(
                 f"Starting status check for {len(referral_messages_sent)} referral message(s)."
             )
             for client, message_id, is_private_pay_outreach in referral_messages_sent:
+                set_log_client(client.id)
                 try:
                     delivered = quo.check_text_delivered(message_id)
                     if delivered:
@@ -1310,8 +1323,10 @@ def main(
                     logger.error(
                         f"Error checking referral msg status for {client.fullName} ({message_id}): {e}"
                     )
+            set_log_client(None)
 
             for client, message_id in forms_messages_sent:
+                set_log_client(client.id)
                 try:
                     if quo.check_text_delivered(message_id):
                         logger.success(
@@ -1332,6 +1347,7 @@ def main(
                     logger.error(
                         f"Error checking charter-school forms msg for {client.fullName} ({message_id}): {e}"
                     )
+            set_log_client(None)
 
             logger.info("Syncing punchlist Qs Done and Qs Sent columns with DB state")
             sync_updates: list[tuple[str, str, str]] = []
@@ -1429,4 +1445,5 @@ def main(
 
 
 if __name__ == "__main__":
+    add_run_log_sink("qreceive")
     app()

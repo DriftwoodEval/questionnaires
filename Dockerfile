@@ -52,17 +52,3 @@ ENV TZ=America/New_York
 ENV CRON_SCHEDULE="0 7,10,13,16,19 * * *"
 
 ENTRYPOINT ["/app/entrypoint-qreceive.sh"]
-
-FROM builder AS log-server
-
-WORKDIR /app
-
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
-
-COPY . .
-
-ENV TZ=America/New_York \
-    PYTHONUNBUFFERED=1
-
-CMD ["uv", "run", "log-server.py"]

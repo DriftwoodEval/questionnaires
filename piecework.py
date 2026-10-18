@@ -26,7 +26,7 @@ from utils.database import (
 )
 from utils.google import get_punch_list, upload_file_to_drive
 from utils.kimai import export_timesheets
-from utils.misc import NetworkSink, load_config, load_local_settings
+from utils.misc import add_run_log_sink, load_config
 from utils.piecework import extract_writer_initials
 from utils.task_tracker import track_task
 
@@ -796,7 +796,5 @@ def main(
 
 
 if __name__ == "__main__":
-    log_host = load_local_settings().log_host
-    network_sink = NetworkSink(log_host, 9999, app_name="piecework")
-    logger.add(network_sink.write, format=json_log_format, enqueue=True)
+    add_run_log_sink("piecework")
     app()

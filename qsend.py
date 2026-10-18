@@ -36,13 +36,13 @@ from utils.database import (
 from utils.google import get_punch_list, update_punch_list
 from utils.messages import format_ta_message
 from utils.misc import (
-    NetworkSink,
-    load_config,
-    load_local_settings,
-    stderr_log_format,
+    add_failure as _add_failure,
 )
 from utils.misc import (
-    add_failure as _add_failure,
+    add_run_log_sink,
+    load_config,
+    set_log_client,
+    stderr_log_format,
 )
 from utils.platforms.mhs import (
     check_and_login_mhs,
@@ -767,6 +767,7 @@ def main(
 
         total_clients = len(clients)
         for i, (_, client) in enumerate(clients.iterrows(), start=1):
+            set_log_client(client["Client ID"])
             task.progress(i, total_clients)
             logger.info(f"Starting loop for {client['Client Name']}")
 
@@ -1310,6 +1311,7 @@ def main(
                     asd_adhd=client["For"],
                     daeval=client["daeval"],
                 )
+        set_log_client(None)
 
         logger.info(f"Finished loop for {len(clients)} clients")
         task.set_summary(
@@ -1330,7 +1332,5 @@ def main(
 
 
 if __name__ == "__main__":
-    log_host = load_local_settings().log_host
-    network_sink = NetworkSink(log_host, 9999, app_name="qsend")
-    logger.add(network_sink.write, format=json_log_format, enqueue=True)
+    add_run_log_sink("qsend")
     app()

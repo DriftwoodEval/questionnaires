@@ -33,10 +33,10 @@ from utils.google import (
     send_gmail,
 )
 from utils.misc import (
-    NetworkSink,
     add_failure,
+    add_run_log_sink,
     load_config,
-    load_local_settings,
+    set_log_client,
 )
 from utils.platforms.therapyappointment import (
     CHARTER_RECEIVING,
@@ -610,6 +610,7 @@ def main(
         try:
             check_and_login_ta(driver, services, first_time=True)
             for i, client in enumerate(clients_to_process, start=1):
+                set_log_client(client.id)
                 task.progress(i, total_clients)
                 asd_adhd = client.asdAdhd or "Unknown"
                 client_name = client.fullName
@@ -691,6 +692,7 @@ def main(
                     failure_reason_clients["unable to find client"].append(
                         {"hash": client.hash, "name": client_name}
                     )
+            set_log_client(None)
         finally:
             logger.debug("Closing WebDriver.")
             driver.quit()
@@ -714,7 +716,5 @@ def main(
 
 
 if __name__ == "__main__":
-    log_host = load_local_settings().log_host
-    network_sink = NetworkSink(log_host, 9999, app_name="records-request")
-    logger.add(network_sink.write, format=json_log_format, enqueue=True)
+    add_run_log_sink("records-request")
     app()

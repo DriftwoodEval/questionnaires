@@ -1,9 +1,6 @@
 """Tests for the pure aggregation/formatting functions in the piecework.py script.
 
-Importing piecework.py triggers a real NetworkSink socket connection at module
-scope (unrelated to the functions under test), so we stub out NetworkSink's
-connection step for the duration of the import only. No business logic below
-is mocked.
+No business logic below is mocked.
 """
 
 from datetime import datetime
@@ -14,23 +11,10 @@ import pytest
 from utils.custom_types import PieceworkConfig, PieceworkCosts
 
 
-def _noop_init(self, log_host, port, app_name):
-    self.ip = log_host
-    self.port = port
-    self.app_name = app_name
-    self.sock = None
-
-
 @pytest.fixture(scope="module")
 def piecework_module():
-    from utils.misc import NetworkSink  # noqa: PLC0415
+    import piecework  # noqa: PLC0415
 
-    real_init = NetworkSink.__init__
-    NetworkSink.__init__ = _noop_init
-    try:
-        import piecework  # noqa: PLC0415
-    finally:
-        NetworkSink.__init__ = real_init
     return piecework
 
 

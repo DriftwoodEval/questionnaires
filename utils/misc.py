@@ -1,6 +1,10 @@
+import atexit
+import queue
 import re
-import socket
 import sys
+import threading
+import traceback
+import uuid
 from datetime import date
 from functools import cache
 from pathlib import Path
@@ -123,28 +127,87 @@ def stderr_log_format(record: "loguru.Record") -> str:
     )
 
 
-class NetworkSink:
-    """Send log lines to a remote log server via TCP."""
+class RunLogSink:
+    """Ship this run's log records to the winnonah site in batches.
 
-    def __init__(self, log_host: str, port: int, app_name: str):
-        self.ip = log_host
-        self.port = port
+    Records are queued and posted from a background thread so a slow or
+    unreachable site never blocks or fails the run. Each record carries the
+    `client_id` set by `set_log_client`, if any.
+    """
+
+    BATCH_SIZE = 200
+    FLUSH_INTERVAL_SECONDS = 2.0
+
+    def __init__(self, app_name: str, api_url: str, secret: str):
         self.app_name = app_name
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            self.sock.connect((self.ip, port))
-        except (OSError, ConnectionRefusedError, TimeoutError) as e:
-            logger.error(f"Failed to connect to log server at {self.ip}:{port}: {e}")
-            self.sock = None
-            sys.exit(1)
+        self.run_id = str(uuid.uuid4())
+        self.endpoint = f"{api_url.rstrip('/')}/api/internal/run-logs"
+        self.headers = {"Authorization": f"Bearer {secret}"}
+        self.queue: queue.Queue[dict | None] = queue.Queue()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
 
-    def write(self, message: str):
-        if self.sock and message.strip():
-            for line in message.splitlines():
-                if line.strip():
-                    self.sock.sendall(f"{self.app_name}:{line}\n".encode())
+    def write(self, message: "loguru.Message") -> None:
+        record = message.record
+        exception = None
+        if record["exception"] is not None:
+            exception = "".join(traceback.format_exception(*record["exception"]))
+        self.queue.put(
+            {
+                "time": record["time"].isoformat(),
+                "level": record["level"].name,
+                "source": f"{record['name']}:{record['function']}:{record['line']}",
+                "message": record["message"],
+                "exception": exception,
+                "clientId": record["extra"].get("client_id"),
+            }
+        )
+
+    def close(self) -> None:
+        """Flush everything still queued and stop the thread."""
+        self.queue.put(None)
+        self.thread.join(timeout=30)
+
+    def _run(self) -> None:
+        batch: list[dict] = []
+        done = False
+        while not done:
+            try:
+                item = self.queue.get(timeout=self.FLUSH_INTERVAL_SECONDS)
+                if item is None:
+                    done = True
                 else:
-                    self.sock.sendall(f"{self.app_name}:\n".encode())
+                    batch.append(item)
+            except queue.Empty:
+                pass
+            if batch and (done or len(batch) >= self.BATCH_SIZE or self.queue.empty()):
+                self._post(batch)
+                batch = []
+
+    def _post(self, lines: list[dict]) -> None:
+        # Logging here would feed this sink again, so failures go to stderr only.
+        payload = {"runId": self.run_id, "app": self.app_name, "lines": lines}
+        try:
+            requests.post(
+                self.endpoint, json=payload, headers=self.headers, timeout=10
+            ).raise_for_status()
+        except requests.RequestException as e:
+            sys.stderr.write(f"Failed to send run logs: {e}\n")
+
+
+def add_run_log_sink(app_name: str) -> None:
+    """Start shipping this process's logs to the site, flushing at exit."""
+    settings = load_local_settings()
+    sink = RunLogSink(app_name, settings.api_url, settings.api_secret)
+    logger.add(sink.write, level="DEBUG")
+    atexit.register(sink.close)
+
+
+def set_log_client(client_id: int | str | None) -> None:
+    """Tag every following log record with this client, until called again."""
+    logger.configure(
+        extra={"client_id": int(client_id) if client_id is not None else None}
+    )
 
 
 # emr_failure.reason is part of a composite primary key (clientId, reason),
