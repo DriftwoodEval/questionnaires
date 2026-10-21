@@ -443,7 +443,7 @@ def save_document_as_pdf(
 
         wait.until(
             ec.visibility_of_element_located(
-                (By.XPATH, "//*[contains(text(), 'I authorize')]")
+                (By.XPATH, "//*[contains(text(), 'authorize')]")
             )
         )
 
@@ -461,7 +461,10 @@ def save_document_as_pdf(
         )
 
     except Exception as e:
-        logger.error(f"Could not find or load document: {link_text} ({e})")
+        logger.error(
+            f"Could not find or load document: {link_text} "
+            f"({type(e).__name__}: {e}) at {driver.current_url}"
+        )
         raise Exception("docs not signed") from e
     finally:
         # Go back to the Docs & Forms list
