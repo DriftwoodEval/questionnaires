@@ -700,8 +700,9 @@ def main(
             logger.debug("Closing WebDriver.")
             driver.quit()
 
+        email_verb = "would be sent (dry run)" if dry_run else "sent"
         logger.info(
-            f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) sent."
+            f"Downloads complete. Success: {new_success_count}, Failed: {new_failure_count}\n\n{new_success_count} email(s) {email_verb}."
         )
         task.set_summary(
             {
