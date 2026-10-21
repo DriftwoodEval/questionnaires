@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections.abc import Collection
 from datetime import date, datetime
 from typing import Literal, cast
 from urllib.parse import urlparse
@@ -1308,12 +1309,18 @@ def get_self_report_writer_for_client(config: Config, client_id: int) -> str | N
 
 def get_most_recent_failure(
     client: FailedClientFromDB,
+    reasons: Collection[str] | None = None,
 ) -> Failure | None:
-    """Get the most recent failure that is still not resolved from the given client by taking max of failure["failedDate"]."""
+    """Get the most recent failure that is still not resolved from the given client by taking max of failure["failedDate"].
+
+    If `reasons` is given, only failures with one of those reasons are considered.
+    """
     unresolved_failures = (
         f
         for f in client.failure
-        if (f["reminded"] < 100) and f["failedDate"] is not None
+        if (f["reminded"] < 100)
+        and f["failedDate"] is not None
+        and (reasons is None or f["reason"] in reasons)
     )
 
     return max(

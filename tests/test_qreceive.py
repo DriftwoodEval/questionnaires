@@ -82,8 +82,7 @@ class TestBuildFailureMessage:
         ],
     )
     def test_build_failure_message(self, config_factory, reason, expected_substring):
-        client = make_failed_client(1, reason=reason)
-        message = build_failure_message(config_factory(), client)
+        message = build_failure_message(config_factory(), reason)
         if expected_substring is None:
             assert message is None
         else:

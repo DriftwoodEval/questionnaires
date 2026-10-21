@@ -238,14 +238,16 @@ def _load_pending_email() -> list[AdminEmailInfo]:
         return []
 
 
-def build_failure_message(config: Config, client: FailedClientFromDB) -> str | None:
-    """Builds a message to be sent to the client based on their failure."""
-    for failure_data in client.failure:
-        reason = failure_data["reason"]
-        if reason == "portal not opened":
-            return f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
-        if reason == "docs not signed":
-            return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
+# Failure reasons the client can act on, so the only ones worth texting about.
+REMINDABLE_FAILURE_REASONS = ("portal not opened", "docs not signed")
+
+
+def build_failure_message(config: Config, reason: str) -> str | None:
+    """Builds a message to be sent to the client for the given failure reason."""
+    if reason == "portal not opened":
+        return f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
+    if reason == "docs not signed":
+        return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
 
     return None
 
@@ -637,7 +639,7 @@ def main(
                 for client in failed_clients.values():
                     set_log_client(client.id)
                     if any(
-                        failure["reason"] in ["portal not opened", "docs not signed"]
+                        failure["reason"] in REMINDABLE_FAILURE_REASONS
                         for failure in client.failure
                     ):
                         if client.language != "English":
@@ -651,7 +653,9 @@ def main(
                             )
                             continue
 
-                        most_recent_failure = get_most_recent_failure(client)
+                        most_recent_failure = get_most_recent_failure(
+                            client, REMINDABLE_FAILURE_REASONS
+                        )
                         if not most_recent_failure:
                             logger.warning(
                                 f"{client.fullName} has no unresolved failures, skipping"
@@ -722,7 +726,7 @@ def main(
                                 reminder_settings,
                             ):
                                 logger.info(f"Sending reminder TO {client.fullName}")
-                                message = build_failure_message(config, client)
+                                message = build_failure_message(config, reason)
                                 # Redundant failsafe to super ensure we don't text people a message that just says "None"
                                 if not message:
                                     logger.error(

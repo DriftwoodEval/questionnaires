@@ -117,6 +117,18 @@ class TestGetMostRecentFailure:
             assert result is not None
             assert result["reason"] == expected_reason
 
+    def test_get_most_recent_failure_filters_by_reasons(self):
+        client = make_failed_client(
+            [
+                make_failure(date(2024, 1, 1), reason="portal not opened"),
+                make_failure(date(2024, 6, 1), reason="too young for asd"),
+            ]
+        )
+        result = get_most_recent_failure(client, ["portal not opened"])
+        assert result is not None
+        assert result["reason"] == "portal not opened"
+        assert get_most_recent_failure(client, ["docs not signed"]) is None
+
 
 class TestUpdateFailureInDb:
     def _connection(self, previous_row: dict | None = None):
