@@ -130,6 +130,15 @@ def get_clients_to_send(
     if "Client ID" in punch_list.columns:
         punch_list = punch_list.dropna(subset=["Client ID"])
 
+        # prev_clients is loaded once per run, so a second row for the same client
+        # would be treated as never having received a questionnaire.
+        duplicate_ids = punch_list["Client ID"].duplicated()
+        for client_id in punch_list.loc[duplicate_ids, "Client ID"].unique():
+            logger.log(
+                "NOTICE", f"Client {client_id} is on the punch list more than once"
+            )
+        punch_list = punch_list[~duplicate_ids]
+
         if client_filter:
             if client_filter.isdigit():
                 logger.info(f"Filtering punch list by ID: {client_filter}")
