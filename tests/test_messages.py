@@ -266,10 +266,9 @@ class TestRenderReminderMessage:
         assert message is not None
         assert "complete your questionnaires" in message
 
-    def test_postda_pending_alone_does_not_change_wording(
+    def test_postda_pending_alone_changes_wording(
         self, config_factory, client_factory, questionnaire_factory
     ):
-        """is_postda only changes wording when is_posteval is also true."""
         config = config_factory()
         q = questionnaire_factory(
             sent=date.today(), reminded=0, status="POSTDA_PENDING"
@@ -284,8 +283,7 @@ class TestRenderReminderMessage:
             distance=0,
         )
         assert message is not None
-        assert "finalize our review" not in message
-        assert "complete your questionnaire" in message
+        assert "finalize our review" in message
 
     def test_postda_and_posteval_pending_changes_wording(
         self, config_factory, client_factory, questionnaire_factory

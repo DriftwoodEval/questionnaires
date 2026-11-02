@@ -167,7 +167,7 @@ def resolve_reminder_variant(client: ClientWithQuestionnaires) -> str:
     is_postda = any(q["status"] == "POSTDA_PENDING" for q in client.questionnaires)
     is_posteval = any(q["status"] == "POSTEVAL_PENDING" for q in client.questionnaires)
 
-    if is_posteval and is_postda:
+    if is_postda:
         return "POSTDA"
     if is_posteval:
         return "POSTEVAL"
