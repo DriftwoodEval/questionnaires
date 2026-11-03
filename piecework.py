@@ -67,19 +67,27 @@ def force_clients_ready(
     return punch_list
 
 
+def _full_name(config: Config, initials: str) -> str:
+    """Resolve writer initials to a full name, or an empty string if there are none."""
+    return config.piecework.get_full_name(initials) if initials else ""
+
+
 def get_report_clients(
     config: Config,
     force_ready_client_ids: list[int] | None = None,
     *,
     dev_mode: bool = False,
-) -> pd.DataFrame | None:
-    """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day."""
+) -> tuple[pd.DataFrame | None, Config]:
+    """Find clients who have reports done, and who either: haven't been ran before, or were ran on the same day.
+
+    Returns the report clients and the config, which is replaced when the user reloads it.
+    """
     while True:
         punch_list = get_punch_list(config)
 
         if punch_list is None:
             logger.critical("Punch list is empty")
-            return None
+            return None, config
 
         if force_ready_client_ids:
             punch_list = force_clients_ready(punch_list, force_ready_client_ids)
@@ -127,7 +135,7 @@ def get_report_clients(
 
         if report_done.empty:
             logger.info("No clients found that have reports done")
-            return None
+            return None, config
 
         logger.debug(report_done)
 
@@ -145,7 +153,7 @@ def get_report_clients(
 
         if new_reports.empty:
             logger.info("No new reports found")
-            return None
+            return None, config
 
         new_client_ids = [
             int(cid)  # type: ignore[arg-type]
@@ -222,17 +230,13 @@ def get_report_clients(
             logger.error(
                 "No valid reports found after filtering out unassigned clients"
             )
-            return None
+            return None, config
 
         # Only resolve from initials for rows not already auto-filled via writesOwnReports
         needs_lookup = result["Writer Name"] == ""
         result.loc[needs_lookup, "Writer Name"] = result.loc[
             needs_lookup, "Initials"
-        ].apply(
-            lambda initials: (
-                config.piecework.get_full_name(initials) if initials else ""
-            )
-        )
+        ].apply(lambda initials, cfg=config: _full_name(cfg, initials))
 
         # Warn if any writer names could not be resolved
         unresolved = result[result["Writer Name"] == ""]
@@ -245,6 +249,11 @@ def get_report_clients(
                     "action",
                     message="Continue?",
                     choices=[
+                        ("I've fixed the initials, refetch the sheet", "refetch"),
+                        (
+                            "I've updated the configuration, reload it and refetch the sheet",
+                            "reload_config",
+                        ),
                         ("Continue and ignore these reports", "continue"),
                         ("Abort", "abort"),
                     ],
@@ -255,13 +264,23 @@ def get_report_clients(
                 logger.info("Aborting.")
                 sys.exit()
 
+            if answers["action"] == "reload_config":
+                logger.info("Reloading configuration...")
+                _, config = load_config()
+                logger.info("Refetching punch list...")
+                continue
+
+            if answers["action"] == "refetch":
+                logger.info("Refetching punch list...")
+                continue
+
             result = result[result["Writer Name"] != ""]
 
         if result.empty:
             logger.error(
                 "No valid reports found after filtering out unassigned clients"
             )
-            return None
+            return None, config
 
         # Save any newly added clients and update writer emails
         newly_added = [
@@ -291,7 +310,7 @@ def get_report_clients(
         logger.debug(result)
         logger.info(f"Found {len(result)} new reports")
 
-        return result
+        return result, config
 
 
 def get_date_range() -> tuple[date, date] | None:
@@ -742,7 +761,7 @@ def main(
         appointments = []
 
     try:
-        report_clients = get_report_clients(
+        report_clients, config = get_report_clients(
             config,
             force_ready_client_ids=force_ready_client_ids,
             dev_mode=dev_mode,
