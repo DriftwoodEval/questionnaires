@@ -245,6 +245,7 @@ def get_report_clients(
                     "action",
                     message="Continue?",
                     choices=[
+                        ("I've fixed the initials, refetch the sheet", "refetch"),
                         ("Continue and ignore these reports", "continue"),
                         ("Abort", "abort"),
                     ],
@@ -254,6 +255,10 @@ def get_report_clients(
             if not answers or answers["action"] == "abort":
                 logger.info("Aborting.")
                 sys.exit()
+
+            if answers["action"] == "refetch":
+                logger.info("Refetching punch list...")
+                continue
 
             result = result[result["Writer Name"] != ""]
 
