@@ -252,6 +252,11 @@ def render_reminder_message(
 
     substitutions = {
         "$CLIENT_FIRST_NAME": client.firstName,
+        "$CLIENT_FNAME": (
+            f"{client.preferredName} ({client.firstName})"
+            if client.preferredName
+            else client.firstName
+        ),
         "$STAFF_NAME": config.name,
         "$QUESTIONNAIRE_WORD": "questionnaire" if link_count == 1 else "questionnaires",
         "$IT_THEM": "it" if link_count == 1 else "them",
