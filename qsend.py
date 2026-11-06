@@ -1089,60 +1089,43 @@ def main(
                                     )
 
                     if previous_questionnaires:
-                        questionnaires_to_remove = [
-                            q_type
+                        # Types already out (completed, external, or still
+                        # pending) are not resent. ARCHIVED needs a fresh send
+                        # and JUST_ADDED is reused below.
+                        resendable_statuses = ["ARCHIVED", "JUST_ADDED"]
+                        already_sent = {
+                            q_type: status
                             for q_type, status in previous_questionnaire_info.items()
                             if q_type in questionnaires_needed
-                            and status in ["COMPLETED", "EXTERNAL"]
+                            and status not in resendable_statuses
+                        }
+                        if already_sent:
+                            skipped = ", ".join(
+                                f"{q_type} - {status}"
+                                for q_type, status in already_sent.items()
+                            )
+                            logger.info(
+                                f"{client['Client Name']} already has: {skipped}"
+                            )
+
+                        questionnaires_needed = [
+                            q for q in questionnaires_needed if q not in already_sent
                         ]
-
-                        questionnaires_needed = list(
-                            set(questionnaires_needed) - set(questionnaires_to_remove)
-                        )
-
-                        remaining_overlaps = []
-                        for q_type in questionnaires_needed:
-                            if q_type in previous_questionnaire_info:
-                                status = previous_questionnaire_info[q_type]
-                                if status not in [
-                                    "COMPLETED",
-                                    "EXTERNAL",
-                                    "ARCHIVED",
-                                    "JUST_ADDED",
-                                ]:
-                                    remaining_overlaps.append(f"{q_type} - {status}")
-
-                        if remaining_overlaps:
-                            logger.error(
-                                f"{client['Client Name']} needs questionnaires that were previously sent and are not complete: {', '.join(remaining_overlaps)}"
-                            )
-                            add_failure(
-                                config=config,
-                                client_id=client["Client ID"],
-                                error=f"Overlapping questionnaires: {', '.join(remaining_overlaps)}",
-                                failed_date=today,
-                                full_name=client["Client Name"],
-                                asd_adhd=client["For"],
-                                daeval=client["daeval"],
-                                questionnaires_needed=questionnaires_needed,
-                            )
-                            continue
 
                 logger.info(
                     f"{client['Client Name']} needs questionnaires for {client['Language']}{' ' if client['Language'] != '' else ''}{client['For']} {client['daeval']}: {questionnaires_needed}"
                 )
 
-                questionnaires = []
-                questionnaires_to_generate = []
-                if len(just_added_questionnaires) > 0:
-                    questionnaires.extend(just_added_questionnaires)
-                    questionnaires_to_generate = [
-                        q
-                        for q in questionnaires_needed
-                        if q not in [item["type"] for item in just_added_questionnaires]
-                    ]
-                else:
-                    questionnaires_to_generate = questionnaires_needed
+                # Only reuse JUST_ADDED links for types still needed
+                questionnaires = [
+                    q
+                    for q in just_added_questionnaires
+                    if q["type"] in questionnaires_needed
+                ]
+                reused_types = {q["type"] for q in questionnaires}
+                questionnaires_to_generate = [
+                    q for q in questionnaires_needed if q not in reused_types
+                ]
 
                 # JUST_ADDED questionnaires already have links, so they still go out
                 if len(questionnaires) == 0 and len(questionnaires_to_generate) == 0:
