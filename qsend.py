@@ -1144,7 +1144,8 @@ def main(
                 else:
                     questionnaires_to_generate = questionnaires_needed
 
-                if len(questionnaires_to_generate) == 0:
+                # JUST_ADDED questionnaires already have links, so they still go out
+                if len(questionnaires) == 0 and len(questionnaires_to_generate) == 0:
                     add_failure(
                         config=config,
                         client_id=client["Client ID"],
