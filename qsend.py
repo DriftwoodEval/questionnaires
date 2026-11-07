@@ -1,5 +1,4 @@
 import re
-import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from time import sleep, strftime, strptime
@@ -69,6 +68,7 @@ from utils.platforms.therapyappointment import (
     send_message_ta,
 )
 from utils.platforms.wps import check_and_login_wps, gen_dp4
+from utils.progress_bar import PinnedProgressBar
 from utils.questionnaires import (
     check_client_failed,
     check_client_previous,
@@ -83,9 +83,15 @@ from utils.task_tracker import track_task
 
 app = typer.Typer()
 
+
 logger.remove()
 logger.level("NOTICE", no=25, color="<yellow><bold>", icon="!")
-logger.add(sys.stdout, format=stderr_log_format)
+# Log through the pinned bar's sink so lines print above the bar instead of tearing it.
+logger.add(
+    PinnedProgressBar.log_sink,
+    format=stderr_log_format,
+    colorize=True,
+)
 
 logger.add("logs/qsend.log", format=json_log_format, rotation="500 MB")
 
@@ -728,9 +734,12 @@ def main(
         logger.critical("No clients marked to send, exiting")
         return
 
-    with track_task(
-        config, "questionnaire_send", "Sending questionnaires", exclusive=False
-    ) as task:
+    with (
+        track_task(
+            config, "questionnaire_send", "Sending questionnaires", exclusive=False
+        ) as task,
+        PinnedProgressBar(len(clients)) as bar,
+    ):
         # exclusive=False means track_task always yields a handle, never None.
         assert task is not None
 
@@ -744,6 +753,7 @@ def main(
             every failure is also tallied for the run summary, without touching
             each of the many call sites below."""
             failure_reason_counts[error] += 1
+            bar.mark_failed()
             client_hash = client_id_to_hash.get(int(client_id))
             if client_hash:
                 failure_reason_clients[error].append(
@@ -778,6 +788,7 @@ def main(
         for i, (_, client) in enumerate(clients.iterrows(), start=1):
             set_log_client(client["Client ID"])
             task.progress(i, total_clients)
+            bar.advance_to(i)
             logger.info(f"Starting loop for {client['Client Name']}")
 
             if prev_failed_clients:
@@ -1288,6 +1299,7 @@ def main(
                     if client["Language"] != "Spanish":
                         send_message_ta(driver, client_url, message)
                         sent_count += 1
+                        bar.mark_sent()
                 if not send and questionnaires:
                     logger.warning(
                         f"Questionnaires were generated, but no message was sent: {questionnaires}"
