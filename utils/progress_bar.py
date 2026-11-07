@@ -46,8 +46,9 @@ class PinnedProgressBar:
 
     current: "PinnedProgressBar | None" = None
 
-    def __init__(self, total: int):
+    def __init__(self, total: int, success_label: str = "sent"):
         self.total = total
+        self.success_label = success_label
         self.completed = 0
         self.sent = 0
         self.failed: set[int] = set()
@@ -138,7 +139,7 @@ class PinnedProgressBar:
 
     def _client_line(self) -> Text:
         errors = len(self.failed)
-        summary = f" {self.completed}/{self.total} clients | {self.sent} sent | {self.skipped} skipped | "
+        summary = f" {self.completed}/{self.total} clients | {self.sent} {self.success_label} | {self.skipped} skipped | "
         error_text = f"{errors} errors"
         width = max(1, self.console.width - len(summary) - len(error_text) - 1)
         line = render_bar(self.total, self.completed, self.failed, width)

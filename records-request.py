@@ -1,6 +1,5 @@
 import io
 import re
-import sys
 from base64 import b64decode
 from collections import Counter, defaultdict
 from datetime import date
@@ -52,6 +51,7 @@ from utils.platforms.therapyappointment import (
     form_row_present,
     go_to_client,
 )
+from utils.progress_bar import PinnedProgressBar
 from utils.records import normalize_district, resolve_school_contact
 from utils.selenium import (
     click_element,
@@ -60,8 +60,10 @@ from utils.selenium import (
 from utils.task_tracker import track_task
 
 logger.remove()
+# Log through the pinned bar's sink so lines print above the bar instead of tearing it.
 logger.add(
-    sys.stdout,
+    PinnedProgressBar.log_sink,
+    colorize=True,
     format="[<dim>{time:YY-MM-DD HH:mm:ss}</dim>] <level>{level: <8}</level> | <level>{message}</level>",
 )
 
@@ -591,9 +593,12 @@ def main(
 
     logger.info(f"Found {len(clients_to_process)} new clients to process.")
 
-    with track_task(
-        config, "records_request", "Processing records requests", exclusive=False
-    ) as task:
+    with (
+        track_task(
+            config, "records_request", "Processing records requests", exclusive=False
+        ) as task,
+        PinnedProgressBar(len(clients_to_process), success_label="requested") as bar,
+    ):
         if task is None:
             logger.info(
                 "Skipping run: a previous records request run is still in progress."
@@ -615,6 +620,7 @@ def main(
             for i, client in enumerate(clients_to_process, start=1):
                 set_log_client(client.id)
                 task.progress(i, total_clients)
+                bar.advance_to(i)
                 asd_adhd = client.asdAdhd or "Unknown"
                 client_name = client.fullName
 
@@ -646,8 +652,11 @@ def main(
                             config,
                             dry_run=dry_run,
                         )
-                        if not skipped:
+                        if skipped:
+                            bar.mark_notice()
+                        else:
                             new_success_count += 1
+                            bar.mark_sent()
 
                     except Exception as e:
                         logger.error(
@@ -675,6 +684,7 @@ def main(
                             daeval="Records",
                         )
                         new_failure_count += 1
+                        bar.mark_failed()
                         failure_reason_counts[error] += 1
                         failure_reason_clients[error].append(
                             {"hash": client.hash, "name": client_name}
@@ -691,6 +701,7 @@ def main(
                         daeval="Records",
                     )
                     new_failure_count += 1
+                    bar.mark_failed()
                     failure_reason_counts["unable to find client"] += 1
                     failure_reason_clients["unable to find client"].append(
                         {"hash": client.hash, "name": client_name}
