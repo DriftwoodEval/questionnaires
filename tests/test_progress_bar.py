@@ -38,3 +38,13 @@ def test_skipped_counts_notice_clients_that_did_not_fail():
         if failed:
             bar.mark_failed()
     assert bar.skipped == 1
+
+
+def test_questionnaire_bar_resets_per_client_and_marks_failed_slot():
+    bar = PinnedProgressBar(3)
+    bar.start_questionnaires(3, done=1)
+    bar.questionnaire_attempted()
+    bar.questionnaire_attempted(failed=True)
+    assert (bar.q_attempted, bar.q_failed) == (3, {3})
+    bar.advance_to(2)
+    assert bar.q_total is None

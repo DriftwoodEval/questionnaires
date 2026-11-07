@@ -1153,6 +1153,10 @@ def main(
                     )
                     continue
 
+                bar.start_questionnaires(
+                    len(questionnaires) + len(questionnaires_to_generate),
+                    done=len(questionnaires),
+                )
                 send = True
                 send_reason = determine_send_reason(
                     client, client_from_db, previous_questionnaires, prev_failed_clients
@@ -1184,6 +1188,7 @@ def main(
                                 else [],
                                 questionnaires_generated=questionnaires,
                             )
+                            bar.questionnaire_attempted(failed=True)
                             send = False
                             continue
 
@@ -1197,6 +1202,7 @@ def main(
                             status="JUST_ADDED",
                             reason=send_reason,
                         )
+                        bar.questionnaire_attempted()
 
                     except Exception as e:
                         logger.error(f"Error assigning {questionnaire}: {e}")
@@ -1214,6 +1220,7 @@ def main(
                             else [],
                             questionnaires_generated=questionnaires,
                         )
+                        bar.questionnaire_attempted(failed=True)
                         send = False
                         continue
 
