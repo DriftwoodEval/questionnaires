@@ -1,6 +1,6 @@
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -242,12 +242,23 @@ def _load_pending_email() -> list[AdminEmailInfo]:
 REMINDABLE_FAILURE_REASONS = ("portal not opened", "docs not signed")
 
 
-def build_failure_message(config: Config, reason: str) -> str | None:
-    """Builds a message to be sent to the client for the given failure reason."""
+def build_failure_message(
+    config: Config, reason: str, client_count: int = 1
+) -> str | None:
+    """Builds a message to be sent to the client for the given failure reason.
+
+    `client_count` is how many clients this one text covers (siblings sharing a
+    phone number); more than one adds a count in place of names.
+    """
+    who = (
+        ""
+        if client_count == 1
+        else f" for the {client_count} clients you're responsible for"
+    )
     if reason == "portal not opened":
-        return f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
+        return f"Hi, this is {config.name} from Driftwood Evaluation Center. We noticed you haven't accessed the patient portal, TherapyAppointment{who} as of yet. I resent the invite through email. We won't be able to move ahead with scheduling the appointment until this is done. Please let us know if you have any questions or need assistance. Thank you."
     if reason == "docs not signed":
-        return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
+        return f'This is {config.name} from Driftwood Evaluation Center. We see that you signed into your portal at portal.therapyappointment.com but you didn\'t complete the Forms under the "Forms" section{who}. Please sign back in, navigate to the Forms section, and complete the forms not marked as "Completed" to move forward with the evaluation process. Thank you!'
 
     return None
 
@@ -313,6 +324,7 @@ def sent_reminder_recently(
     override: str | None,
     distance: int,
     today: date,
+    also_for: Sequence[ClientWithQuestionnaires] = (),
 ) -> bool:
     """Whether Quo shows we already sent this reminder within the last few days.
 
@@ -344,6 +356,7 @@ def sent_reminder_recently(
                 distance=distance - days_ago,
                 override=override,
                 days_ago=days_ago,
+                also_for=also_for,
             )
         )
         if rendered and " ".join(rendered.split()) in recent_texts:
@@ -431,6 +444,132 @@ def check_failures(
         if progress_callback:
             progress_callback(done, total)
     set_log_client(None)
+
+
+def send_failure_reminders(
+    config: Config,
+    services: Services,
+    quo: Quo,
+    *,
+    driver: WebDriver | None,
+    pending_failures: dict[tuple[str, str], list[tuple[FailedClientFromDB, int]]],
+    numbers_sent: list[str],
+    messages_sent: list,
+    email_info: AdminEmailInfo,
+    send_texts: bool,
+    dry_run: bool,
+    today_business: date,
+) -> None:
+    """Sends one failure reminder text per (phone number, reason) group of due clients."""
+    for (phone_number, reason), due in pending_failures.items():
+        group = due
+        names = " and ".join(c.fullName for c, _ in group)
+        if phone_number in numbers_sent:
+            logger.warning(f"Already messaged {names} at {phone_number} today")
+            continue
+
+        message = build_failure_message(config, reason, len(group))
+        # Redundant failsafe to super ensure we don't text people a message that just says "None"
+        if not message:
+            logger.error(f"Failed to build message for {names}")
+            continue
+
+        # Quo already has this exact text from today: an earlier run
+        # sent it but never recorded it. Record it now instead of
+        # texting again.
+        if (send_texts or dry_run) and quo.has_sent_message(
+            phone_number, message, since=today_business
+        ):
+            logger.warning(
+                f"Quo history shows {names} already got this failure reminder today, recording it instead of resending"
+            )
+            numbers_sent.append(phone_number)
+            if send_texts:
+                for c, reminded_count in group:
+                    update_failure_in_db(
+                        config,
+                        c.id,
+                        reason,
+                        reminded=reminded_count + 1,
+                        last_reminded=date.today(),
+                    )
+            continue
+
+        if reason == "portal not opened":
+            resent = []
+            for c, reminded_count in group:
+                set_log_client(c.id)
+                if not send_texts:
+                    logger.info(
+                        f"[DRY RUN] Would resend portal invite for {c.fullName}"
+                    )
+                    resent.append((c, reminded_count))
+                    continue
+                try:
+                    assert driver is not None
+                    resend_portal_invite(driver, services, str(c.id))
+                    resent.append((c, reminded_count))
+                except Exception as e:
+                    logger.error(f"Failed to resend invite for {c.fullName}: {e}")
+                    email_info["failed"].append(
+                        (
+                            c,
+                            "Failed to resend invite (possibly never initially invited?)",
+                        )
+                    )
+            set_log_client(None)
+            if not resent:
+                continue
+            if len(resent) != len(group):
+                # Say how many clients the text covers now.
+                group = resent
+                names = " and ".join(c.fullName for c, _ in group)
+                rebuilt = build_failure_message(config, reason, len(group))
+                if not rebuilt:
+                    continue
+                message = rebuilt
+
+        if not send_texts:
+            logger.info(f"[DRY RUN] Would text {names} ({phone_number}):\n{message}")
+            continue
+
+        try:
+            attempt_text = quo.send_text(message, phone_number, mark_done=True)
+        except InvalidPhoneNumberError as e:
+            for c, _ in group:
+                logger.error(f"Invalid phone number for {c.fullName}: {e}")
+                email_info["failed"].append(
+                    (c, f"Invalid phone number: {phone_number}")
+                )
+            continue
+        except NotEnoughCreditsError:
+            logger.critical(
+                "Aborting all further message sends due to insufficient credits."
+            )
+            email_info["errors"].append("Quo API needs more credits to send messages.")
+            break
+
+        if not attempt_text or "id" not in attempt_text:
+            for c, _ in group:
+                logger.error(f"Failed to send message to {c.fullName}")
+                email_info["failed"].append((c, "Failed to send text request"))
+            continue
+
+        numbers_sent.append(phone_number)
+        for c, _ in group:
+            set_log_client(c.id)
+            messages_sent.append((c, attempt_text["id"], reason))
+            try:
+                log_questionnaire_msg(
+                    config,
+                    c.id,
+                    attempt_text["id"],
+                    is_failure_reminder=True,
+                    failure_reason=reason,
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log automated message: {log_err}")
+        set_log_client(None)
 
 
 @app.command()
@@ -632,6 +771,14 @@ def main(
                 tuple[FailedClientFromDB | ClientWithQuestionnaires, str, str | None]
             ] = []
             numbers_sent: list[str] = []
+            # Failure reminders due this run, by (phone number, reason), so clients
+            # sharing a number get one text that says how many clients it covers.
+            pending_failures: dict[
+                tuple[str, str], list[tuple[FailedClientFromDB, int]]
+            ] = {}
+            pending_reminders: dict[
+                str, list[tuple[ClientWithQuestionnaires, Questionnaire, str | None]]
+            ] = {}
             today_business = now_business(config.business_timezone).date()
 
             completed_ids = {c.id for c in email_info["completed"]}
@@ -692,13 +839,6 @@ def main(
                             email_info["failed"].append((client, "No phone number"))
                             continue
 
-                        already_messaged = client.phoneNumber in numbers_sent
-
-                        if already_messaged:
-                            logger.warning(
-                                f"Already messaged {client.fullName} at {client.phoneNumber} today"
-                            )
-
                         # 3 reminders sent and 3+ days of silence since the last one: hand
                         # off to a human to call instead of texting a 4th time.
                         if (
@@ -715,122 +855,29 @@ def main(
                                 last_reminded=date.today(),
                             )
 
-                        elif (
-                            reminded_count < 3
-                            and not already_messaged
-                            and client.phoneNumber
+                        elif reminded_count < 3 and should_send_reminder(
+                            reminded_count,
+                            last_reminded_distance,
+                            reminder_settings,
                         ):
-                            if should_send_reminder(
-                                reminded_count,
-                                last_reminded_distance,
-                                reminder_settings,
-                            ):
-                                logger.info(f"Sending reminder TO {client.fullName}")
-                                message = build_failure_message(config, reason)
-                                # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                                if not message:
-                                    logger.error(
-                                        f"Failed to build message for {client.fullName}"
-                                    )
-                                    continue
-
-                                # Quo already has this exact text from today: an earlier run
-                                # sent it but never recorded it. Record it now instead of
-                                # texting again.
-                                if (send_texts or dry_run) and quo.has_sent_message(
-                                    client.phoneNumber, message, since=today_business
-                                ):
-                                    logger.warning(
-                                        f"Quo history shows {client.fullName} already got this failure reminder today, recording it instead of resending"
-                                    )
-                                    numbers_sent.append(client.phoneNumber)
-                                    if send_texts:
-                                        update_failure_in_db(
-                                            config,
-                                            client.id,
-                                            reason,
-                                            reminded=reminded_count + 1,
-                                            last_reminded=date.today(),
-                                        )
-                                    continue
-
-                                if reason == "portal not opened":
-                                    if send_texts:
-                                        try:
-                                            assert driver is not None
-                                            resend_portal_invite(
-                                                driver, services, str(client.id)
-                                            )
-                                        except Exception as e:
-                                            logger.error(
-                                                f"Failed to resend invite for {client.fullName}: {e}"
-                                            )
-                                            email_info["failed"].append(
-                                                (
-                                                    client,
-                                                    "Failed to resend invite (possibly never initially invited?)",
-                                                )
-                                            )
-                                            continue
-                                    elif dry_run:
-                                        logger.info(
-                                            f"[DRY RUN] Would resend portal invite for {client.fullName}"
-                                        )
-
-                                if send_texts:
-                                    try:
-                                        attempt_text = quo.send_text(
-                                            message, client.phoneNumber, mark_done=True
-                                        )
-
-                                        if attempt_text and "id" in attempt_text:
-                                            numbers_sent.append(client.phoneNumber)
-                                            messages_sent.append(
-                                                (client, attempt_text["id"], reason)
-                                            )
-                                            try:
-                                                log_questionnaire_msg(
-                                                    config,
-                                                    client.id,
-                                                    attempt_text["id"],
-                                                    is_failure_reminder=True,
-                                                    failure_reason=reason,
-                                                )
-                                            except Exception as log_err:
-                                                logger.error(
-                                                    f"Failed to log automated message: {log_err}"
-                                                )
-
-                                        else:
-                                            logger.error(
-                                                f"Failed to send message to {client.fullName}"
-                                            )
-                                            email_info["failed"].append(
-                                                (client, "Failed to send text request")
-                                            )
-                                    except InvalidPhoneNumberError as e:
-                                        logger.error(
-                                            f"Invalid phone number for {client.fullName}: {e}"
-                                        )
-                                        email_info["failed"].append(
-                                            (
-                                                client,
-                                                f"Invalid phone number: {client.phoneNumber}",
-                                            )
-                                        )
-                                    except NotEnoughCreditsError:
-                                        logger.critical(
-                                            "Aborting all further message sends due to insufficient credits."
-                                        )
-                                        email_info["errors"].append(
-                                            "Quo API needs more credits to send messages."
-                                        )
-                                        break
-                                elif dry_run:
-                                    logger.info(
-                                        f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
-                                    )
+                            pending_failures.setdefault(
+                                (client.phoneNumber, reason), []
+                            ).append((client, reminded_count))
                 set_log_client(None)
+
+                send_failure_reminders(
+                    config,
+                    services,
+                    quo,
+                    driver=driver,
+                    pending_failures=pending_failures,
+                    numbers_sent=numbers_sent,
+                    messages_sent=messages_sent,
+                    email_info=email_info,
+                    send_texts=send_texts,
+                    dry_run=dry_run,
+                    today_business=today_business,
+                )
 
             if clients:
                 clients = validate_questionnaires(clients)
@@ -960,103 +1007,122 @@ def main(
                                     f"Using reminder override for {client.fullName} "
                                     f"(batch sent {most_recent_q['sent']}, stage {most_recent_q['reminded']})"
                                 )
-                            message = render_reminder_message(
-                                reminder_templates,
-                                reminder_settings,
-                                config,
-                                client,
-                                most_recent_q=most_recent_q,
-                                distance=distance,
-                                override=override_message,
+                            # Texted after the loop, so clients sharing a number and
+                            # reminder stage get one merged message.
+                            pending_reminders.setdefault(client.phoneNumber, []).append(
+                                (client, most_recent_q, override_message)
                             )
-                            # Redundant failsafe to super ensure we don't text people a message that just says "None"
-                            if not message:
-                                logger.error(
-                                    f"Failed to build message for {client.fullName}"
-                                )
-                                continue
-
-                            if (send_texts or dry_run) and sent_reminder_recently(
-                                quo,
-                                config,
-                                client,
-                                most_recent_q,
-                                message,
-                                templates=reminder_templates,
-                                settings=reminder_settings,
-                                override=override_message,
-                                distance=distance,
-                                today=today_business,
-                            ):
-                                logger.warning(
-                                    f"Not texting {client.fullName}: this reminder was already sent in the last {RECENT_REMINDER_DAYS} days"
-                                )
-                                continue
-
-                            if send_texts:
-                                try:
-                                    attempt_text = quo.send_text(
-                                        message, client.phoneNumber, mark_done=True
-                                    )
-
-                                    if attempt_text and "id" in attempt_text:
-                                        numbers_sent.append(client.phoneNumber)
-                                        messages_sent.append(
-                                            (client, attempt_text["id"], None)
-                                        )
-                                        try:
-                                            log_questionnaire_msg(
-                                                config,
-                                                client.id,
-                                                attempt_text["id"],
-                                                is_failure_reminder=False,
-                                                reminder_index=most_recent_q[
-                                                    "reminded"
-                                                ],
-                                                variant=resolve_reminder_variant(
-                                                    client
-                                                ),
-                                                used_override=override_message
-                                                is not None,
-                                            )
-                                        except Exception as log_err:
-                                            logger.error(
-                                                f"Failed to log automated message: {log_err}"
-                                            )
-                                    else:
-                                        logger.error(
-                                            f"Failed to send message to {client.fullName}"
-                                        )
-                                        email_info["failed"].append(
-                                            (client, "Failed to send text request")
-                                        )
-                                except InvalidPhoneNumberError as e:
-                                    logger.error(
-                                        f"Invalid phone number for {client.fullName}: {e}"
-                                    )
-                                    email_info["failed"].append(
-                                        (
-                                            client,
-                                            f"Invalid phone number: {client.phoneNumber}",
-                                        )
-                                    )
-                                except NotEnoughCreditsError:
-                                    logger.critical(
-                                        "Aborting all further message sends due to insufficient credits."
-                                    )
-                                    email_info["errors"].append(
-                                        "Quo API needs more credits to send messages."
-                                    )
-                                    break
-                            elif dry_run:
-                                logger.info(
-                                    f"[DRY RUN] Would text {client.fullName} ({client.phoneNumber}):\n{message}"
-                                )
                     elif client in email_info["completed"]:
                         logger.info(
                             f"{client.fullName} completed all questionnaires — punchlist will be synced at end of run"
                         )
                 set_log_client(None)
+
+            for phone_number, entries in pending_reminders.items():
+                # Clients share a text only when they would get the same template
+                # and the same "sent on" date.
+                groups: dict[tuple, list] = {}
+                for entry in entries:
+                    client, most_recent_q, override_message = entry
+                    key = (
+                        most_recent_q["reminded"],
+                        resolve_reminder_variant(client),
+                        override_message,
+                        most_recent_q["sent"],
+                    )
+                    groups.setdefault(key, []).append(entry)
+
+                for group in groups.values():
+                    client, most_recent_q, override_message = group[0]
+                    others = [c for c, _, _ in group[1:]]
+                    names = " and ".join(c.fullName for c, _, _ in group)
+                    distance = check_distance(most_recent_q["sent"])
+                    message = render_reminder_message(
+                        reminder_templates,
+                        reminder_settings,
+                        config,
+                        client,
+                        most_recent_q=most_recent_q,
+                        distance=distance,
+                        override=override_message,
+                        also_for=others,
+                    )
+                    # Redundant failsafe to super ensure we don't text people a message that just says "None"
+                    if not message:
+                        logger.error(f"Failed to build message for {names}")
+                        continue
+
+                    if (send_texts or dry_run) and sent_reminder_recently(
+                        quo,
+                        config,
+                        client,
+                        most_recent_q,
+                        message,
+                        templates=reminder_templates,
+                        settings=reminder_settings,
+                        override=override_message,
+                        distance=distance,
+                        today=today_business,
+                        also_for=others,
+                    ):
+                        logger.warning(
+                            f"Not texting {names}: this reminder was already sent in the last {RECENT_REMINDER_DAYS} days"
+                        )
+                        continue
+
+                    if not send_texts:
+                        logger.info(
+                            f"[DRY RUN] Would text {names} ({phone_number}):\n{message}"
+                        )
+                        continue
+                    try:
+                        attempt_text = quo.send_text(
+                            message, phone_number, mark_done=True
+                        )
+                    except InvalidPhoneNumberError as e:
+                        for c, _, _ in group:
+                            logger.error(f"Invalid phone number for {c.fullName}: {e}")
+                            email_info["failed"].append(
+                                (c, f"Invalid phone number: {phone_number}")
+                            )
+                        continue
+                    except NotEnoughCreditsError:
+                        logger.critical(
+                            "Aborting all further message sends due to insufficient credits."
+                        )
+                        email_info["errors"].append(
+                            "Quo API needs more credits to send messages."
+                        )
+                        break
+
+                    if not attempt_text or "id" not in attempt_text:
+                        for c, _, _ in group:
+                            logger.error(f"Failed to send message to {c.fullName}")
+                            email_info["failed"].append(
+                                (c, "Failed to send text request")
+                            )
+                        continue
+
+                    numbers_sent.append(phone_number)
+                    for c, q, override in group:
+                        set_log_client(c.id)
+                        messages_sent.append((c, attempt_text["id"], None))
+                        try:
+                            log_questionnaire_msg(
+                                config,
+                                c.id,
+                                attempt_text["id"],
+                                is_failure_reminder=False,
+                                reminder_index=q["reminded"],
+                                variant=resolve_reminder_variant(c),
+                                used_override=override is not None,
+                            )
+                        except Exception as log_err:
+                            logger.error(f"Failed to log automated message: {log_err}")
+                else:
+                    continue
+                break
+            set_log_client(None)
 
             referral_messages_sent: list[tuple[ClientFromDB, str, bool]] = []
 

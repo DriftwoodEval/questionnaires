@@ -1,4 +1,5 @@
 import re
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -162,6 +163,13 @@ DEFAULT_REMINDER_TEMPLATES: dict[tuple[int, str], str] = {
 }
 
 
+def join_names(names: list[str]) -> str:
+    """Joins names the way they read in a sentence: "A", "A and B", "A, B and C"."""
+    if len(names) <= 1:
+        return "".join(names)
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 def resolve_reminder_variant(client: ClientWithQuestionnaires) -> str:
     """Picks the (postda/posteval) template variant for a client's current questionnaire statuses. Shared between `render_reminder_message` and the qreceive call site that needs the variant for audit logging, so the two stay in sync."""
     is_postda = any(q["status"] == "POSTDA_PENDING" for q in client.questionnaires)
@@ -184,6 +192,7 @@ def render_reminder_message(
     distance: int,
     override: str | None = None,
     days_ago: int = 0,
+    also_for: Sequence[ClientWithQuestionnaires] = (),
 ) -> str | None:
     """Renders the reminder message for a client's most recent pending questionnaire.
 
@@ -195,6 +204,10 @@ def render_reminder_message(
     `days_ago` renders the message as it would have read that many days ago:
     the caller passes the `distance` from that day, and the deadline date is
     counted from that day too. Used to recognize a reminder we already sent.
+
+    `also_for` are other clients texted at the same number with this same
+    reminder. The one text then names everyone and counts all their pending
+    questionnaires, so "questionnaire" becomes "questionnaires" and so on.
     """
     if not most_recent_q["sent"]:
         logger.warning(
@@ -202,15 +215,17 @@ def render_reminder_message(
         )
         return None
 
+    everyone = [client, *also_for]
     link_count = len(
         [
             q
-            for q in client.questionnaires
+            for c in everyone
+            for q in c.questionnaires
             if q["status"] in ["PENDING", "POSTDA_PENDING", "POSTEVAL_PENDING"]
         ]
     )
     completed_count = len(
-        [q for q in client.questionnaires if q["status"] == "COMPLETED"]
+        [q for c in everyone for q in c.questionnaires if q["status"] == "COMPLETED"]
     )
     variant = resolve_reminder_variant(client)
 
@@ -242,8 +257,7 @@ def render_reminder_message(
         distance_phrase = f"on {date_str} (yesterday)"
     else:
         date_str = most_recent_q["sent"].strftime("%m/%d")
-        days_ago = abs(distance)
-        distance_phrase = f"on {date_str} ({days_ago} days ago)"
+        distance_phrase = f"on {date_str} ({abs(distance)} days ago)"
 
     escalation_days = settings["escalationSilenceDays"]
     deadline_date = (
@@ -251,11 +265,16 @@ def render_reminder_message(
     ).strftime("%m/%d")
 
     substitutions = {
-        "$CLIENT_FIRST_NAME": client.firstName,
-        "$CLIENT_FNAME": (
-            f"{client.preferredName} ({client.firstName})"
-            if client.preferredName
-            else client.firstName
+        "$CLIENT_FIRST_NAME": join_names([c.firstName for c in everyone]),
+        "$CLIENT_FNAME": join_names(
+            [
+                (
+                    f"{c.preferredName} ({c.firstName})"
+                    if c.preferredName
+                    else c.firstName
+                )
+                for c in everyone
+            ]
         ),
         "$STAFF_NAME": config.name,
         "$QUESTIONNAIRE_WORD": "questionnaire" if link_count == 1 else "questionnaires",

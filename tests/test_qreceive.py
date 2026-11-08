@@ -11,6 +11,7 @@ from qreceive import (
     build_failure_message,
     mark_questionnaires_reminded,
     reconcile_reminders_from_history,
+    send_failure_reminders,
     sent_reminder_recently,
     should_send_reminder,
 )
@@ -304,3 +305,152 @@ class TestSentReminderRecently:
             today=date(2026, 1, 6),
         )
         render.assert_not_called()
+
+
+class TestBuildFailureMessageClientCount:
+    @pytest.mark.parametrize("reason", ["portal not opened", "docs not signed"])
+    @pytest.mark.parametrize(
+        ("client_count", "expected"),
+        [(1, False), (2, True), (3, True)],
+    )
+    def test_mentions_count_only_for_multiple_clients(
+        self, config_factory, reason, client_count, expected
+    ):
+        message = build_failure_message(config_factory(), reason, client_count)
+        assert message is not None
+        phrase = f"for the {client_count} clients you're responsible for"
+        assert (phrase in message) == expected
+
+
+class TestSendFailureReminders:
+    PHONE = "+15551234567"
+    TWO_CLIENTS = "for the 2 clients you're responsible for"
+
+    @pytest.fixture
+    def quo(self):
+        quo = MagicMock()
+        quo.has_sent_message.return_value = False
+        quo.send_text.return_value = {"id": "msg-1"}
+        return quo
+
+    @pytest.fixture
+    def mocks(self, monkeypatch):
+        resend = MagicMock()
+        update = MagicMock()
+        log_msg = MagicMock()
+        monkeypatch.setattr("qreceive.resend_portal_invite", resend)
+        monkeypatch.setattr("qreceive.update_failure_in_db", update)
+        monkeypatch.setattr("qreceive.log_questionnaire_msg", log_msg)
+        return resend, update, log_msg
+
+    def run(self, config_factory, quo, group, *, reason="portal not opened", **kw):
+        state = {
+            "numbers_sent": kw.pop("numbers_sent", []),
+            "messages_sent": [],
+            "email_info": make_empty_email_info(),
+        }
+        send_failure_reminders(
+            config_factory(),
+            MagicMock(),
+            quo,
+            driver=MagicMock(),
+            pending_failures={(self.PHONE, reason): group},
+            send_texts=kw.pop("send_texts", True),
+            dry_run=kw.pop("dry_run", False),
+            today_business=date(2026, 1, 6),
+            **state,
+        )
+        return state
+
+    @staticmethod
+    def two_clients():
+        return [(make_failed_client(1), 0), (make_failed_client(2), 1)]
+
+    def test_siblings_get_one_merged_text(self, config_factory, quo, mocks):
+        _, _, log_msg = mocks
+        state = self.run(config_factory, quo, self.two_clients())
+
+        quo.send_text.assert_called_once()
+        assert self.TWO_CLIENTS in quo.send_text.call_args.args[0]
+        assert [c.id for c, _, _ in state["messages_sent"]] == [1, 2]
+        assert log_msg.call_count == 2
+        assert state["numbers_sent"] == [self.PHONE]
+
+    def test_failed_invite_drops_client_and_rebuilds_text(
+        self, config_factory, quo, mocks
+    ):
+        resend, _, _ = mocks
+        resend.side_effect = [RuntimeError("boom"), None]
+        state = self.run(config_factory, quo, self.two_clients())
+
+        assert "clients you're responsible for" not in quo.send_text.call_args.args[0]
+        assert [c.id for c, _, _ in state["messages_sent"]] == [2]
+        assert [c.id for c, _ in state["email_info"]["failed"]] == [1]
+
+    def test_no_text_when_every_invite_fails(self, config_factory, quo, mocks):
+        resend, _, _ = mocks
+        resend.side_effect = RuntimeError("boom")
+        state = self.run(config_factory, quo, self.two_clients())
+
+        quo.send_text.assert_not_called()
+        assert len(state["email_info"]["failed"]) == 2
+        assert state["numbers_sent"] == []
+
+    def test_docs_not_signed_does_not_resend_invite(self, config_factory, quo, mocks):
+        resend, _, _ = mocks
+        self.run(config_factory, quo, self.two_clients(), reason="docs not signed")
+
+        resend.assert_not_called()
+        quo.send_text.assert_called_once()
+
+    @pytest.mark.usefixtures("mocks")
+    def test_quo_history_check_uses_count_aware_text(self, config_factory, quo):
+        self.run(config_factory, quo, self.two_clients())
+
+        sent_message = quo.has_sent_message.call_args.args[1]
+        assert self.TWO_CLIENTS in sent_message
+
+    def test_quo_history_match_records_without_resending(
+        self, config_factory, quo, mocks
+    ):
+        resend, update, _ = mocks
+        quo.has_sent_message.return_value = True
+        state = self.run(config_factory, quo, self.two_clients())
+
+        quo.send_text.assert_not_called()
+        resend.assert_not_called()
+        assert state["numbers_sent"] == [self.PHONE]
+        # Each client is bumped from its own reminded count.
+        assert [
+            (call.args[1], call.kwargs["reminded"]) for call in update.call_args_list
+        ] == [
+            (1, 1),
+            (2, 2),
+        ]
+
+    def test_dry_run_sends_and_records_nothing(self, config_factory, quo, mocks):
+        resend, update, log_msg = mocks
+        state = self.run(
+            config_factory, quo, self.two_clients(), send_texts=False, dry_run=True
+        )
+
+        quo.send_text.assert_not_called()
+        resend.assert_not_called()
+        update.assert_not_called()
+        log_msg.assert_not_called()
+        assert state["messages_sent"] == []
+
+    @pytest.mark.usefixtures("mocks")
+    def test_number_already_texted_today_is_skipped(self, config_factory, quo):
+        self.run(config_factory, quo, self.two_clients(), numbers_sent=[self.PHONE])
+
+        quo.send_text.assert_not_called()
+
+    @pytest.mark.usefixtures("mocks")
+    def test_send_request_failure_reports_every_client(self, config_factory, quo):
+        quo.send_text.return_value = None
+        state = self.run(config_factory, quo, self.two_clients())
+
+        assert [c.id for c, _ in state["email_info"]["failed"]] == [1, 2]
+        assert state["messages_sent"] == []
+        assert state["numbers_sent"] == []
