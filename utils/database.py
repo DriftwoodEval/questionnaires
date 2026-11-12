@@ -793,7 +793,7 @@ def update_questionnaire_in_db(
             sql = """
                 UPDATE `emr_questionnaire`
                 SET status=%s, updatedAt = NOW()
-                WHERE clientId=%s AND sent=%s AND questionnaireType=%s
+                WHERE clientId=%s AND sent <=> %s AND questionnaireType=%s
             """
 
             values = (status, int(client_id), sent_date, qtype)
@@ -828,7 +828,7 @@ def update_questionnaires_in_db(
                     cursor.execute(
                         """
                         SELECT status, reminded, lastReminded FROM `emr_questionnaire`
-                        WHERE clientId=%s AND sent=%s AND questionnaireType=%s
+                        WHERE clientId=%s AND sent <=> %s AND questionnaireType=%s
                         """,
                         (
                             client.id,
@@ -841,7 +841,7 @@ def update_questionnaires_in_db(
                     sql = """
                         UPDATE `emr_questionnaire`
                         SET status=%s, reminded=%s, lastReminded=%s, updatedAt = NOW()
-                        WHERE clientId=%s AND sent=%s AND questionnaireType=%s
+                        WHERE clientId=%s AND sent <=> %s AND questionnaireType=%s
                     """
 
                     values = (
