@@ -477,7 +477,7 @@ wheels = [
 [[package]]
 name = "driftwood-common"
 version = "0.1.0"
-source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon#e17386cd52633fe70b44442bb19b73b389b46175" }
+source = { git = "https://github.com/DriftwoodEval/winnonah?subdirectory=python%2Fcommon#4f976289a7a899176784ec850f0f2aa898304eef" }
 dependencies = [
     { name = "google-api-python-client" },
     { name = "google-auth-httplib2" },
