@@ -971,7 +971,7 @@ def main(
                                 or most_recent_q["sent"]
                             )
                             if most_recent_q["reminded"] == 2 and last_text_date:
-                                has_replied = quo.has_client_replied(
+                                has_replied = quo.has_client_replied_to_last_text(
                                     client.phoneNumber, since=last_text_date
                                 )
                                 if has_replied:
