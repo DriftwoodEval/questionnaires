@@ -265,7 +265,6 @@ def render_reminder_message(
     ).strftime("%m/%d")
 
     substitutions = {
-        "$CLIENT_FIRST_NAME": join_names([c.firstName for c in everyone]),
         "$CLIENT_FNAME": join_names(
             [
                 (

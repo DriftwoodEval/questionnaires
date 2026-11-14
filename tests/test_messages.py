@@ -326,10 +326,10 @@ class TestRenderReminderMessage:
         assert message is not None
         assert "comprehensive report" in message
 
-    def test_client_first_name_placeholder(
+    def test_client_fname_placeholder(
         self, config_factory, client_factory, questionnaire_factory
     ):
-        templates = {(0, "DEFAULT"): "Hi $CLIENT_FIRST_NAME, please complete it."}
+        templates = {(0, "DEFAULT"): "Hi $CLIENT_FNAME, please complete it."}
         config = config_factory()
         q = questionnaire_factory(sent=date.today(), reminded=0)
         client = client_factory(questionnaires=[q])
@@ -351,7 +351,7 @@ class TestRenderReminderMessage:
             client,
             most_recent_q=q,
             distance=0,
-            override="This is a one-off message for $CLIENT_FIRST_NAME.",
+            override="This is a one-off message for $CLIENT_FNAME.",
         )
         assert message == "This is a one-off message for Test."
 
