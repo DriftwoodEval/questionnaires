@@ -112,3 +112,41 @@ class TestGmailWrappers:
 
         with pytest.raises(RuntimeError, match="quota"):
             google.list_gmail_messages("is:unread")
+
+
+class TestBuildAdminEmailReplies:
+    @staticmethod
+    def _info(client_factory, questionnaire_factory, status, replies):
+        client = client_factory(
+            client_id=1,
+            questionnaires=[questionnaire_factory(status=status)],
+        )
+        return {
+            "ignoring": [client],
+            "replies": replies,
+            "completed": [],
+            "call": [],
+            "failed": [],
+            "errors": [],
+        }
+
+    def test_responded_entry_quotes_the_reply_and_escapes_html(
+        self, client_factory, questionnaire_factory
+    ):
+        info = self._info(
+            client_factory, questionnaire_factory, "RESPONDED", {"1": ["on it <b>"]}
+        )
+        text, html_body = google.build_admin_email(info)
+        assert "Responded:" in text
+        assert "Check on ignoring" not in text
+        assert 'replied: "on it <b>"' in text
+        assert "<em>&quot;on it &lt;b&gt;&quot;</em>" in html_body
+
+    def test_ignoring_entry_has_its_own_section_without_a_quote(
+        self, client_factory, questionnaire_factory
+    ):
+        info = self._info(client_factory, questionnaire_factory, "IGNORING", {})
+        text, _ = google.build_admin_email(info)
+        assert "Check on ignoring:" in text
+        assert "Responded" not in text
+        assert "replied" not in text

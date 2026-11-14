@@ -334,6 +334,8 @@ class AdminEmailInfo(TypedDict):
     """A TypedDict containing lists of clients grouped by status, for emailing."""
 
     ignoring: list[ClientWithQuestionnaires]
+    # Texts that made us mark a client RESPONDED, keyed by str(client id).
+    replies: dict[str, list[str]]
     failed: list[
         tuple[ClientWithQuestionnaires | FailedClientFromDB | ClientFromDB, str]
     ]

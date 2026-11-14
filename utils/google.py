@@ -1,3 +1,4 @@
+import html
 import mimetypes
 import re
 import time
@@ -192,7 +193,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_text += (
             "Errors:\n"
             + "\n".join([f"- {error}" for error in email_info["errors"]])
-            + "\n"
+            + "\n\n"
         )
         email_html += (
             "<h2>Errors</h2><ul><li>"
@@ -204,22 +205,49 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
         email_text += (
             "Download:\n"
             + "\n".join([f"- {client.fullName}" for client in email_info["completed"]])
-            + "\n"
+            + "\n\n"
         )
         email_html += (
             "<h2>Download</h2><ul><li>"
             + "</li><li>".join(client.fullName for client in email_info["completed"])
             + "</li></ul>"
         )
-    if email_info["ignoring"]:
+    # `ignoring` holds both IGNORING and RESPONDED clients; show them separately.
+    responded = [
+        c
+        for c in email_info["ignoring"]
+        if any(q["status"] == "RESPONDED" for q in c.questionnaires)
+    ]
+    responded_ids = {c.id for c in responded}
+    ignoring = [c for c in email_info["ignoring"] if c.id not in responded_ids]
+
+    def reply_quote(client: ClientWithQuestionnaires) -> str:
+        texts = email_info["replies"].get(str(client.id), [])
+        return " | ".join(f'"{text}"' for text in texts)
+
+    for title, group in (("Check on ignoring", ignoring), ("Responded", responded)):
+        if not group:
+            continue
         email_text += (
-            "Check on ignoring:\n"
-            + "\n".join([f"- {client.fullName}" for client in email_info["ignoring"]])
-            + "\n"
+            f"{title}:\n"
+            + "\n".join(
+                f"- {c.fullName}"
+                + (f" replied: {reply_quote(c)}" if reply_quote(c) else "")
+                for c in group
+            )
+            + "\n\n"
         )
         email_html += (
-            "<h2>Check on ignoring</h2><ul><li>"
-            + "</li><li>".join(client.fullName for client in email_info["ignoring"])
+            f"<h2>{title}</h2><ul><li>"
+            + "</li><li>".join(
+                html.escape(c.fullName)
+                + (
+                    f" replied: <em>{html.escape(reply_quote(c))}</em>"
+                    if reply_quote(c)
+                    else ""
+                )
+                for c in group
+            )
             + "</li></ul>"
         )
     if email_info["failed"]:
@@ -228,7 +256,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             + "\n".join(
                 [f"- {item[0].fullName} ({item[1]})" for item in email_info["failed"]]
             )
-            + "\n"
+            + "\n\n"
         )
         email_html += (
             "<h2>Failed to message</h2><ul><li>"
@@ -266,7 +294,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
                     for client, most_recent in call_clients_data
                 ]
             )
-            + "\n"
+            + "\n\n"
         )
         email_html += (
             "<h2>Call</h2><ul><li>"
@@ -278,7 +306,7 @@ def build_admin_email(email_info: AdminEmailInfo) -> tuple[str, str]:
             )
             + "</li></ul>"
         )
-    return email_text, email_html
+    return email_text.rstrip("\n") + "\n", email_html
 
 
 def get_punch_list(config: Config):

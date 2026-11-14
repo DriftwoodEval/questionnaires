@@ -19,7 +19,14 @@ from utils.custom_types import AdminEmailInfo, FailedClientFromDB, Questionnaire
 
 
 def make_empty_email_info() -> AdminEmailInfo:
-    return {"ignoring": [], "completed": [], "call": [], "failed": [], "errors": []}
+    return {
+        "ignoring": [],
+        "replies": {},
+        "completed": [],
+        "call": [],
+        "failed": [],
+        "errors": [],
+    }
 
 
 def make_failed_client(client_id: int, reason: str = "portal not opened"):
@@ -133,6 +140,21 @@ class TestEmailInfoSerializationRoundTrip:
         round_tripped = _deserialize_email_info(_serialize_email_info(info))
         assert round_tripped["ignoring"][0].id == 1
         assert round_tripped["completed"][0].id == 2
+
+    def test_round_trips_and_merges_reply_texts(self, client_factory):
+        first: AdminEmailInfo = {
+            **make_empty_email_info(),
+            "ignoring": [client_factory(client_id=1)],
+            "replies": {"1": ["yes done"]},
+        }
+        later: AdminEmailInfo = {
+            **make_empty_email_info(),
+            "ignoring": [client_factory(client_id=1)],
+        }
+        restored = [
+            _deserialize_email_info(_serialize_email_info(i)) for i in (first, later)
+        ]
+        assert _merge_email_infos(restored)["replies"] == {"1": ["yes done"]}
 
     def test_round_trips_call_and_failed_with_mixed_client_types(self, client_factory):
         failed_client = make_failed_client(3)

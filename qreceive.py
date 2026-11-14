@@ -119,6 +119,7 @@ def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
 
     return {
         "ignoring": [c.model_dump(mode="json") for c in email_info["ignoring"]],
+        "replies": email_info["replies"],
         "completed": [c.model_dump(mode="json") for c in email_info["completed"]],
         "call": [serialize_client(c) for c in email_info["call"]],
         "failed": [
@@ -156,6 +157,7 @@ def _deserialize_email_info(data: dict) -> AdminEmailInfo:
         "ignoring": [
             ClientWithQuestionnaires.model_validate(c) for c in data["ignoring"]
         ],
+        "replies": data.get("replies", {}),
         "completed": [
             ClientWithQuestionnaires.model_validate(c) for c in data["completed"]
         ],
@@ -177,6 +179,7 @@ def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
     """
     merged: AdminEmailInfo = {
         "ignoring": [],
+        "replies": {},
         "completed": [],
         "call": [],
         "failed": [],
@@ -193,6 +196,8 @@ def _merge_email_infos(infos: list[AdminEmailInfo]) -> AdminEmailInfo:
             if client.id not in seen_ignoring:
                 seen_ignoring.add(client.id)
                 merged["ignoring"].append(client)
+        for client_id, texts in info["replies"].items():
+            merged["replies"].setdefault(client_id, texts)
         for client in info["completed"]:
             if client.id not in seen_completed:
                 seen_completed.add(client.id)
@@ -729,6 +734,7 @@ def main(
         reminder_overrides = get_reminder_overrides(config)
         email_info: AdminEmailInfo = {
             "ignoring": [],
+            "replies": {},
             "failed": [],
             "call": [],
             "completed": [],
@@ -971,10 +977,10 @@ def main(
                                 or most_recent_q["sent"]
                             )
                             if most_recent_q["reminded"] == 2 and last_text_date:
-                                has_replied = quo.has_client_replied_to_last_text(
+                                replies = quo.get_replies_to_last_text(
                                     client.phoneNumber, since=last_text_date
                                 )
-                                if has_replied:
+                                if replies:
                                     logger.info(
                                         f"{client.fullName} has replied since our last reminder — skipping final reminder, setting questionnaires to RESPONDED"
                                     )
@@ -992,6 +998,7 @@ def main(
                                             f"[DRY RUN] Would set {client.fullName}'s questionnaires to RESPONDED"
                                         )
                                     email_info["ignoring"].append(client)
+                                    email_info["replies"][str(client.id)] = replies
                                     continue
 
                             logger.info(f"Sending reminder TO {client.fullName}")
