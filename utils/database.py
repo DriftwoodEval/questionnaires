@@ -895,6 +895,13 @@ def save_response_text(config: Config, client_id: int, reply: str):
             """,
             (reply, client_id),
         )
+        if cursor.rowcount:
+            record_audit_log(
+                db_connection,
+                "internal.questionnaire.saveResponseText",
+                client_id,
+                detail={"questionnairesUpdated": cursor.rowcount},
+            )
         db_connection.commit()
 
 
