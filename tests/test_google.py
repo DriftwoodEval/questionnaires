@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from utils import google
+from utils.custom_types import AdminEmailInfo
 from utils.google import SCOPES, col_index_to_a1, google_authenticate
 
 
@@ -116,7 +117,7 @@ class TestGmailWrappers:
 
 class TestBuildAdminEmailReplies:
     @staticmethod
-    def _info(client_factory, questionnaire_factory, status, replies):
+    def _info(client_factory, questionnaire_factory, status, replies) -> AdminEmailInfo:
         client = client_factory(
             client_id=1,
             questionnaires=[questionnaire_factory(status=status)],
