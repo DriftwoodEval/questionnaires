@@ -38,6 +38,7 @@ from utils.database import (
     log_charter_school_forms_texted,
     log_questionnaire_msg,
     log_referral_msg,
+    save_response_text,
     update_failure_in_db,
     update_questionnaires_in_db,
 )
@@ -993,6 +994,9 @@ def main(
                                             q["status"] = "RESPONDED"
                                     if not dry_run:
                                         update_questionnaires_in_db(config, [client])
+                                        save_response_text(
+                                            config, client.id, replies[0]
+                                        )
                                     else:
                                         logger.info(
                                             f"[DRY RUN] Would set {client.fullName}'s questionnaires to RESPONDED"

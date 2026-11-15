@@ -882,6 +882,22 @@ def update_questionnaires_in_db(
         db_connection.commit()
 
 
+def save_response_text(config: Config, client_id: int, reply: str):
+    """Store the client's first reply on their RESPONDED questionnaires that
+    don't have one yet, so a later reply never overwrites it."""
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE `emr_questionnaire`
+            SET responseText=%s
+            WHERE clientId=%s AND status='RESPONDED' AND responseText IS NULL
+            """,
+            (reply, client_id),
+        )
+        db_connection.commit()
+
+
 def add_failure_to_db(
     config: Config,
     client_id: int,
