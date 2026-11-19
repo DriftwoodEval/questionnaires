@@ -1,3 +1,4 @@
+import contextlib
 import io
 import re
 from base64 import b64decode
@@ -11,6 +12,7 @@ from driftwood_common.timezone import now_business
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from loguru import logger
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.print_page_options import PrintOptions
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -48,13 +50,15 @@ from utils.platforms.therapyappointment import (
     check_if_opened_portal,
     find_form_link_for_session,
     form_link_present,
+    form_link_xpath,
     form_row_present,
     go_to_client,
+    open_docs_and_forms,
+    show_all_docs_rows,
 )
 from utils.progress_bar import PinnedProgressBar
 from utils.records import normalize_district, resolve_school_contact
 from utils.selenium import (
-    click_element,
     initialize_selenium,
 )
 from utils.task_tracker import track_task
@@ -100,7 +104,7 @@ def ensure_charter_school_forms_assigned(
         )
         return
 
-    click_element(driver, By.LINK_TEXT, "Docs & Forms")
+    open_docs_and_forms(driver)
     missing = [
         name
         for name in (CHARTER_RECEIVING, CHARTER_SENDING)
@@ -434,9 +438,7 @@ def save_document_as_pdf(
         # the second document in a pair, driver.back() below lands us back on
         # the same table), so no need to click into it again here.
         wait.until(
-            ec.presence_of_element_located(
-                (By.XPATH, f"//a[normalize-space(text())='{link_text}']")
-            )
+            ec.presence_of_element_located((By.XPATH, form_link_xpath(link_text)))
         )
         document_link = find_form_link_for_session(
             driver, link_text, client.sessionStartedAt
@@ -469,8 +471,10 @@ def save_document_as_pdf(
         )
         raise Exception("docs not signed") from e
     finally:
-        # Go back to the Docs & Forms list
+        # Go back to the Docs & Forms list, which may come back collapsed
         driver.back()
+        with contextlib.suppress(TimeoutException):
+            show_all_docs_rows(driver)
 
     return stream, stream_name, school, drive_file
 

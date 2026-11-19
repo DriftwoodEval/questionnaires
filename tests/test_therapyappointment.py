@@ -1,3 +1,4 @@
+import json
 import urllib.parse
 from datetime import datetime
 
@@ -18,43 +19,62 @@ LINK_TEXT = "Receiving Consent to Release of Information"
 
 
 def _row(name: str, assigned: str, status: str, href: str | None) -> str:
-    name_cell = (
-        f'<td aria-label="Assigned online form name">{name}</td>'
-        if href is None
-        else f'<td><a aria-label="Assigned online form name: {name}" href="{href}">{name}</a></td>'
-    )
+    name_html = name if href is None else f'<a href="{href}"><span>{name}</span></a>'
     return (
         "<tr>"
-        f"{name_cell}"
-        f'<td aria-label="Assigned online form date">{assigned}<br>for Someone, LPES</td>'
-        '<td aria-label="Clinical content">No</td>'
-        f'<td aria-label="Status">{status}</td>'
+        f'<td><div class="doc-name">{name_html}</div></td>'
+        f'<td data-label="Assigned"><span title="{assigned}">{assigned[:8]}</span></td>'
+        '<td data-label="Therapist">Someone, LPES</td>'
+        f'<td><span class="v-chip docs-chip"><div class="v-chip__content">{status}</div></span></td>'
         "</tr>"
     )
 
 
 def _page(*rows: str) -> str:
-    html = f"<html><body><table><tbody>{''.join(rows)}</tbody></table></body></html>"
+    html = (
+        "<html><body><table>"
+        f'<tbody id="online-forms-rows">{"".join(rows)}</tbody>'
+        "</table></body></html>"
+    )
     return "data:text/html;charset=utf-8," + urllib.parse.quote(html)
 
 
-def _docs_signed_page(*, registration_complete: bool, rows: tuple[str, ...]) -> str:
+def _docs_signed_page(
+    *,
+    registration_complete: bool,
+    rows: tuple[str, ...],
+    hidden_rows: tuple[str, ...] = (),
+) -> str:
+    """Docs & Forms page. `hidden_rows` only appear once Show All is clicked."""
     registration_text = (
         "Client has completed registration"
         if registration_complete
         else "Client has not completed registration"
     )
+    show_all = (
+        '<button type="button" id="toggle"><span>Show All</span></button>'
+        "<script>"
+        "document.getElementById('toggle').addEventListener('click', () => {"
+        "document.getElementById('online-forms-rows').insertAdjacentHTML("
+        f"'beforeend', {json.dumps(''.join(hidden_rows))});"
+        "document.querySelector('#toggle span').textContent = 'Show Fewer';"
+        "});"
+        "</script>"
+        if hidden_rows
+        else ""
+    )
     html = (
         "<html><body>"
         f"<div>{registration_text}</div>"
         '<a href="#">Docs & Forms</a>'
-        f"<table><tbody>{''.join(rows)}</tbody></table>"
+        f'<table><tbody id="online-forms-rows">{"".join(rows)}</tbody>'
+        f"<tfoot><tr><td>{show_all}</td></tr></tfoot></table>"
         "</body></html>"
     )
     return "data:text/html;charset=utf-8," + urllib.parse.quote(html)
 
 
-COMPLETED = "Completed on 6/18/26 at 11:48 PM"
+COMPLETED = "Completed 6/18/26"
 NOT_STARTED = "Not Started"
 
 
@@ -165,3 +185,16 @@ def test_unsigned_non_school_form_still_blocks_at_22(driver):
         )
     )
     assert check_if_docs_signed(driver, age=22) is False
+
+
+def test_clicks_show_all_to_reveal_an_unsigned_form(driver):
+    driver.get(
+        _docs_signed_page(
+            registration_complete=True,
+            rows=(_row("Some Form", "02/25/2026 11:31 AM", COMPLETED, "/forms/x"),),
+            hidden_rows=(
+                _row("Hidden Form", "02/25/2026 11:31 AM", NOT_STARTED, None),
+            ),
+        )
+    )
+    assert check_if_docs_signed(driver) is False

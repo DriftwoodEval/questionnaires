@@ -494,6 +494,8 @@ def diagnose_client(
     logger.info(f"Diagnosing client {client.get('Client ID', 'no ID')}")
 
     blockers: list[str] = []
+    # Retryable problems: the client is not sent this run but may be on a later one.
+    deferrals: list[str] = []
 
     def ok(msg: str) -> None:
         logger.info(f"PASS  {msg}")
@@ -505,10 +507,18 @@ def diagnose_client(
     def warn(msg: str) -> None:
         logger.warning(f"WARN  {msg}")
 
+    def defer(msg: str) -> None:
+        deferrals.append(msg)
+        logger.warning(f"WARN  {msg}")
+
     def summarize() -> None:
         if blockers:
             logger.error(
                 f"Result: NOT ready to send ({len(blockers)} blocker(s) above)"
+            )
+        elif deferrals:
+            logger.warning(
+                f"Result: not sent this run, retried later ({len(deferrals)} deferral(s) above)"
             )
         else:
             logger.info("Result: ready — client would be picked up by a qsend run")
@@ -586,7 +596,9 @@ def diagnose_client(
         "unable to find client",
         "unknown questionnaire needs",
     ]:
-        warn(f"Previous retryable failure: {error}")
+        # Earlier failure on file; a live run retries it, so it doesn't block
+        # unless a live check below fails again.
+        warn(f"Previous retryable failure on file (will be retried): {error}")
     else:
         fail(f"Previous unresolvable failure: {error}")
 
@@ -657,11 +669,11 @@ def diagnose_client(
             if check_if_opened_portal(driver):
                 ok("Portal opened")
             else:
-                warn("Portal not opened (retryable — send is deferred until it is)")
+                defer("Portal not opened (retryable — send is deferred until it is)")
             if check_if_docs_signed(driver, age=age):
                 ok("Docs signed")
             else:
-                warn("Docs not signed (retryable — send is deferred until they are)")
+                defer("Docs not signed (retryable — send is deferred until they are)")
         else:
             logger.info("Spanish-speaking, portal/docs checks skipped")
     finally:

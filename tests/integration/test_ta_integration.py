@@ -9,16 +9,15 @@ create any new TA state.
 import os
 
 import pytest
-from selenium.webdriver.common.by import By
 
 from utils.platforms.therapyappointment import (
     assign_online_forms,
     check_and_login_ta,
     form_row_present,
     go_to_client,
+    open_docs_and_forms,
     send_message_ta,
 )
-from utils.selenium import click_element
 
 pytestmark = [pytest.mark.integration, pytest.mark.ta]
 
@@ -53,7 +52,7 @@ def test_assign_charter_school_forms(driver, real_config):
     check_and_login_ta(driver, services, first_time=True)
     assert go_to_client(driver, services, client_id)
 
-    click_element(driver, By.LINK_TEXT, "Docs & Forms")
+    open_docs_and_forms(driver)
     missing = [n for n in CHARTER_SCHOOL_FORMS if not form_row_present(driver, n)]
 
     if missing:

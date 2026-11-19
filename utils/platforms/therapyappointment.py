@@ -1,4 +1,3 @@
-import contextlib
 import re
 from datetime import datetime
 from time import sleep
@@ -15,6 +14,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.constants import SCHOOL_RECORDS_ADULT_AGE
 from utils.custom_types import Services
@@ -185,17 +185,66 @@ def check_if_opened_portal(driver: WebDriver) -> bool:
         return False
 
 
-def _row_form_name(row: WebElement) -> str:
-    """Text of a Docs & Forms row's form-name cell, whether it's a link or plain text."""
+_FORM_ROWS_XPATH = "//tbody[@id='online-forms-rows']/tr"
+_FORM_NAME_XPATH = "//div[contains(@class, 'doc-name')]"
+
+
+def form_link_xpath(link_text: str) -> str:
+    """XPath for the clickable link of a completed Docs & Forms row named `link_text`."""
+    return f"{_FORM_NAME_XPATH}//a[normalize-space(.)='{link_text}']"
+
+
+def _row_text(row: WebElement, xpath: str) -> str:
+    """Text of the first element matching `xpath` inside a row, or "" if none."""
     try:
-        cell = row.find_element(
-            By.XPATH,
-            ".//td[@aria-label='Assigned online form name'] | "
-            ".//td/a[starts-with(@aria-label, 'Assigned online form name')]",
-        )
+        return row.find_element(By.XPATH, xpath).text
     except NoSuchElementException:
         return ""
-    return cell.text
+
+
+def _row_form_name(row: WebElement) -> str:
+    """Form name of a Docs & Forms row, whether it's a link or plain text."""
+    return _row_text(row, f".{_FORM_NAME_XPATH}")
+
+
+def _row_status(row: WebElement) -> str:
+    """Status chip text of a Docs & Forms row, e.g. "Completed 11/3/26"."""
+    return _row_text(row, ".//span[contains(@class, 'docs-chip')]")
+
+
+_SHOW_ALL_XPATH = "//button[normalize-space(.)='Show All']"
+
+
+def open_docs_and_forms(driver: WebDriver) -> None:
+    """Open the client's Docs & Forms tab with every row visible."""
+    click_element(driver, By.LINK_TEXT, "Docs & Forms")
+    show_all_docs_rows(driver)
+
+
+def show_all_docs_rows(driver: WebDriver) -> None:
+    """Expand the Docs & Forms list on the current page so every row is visible.
+
+    TA shows only the first few rows until "Show All" is clicked, so a form
+    further down the list is invisible until then. Raises TimeoutException if
+    the rows never load. A list short enough to have no Show All button is
+    fine as is.
+    """
+    find_element(driver, By.XPATH, _FORM_ROWS_XPATH, 10)
+
+    # The button can render a moment after the rows, so wait briefly for it.
+    try:
+        button = find_element(driver, By.XPATH, _SHOW_ALL_XPATH, 5)
+    except TimeoutException:
+        logger.info("No Show All button found on Docs & Forms")
+        return
+    logger.info("Clicking Show All on Docs & Forms")
+    driver.execute_script("arguments[0].click();", button)
+    try:
+        WebDriverWait(driver, 10).until(
+            lambda d: not d.find_elements(By.XPATH, _SHOW_ALL_XPATH)
+        )
+    except TimeoutException:
+        logger.warning("Show All button still present after clicking it")
 
 
 def check_if_docs_signed(driver: WebDriver, age: int | None = None) -> bool:
@@ -209,18 +258,21 @@ def check_if_docs_signed(driver: WebDriver, age: int | None = None) -> bool:
     try:
         xpath = "//div[contains(normalize-space(.), 'has completed registration') or contains(normalize-space(.), 'has not completed registration')]"
         element = find_element(driver, By.XPATH, xpath, 3)
+        logger.info(
+            f"Registration banner: {element.text!r} (displayed={element.is_displayed()})"
+        )
         if "has not completed registration" in element.text:
             return False
     except TimeoutException:
         return False
 
     try:
-        click_element(driver, By.LINK_TEXT, "Docs & Forms")
-        find_element(driver, By.XPATH, "//td[@aria-label='Status']", 10)
+        open_docs_and_forms(driver)
     except TimeoutException:
         return False
 
-    rows = driver.find_elements(By.XPATH, "//tr[.//td[@aria-label='Status']]")
+    rows = driver.find_elements(By.XPATH, _FORM_ROWS_XPATH)
+    logger.info(f"Docs & Forms rows found: {len(rows)}")
     if not rows:
         return False
 
@@ -232,10 +284,13 @@ def check_if_docs_signed(driver: WebDriver, age: int | None = None) -> bool:
 
     unsigned = []
     for row in rows:
-        status_text = row.find_element(By.XPATH, ".//td[@aria-label='Status']").text
-        if status_text.startswith("Completed on"):
+        status_text = _row_status(row)
+        form_name = _row_form_name(row)
+        logger.info(f"Docs row: {form_name!r} status={status_text!r}")
+        if status_text.startswith("Completed"):
             continue
-        if exempt_forms and _row_form_name(row) in exempt_forms:
+        if exempt_forms and form_name in exempt_forms:
+            logger.info(f"Exempt by age ({age}): {form_name!r}")
             continue
         unsigned.append(status_text)
 
@@ -245,10 +300,9 @@ def check_if_docs_signed(driver: WebDriver, age: int | None = None) -> bool:
     return True
 
 
-_COMPLETED_STATUS_RE = re.compile(
-    r"Completed\s+on\s+(\d{1,2}/\d{1,2}/\d{2,4})\s+at\s+(\d{1,2}:\d{2}\s*[AP]M)"
-)
-# Assigned cell reads e.g. "02/25/2026 11:31 AM\n for Shannon Tapp, LPES".
+# Status chip reads e.g. "Completed 11/3/26" (date only, no time).
+_COMPLETED_STATUS_RE = re.compile(r"Completed\s+(\d{1,2}/\d{1,2}/\d{2,4})")
+# The Assigned cell's title attribute reads e.g. "11/2/26 11:15 AM".
 _ASSIGNED_DATE_RE = re.compile(r"(\d{1,2}/\d{1,2}/\d{2,4})\s+(\d{1,2}:\d{2}\s*[AP]M)")
 
 
@@ -280,13 +334,13 @@ def find_form_link_for_session(
     older copy has - the client still owes us a signature, so raise and let the
     caller treat it as "docs not signed" rather than acting on a stale form.
     A not-yet-started copy has no link, so match on the form-name cell too.
+
+    The status chip shows only a completion date, not a time, so a completion
+    counts as the end of that business day.
     """
     rows = driver.find_elements(
         By.XPATH,
-        "//tr["
-        f"td/a[normalize-space(text())='{link_text}'] or "
-        f"td[@aria-label='Assigned online form name' and normalize-space(text())='{link_text}']"
-        "]",
+        f"{_FORM_ROWS_XPATH}[.{_FORM_NAME_XPATH}[normalize-space(.)='{link_text}']]",
     )
     if not rows:
         raise NoSuchElementException(f"No form found with link text: {link_text}")
@@ -295,27 +349,27 @@ def find_form_link_for_session(
     dated_rows: list[tuple[datetime, datetime | None, WebElement]] = []
     for row in rows:
         try:
-            assigned_cell = row.find_element(
-                By.XPATH, ".//td[@aria-label='Assigned online form date']"
+            assigned_span = row.find_element(
+                By.XPATH, ".//td[@data-label='Assigned']/span"
             )
         except NoSuchElementException:
             continue
-        assigned_match = _ASSIGNED_DATE_RE.search(assigned_cell.text)
+        assigned_text = assigned_span.get_attribute("title") or assigned_span.text
+        assigned_match = _ASSIGNED_DATE_RE.search(assigned_text)
         if not assigned_match:
             logger.warning(
-                f"Unparseable Assigned date for '{link_text}': {assigned_cell.text!r}"
+                f"Unparseable Assigned date for '{link_text}': {assigned_text!r}"
             )
             continue
         assigned_at = _business_ts_to_utc(*assigned_match.groups())
         if assigned_at is None:
             continue
 
-        status_text = ""
-        with contextlib.suppress(NoSuchElementException):
-            status_text = row.find_element(By.XPATH, ".//td[@aria-label='Status']").text
-        status_match = _COMPLETED_STATUS_RE.search(status_text)
+        status_match = _COMPLETED_STATUS_RE.search(_row_status(row))
         completed_at = (
-            _business_ts_to_utc(*status_match.groups()) if status_match else None
+            _business_ts_to_utc(status_match.group(1), "11:59 PM")
+            if status_match
+            else None
         )
         dated_rows.append((assigned_at, completed_at, row))
 
@@ -346,7 +400,7 @@ def find_form_link_for_session(
             f"Newest '{link_text}' form completed {newest_completed_at} UTC, "
             f"before session start ({session_started_at})"
         )
-    return chosen_row.find_element(By.LINK_TEXT, link_text)
+    return chosen_row.find_element(By.XPATH, f".{_FORM_NAME_XPATH}//a")
 
 
 def form_link_present(driver: WebDriver, link_text: str) -> bool:
@@ -354,9 +408,7 @@ def form_link_present(driver: WebDriver, link_text: str) -> bool:
 
     Assumes the Docs & Forms list is the current view.
     """
-    return bool(
-        driver.find_elements(By.XPATH, f"//a[normalize-space(text())='{link_text}']")
-    )
+    return bool(driver.find_elements(By.XPATH, form_link_xpath(link_text)))
 
 
 def form_row_present(driver: WebDriver, form_name: str) -> bool:
@@ -367,7 +419,9 @@ def form_row_present(driver: WebDriver, form_name: str) -> bool:
     view.
     """
     return bool(
-        driver.find_elements(By.XPATH, f"//*[normalize-space(text())='{form_name}']")
+        driver.find_elements(
+            By.XPATH, f"{_FORM_NAME_XPATH}[normalize-space(.)='{form_name}']"
+        )
     )
 
 
