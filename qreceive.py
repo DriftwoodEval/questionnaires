@@ -1199,6 +1199,20 @@ def main(
                             )
                             if attempt_text and "id" in attempt_text:
                                 numbers_sent.append(client.phoneNumber)
+                                # Log at send time, not after the delivery
+                                # check, so a slow or failed check can't cause
+                                # the same client to be texted again tomorrow.
+                                try:
+                                    log_referral_msg(
+                                        config,
+                                        client.id,
+                                        attempt_text["id"],
+                                        is_private_pay_outreach=is_private_pay_outreach,
+                                    )
+                                except Exception as log_err:
+                                    logger.error(
+                                        f"Failed to log referral msg for {client.fullName}: {log_err}"
+                                    )
                                 referral_messages_sent.append(
                                     (
                                         client,
@@ -1374,7 +1388,7 @@ def main(
             logger.info(
                 f"Starting status check for {len(referral_messages_sent)} referral message(s)."
             )
-            for client, message_id, is_private_pay_outreach in referral_messages_sent:
+            for client, message_id, _ in referral_messages_sent:
                 set_log_client(client.id)
                 try:
                     delivered = quo.check_text_delivered(message_id)
@@ -1382,17 +1396,6 @@ def main(
                         logger.success(
                             f"Delivered referral msg to {client.fullName} ({message_id})"
                         )
-                        try:
-                            log_referral_msg(
-                                config,
-                                client.id,
-                                message_id,
-                                is_private_pay_outreach=is_private_pay_outreach,
-                            )
-                        except Exception as log_err:
-                            logger.error(
-                                f"Failed to log referral msg for {client.fullName}: {log_err}"
-                            )
                     else:
                         logger.error(
                             f"Failed to deliver referral msg to {client.fullName} ({message_id})"
