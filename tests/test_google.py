@@ -151,3 +151,42 @@ class TestBuildAdminEmailReplies:
         assert "Check on ignoring:" in text
         assert "Responded" not in text
         assert "replied" not in text
+
+
+class TestBatchUpdatePunchList:
+    def _run(self, monkeypatch, sheet_rows, updates):
+        sheet = MagicMock()
+        sheet.values.return_value.get.return_value.execute.return_value = {
+            "values": sheet_rows
+        }
+        service = MagicMock()
+        service.spreadsheets.return_value = sheet
+        monkeypatch.setattr(google, "google_authenticate", object)
+        monkeypatch.setattr(google, "build", MagicMock(return_value=service))
+        config = MagicMock(punch_list_id="id", punch_list_range="Sheet1!A:Z")
+        google.batch_update_punch_list(config, updates)
+        return sheet.values.return_value.batchUpdate
+
+    def test_skips_cells_that_already_match(self, monkeypatch):
+        rows = [
+            ["Name", "Client ID", "DA Qs Done"],
+            ["A", "1", "TRUE"],
+            ["B", "2", "FALSE"],
+        ]
+        batch = self._run(
+            monkeypatch,
+            rows,
+            [("1", "DA Qs Done", "TRUE"), ("2", "DA Qs Done", "TRUE")],
+        )
+        data = batch.call_args.kwargs["body"]["data"]
+        assert [d["range"] for d in data] == ["Sheet1!C3"]
+
+    def test_makes_no_call_when_nothing_differs(self, monkeypatch):
+        rows = [["Name", "Client ID", "DA Qs Done"], ["A", "1", "TRUE"]]
+        batch = self._run(monkeypatch, rows, [("1", "DA Qs Done", "TRUE")])
+        batch.assert_not_called()
+
+    def test_blank_cell_is_written(self, monkeypatch):
+        rows = [["Name", "Client ID", "DA Qs Done"], ["A", "1"]]
+        batch = self._run(monkeypatch, rows, [("1", "DA Qs Done", "FALSE")])
+        batch.assert_called_once()

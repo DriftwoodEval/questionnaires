@@ -452,11 +452,22 @@ def update_punch_list(
         logger.exception("Failed to update Punch List")
 
 
+def _cell_text(
+    values: list[list[str]], row_index: int, headers: list[str], header: str
+) -> str:
+    """Returns the cell's current text, uppercased and trimmed ("" when blank)."""
+    row = values[row_index]
+    col = headers.index(header)
+    return row[col].strip().upper() if col < len(row) else ""
+
+
 def batch_update_punch_list(
     config: Config,
     updates: list[tuple[str, str, str]],
 ):
     """Update multiple cells in the Punch List in a single API call.
+
+    Cells that already hold the new value are skipped.
 
     Args:
         config: App config.
@@ -489,6 +500,8 @@ def batch_update_punch_list(
         row_number = row_map.get(id_for_search)
         col_letter = col_map.get(header)
         if row_number is not None and col_letter is not None:
+            if _cell_text(values, row_number - 1, headers, header) == new_value.upper():
+                continue
             data.append(
                 {
                     "range": f"{sheet_name}!{col_letter}{row_number}",
