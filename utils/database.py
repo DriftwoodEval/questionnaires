@@ -1030,6 +1030,40 @@ def get_sent_referral_client_ids(config: Config) -> set[int]:
     return {row["clientId"] for row in rows}
 
 
+def get_recent_referral_phone_numbers(config: Config, days: int) -> set[str]:
+    """Phone numbers that were sent a referral message within the last `days` days.
+
+    Several clients can share one phone number (siblings, a parent with more
+    than one child referred). Each number gets the referral message once.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT c.phoneNumber FROM emr_referral_msg_log l "
+            "JOIN emr_client c ON c.id = l.clientId "
+            "WHERE l.sentAt >= NOW() - INTERVAL %s DAY AND c.phoneNumber IS NOT NULL",
+            (days,),
+        )
+        rows = cursor.fetchall()
+    return {row["phoneNumber"] for row in rows}
+
+
+def log_referral_msg_not_sent(config: Config, client_id: int) -> None:
+    """Mark a client as handled without a text, so they are not picked up again.
+
+    Used when the client's phone number was already sent the referral message
+    for another client.
+    """
+    db_connection = get_db(config)
+    with db_connection, db_connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT IGNORE INTO emr_referral_msg_log (clientId, sentAt) "
+            "VALUES (%s, NOW())",
+            (client_id,),
+        )
+        db_connection.commit()
+
+
 def get_matched_client_ids(config: Config) -> set[int]:
     """Return the set of client IDs with at least one eligible evaluator.
 
@@ -1060,6 +1094,13 @@ def log_referral_msg(
             "VALUES (%s, %s, %s, NOW())",
             (client_id, openphone_message_id, is_private_pay_outreach),
         )
+        if cursor.rowcount == 0:
+            # INSERT IGNORE hides errors, so a client with no log row would be
+            # texted again tomorrow with nothing in the logs to explain why.
+            logger.error(
+                f"Referral msg log row not stored for client {client_id} "
+                "(already present or insert ignored)"
+            )
         record_audit_log(
             db_connection,
             "internal.referral.messageSent",

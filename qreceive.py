@@ -30,6 +30,7 @@ from utils.database import (
     get_most_recent_failure,
     get_previous_clients,
     get_questionnaire_rules,
+    get_recent_referral_phone_numbers,
     get_reminder_overrides,
     get_reminder_settings,
     get_reminder_templates,
@@ -38,6 +39,7 @@ from utils.database import (
     log_charter_school_forms_texted,
     log_questionnaire_msg,
     log_referral_msg,
+    log_referral_msg_not_sent,
     save_response_text,
     update_failure_in_db,
     update_questionnaires_in_db,
@@ -98,6 +100,9 @@ logger.add(
 app = typer.Typer()
 
 PENDING_EMAIL_PATH = Path("logs/pending_email.json")
+# A phone number that got the referral message within this many days is not
+# texted again for another client. Matches the referral lookback window.
+REFERRAL_PHONE_LOOKBACK_DAYS = 10
 
 
 def _serialize_email_info(email_info: AdminEmailInfo) -> dict:
@@ -1147,6 +1152,9 @@ def main(
                 )
                 sent_referral_ids = get_sent_referral_client_ids(config)
                 matched_client_ids = get_matched_client_ids(config)
+                recent_referral_phones = get_recent_referral_phone_numbers(
+                    config, REFERRAL_PHONE_LOOKBACK_DAYS
+                )
                 new_clients = [
                     c
                     for c in all_clients_raw.values()
@@ -1170,13 +1178,23 @@ def main(
                             (client, "New referral — no phone number")
                         )
                         continue
+                    if client.phoneNumber in recent_referral_phones:
+                        # A sibling or parent's other child already got the
+                        # referral message on this number. Log this client so
+                        # they are not picked up again tomorrow.
+                        logger.info(
+                            f"Phone number for {client.fullName} already got a referral msg, not texting again"
+                        )
+                        if send_referral_texts:
+                            log_referral_msg_not_sent(config, client.id)
+                        continue
                     if client.phoneNumber in numbers_sent:
                         logger.warning(
                             f"Already messaged {client.fullName} today, skipping referral msg"
                         )
                         continue
                     logger.info(
-                        f"Sending referral message to new client {client.fullName} (added {client.addedDate})"
+                        f"Sending referral message to new client {client.fullName} (id {client.id}, added {client.addedDate})"
                     )
                     has_matched_evaluator = client.id in matched_client_ids
                     is_private_pay_outreach = is_potential_private_pay(
