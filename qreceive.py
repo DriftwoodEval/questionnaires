@@ -970,6 +970,7 @@ def main(
                             most_recent_q["reminded"] < 3
                             and not already_messaged
                             and client.phoneNumber
+                            and client.language == "English"
                             and should_send_reminder(
                                 most_recent_q["reminded"],
                                 last_reminded_distance,
